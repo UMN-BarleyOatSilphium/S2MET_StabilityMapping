@@ -111,6 +111,9 @@ Plot the FW regression
 
 ```{r plot.fw}
 
+# Load fw data
+load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
+
 # Plot the genotypic value by environmental mean
 (g_fw_reg <- S2_MET_BLUEs_fw %>% 
   ggplot(aes(x = h, y = value, col = Program, group = line_name)) + 
@@ -122,6 +125,7 @@ Plot the FW regression
   labs(
     title = "Finlay-Wilkinson Regression for All S2MET Entries"
   ) +
+  # scale_color_brewer(palette = "Set2") +
   theme_bw() +
   theme(
     legend.position = c(0.75, 0.25),

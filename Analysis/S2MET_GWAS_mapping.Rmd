@@ -79,34 +79,56 @@ I used the `GWAS()` function in the `rrBLUP` package to fit this model
 ```{r main.model1}
 
 # Load the data
-load(file.path(map_dir, "S2MET_gwas_fw_results.RData"))
+load(file.path(result_dir, "S2MET_gwas_fw_results.RData"))
 
 # Gather data
 gwas_main_out1 <- gwas_fw_out %>% 
   gather(trait, neg_log_p, -marker:-pos) %>%
   # Convert -log_p to p
-  mutate(p_value = exp(-1 * neg_log_p))
+  mutate(p_value = 10 ^ (-1 * neg_log_p))
 
 # Calculate the significant p_value at a FDR of x
 fdr = 0.05
 
+# Calculate the -log(p) for 
 gwas_main_out2 <- gwas_main_out1 %>%
   group_by(trait) %>%
   mutate(neg_log_fdr = sommer::fdr2(p = neg_log_p, fdr.level = fdr)$fdr.10) %>%
   ungroup() %>%
-  separate(trait, c("trait", "coef"), sep = "_")
+  separate(trait, c("trait", "coef"), sep = "_") %>%
+  mutate(coef = ifelse(coef == "b", "Sensitivity", "GenotypeMean"))
 
 
 # Q-Q Plot per trait
-gwas_main_out2 %>%
-  ggplot(aes(sample = p_value)) +
-  geom_point(stat = "qq") +
-  facet_wrap(~ trait, ncol = 2)
+gwas_qq <- gwas_main_out2 %>%
+  group_by(trait, coef) %>%
+  arrange(trait, coef, p_value) %>% 
+  mutate(exp_neg_log_p = seq_along(neg_log_p), 
+         exp_neg_log_p = -(log10(exp_neg_log_p / (length(exp_neg_log_p)+1)))) %>%
+  arrange(trait, coef, chrom, pos)
+
+(g_gwas_qq <- gwas_qq %>%
+  ggplot(aes(x = exp_neg_log_p, y = neg_log_p)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, col = "red", lwd = 1) +
+  facet_grid(trait ~ coef) +
+  ylab("Observed -log10(p)") +
+  xlab("Expected -log10(p)") +
+  labs(
+    title = "Q-Q Plot of Association Results"
+  ) +
+  theme_bw() )
+
+# Save this
+save_file <- file.path(fig_dir, "gwas_qq.jpg")
+ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
+
 
 ```
 
 
 ```{r plot.gwas}
+
 # Plot the GWAS results
 (g_fw_gwas <- gwas_main_out2 %>%
   mutate(chrom = as.factor(chrom),
@@ -117,7 +139,7 @@ gwas_main_out2 %>%
   facet_grid(trait + coef ~ chrom, space = "free_x", scale = "free", switch = "x") +
   ylab("-log(p)") +
   xlab("Position (Mbp)") +
-  scale_color_discrete(guide = FALSE) +
+  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
   theme_bw() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
@@ -128,9 +150,10 @@ gwas_main_out2 %>%
     caption = "Horizontal line: significance level at FDR = 0.05"
   ))
 
+
 # Save this
 save_file <- file.path(fig_dir, "gwas_fw_results.jpg")
-ggsave(filename = save_file, plot = g_fw_gwas, width = 10, height = 8)
+ggsave(filename = save_file, plot = g_fw_gwas, width = 12, height = 7, dpi = 500)
 
 
 ```

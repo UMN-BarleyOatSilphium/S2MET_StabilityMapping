@@ -106,7 +106,7 @@ n_cores <- detectCores()
 
 ### GWAS of Genotypic effect
 gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
-                    n.PC = 2, min.MAF = 0, plot = FALSE, P3D = FALSE, n.core = n_cores)
+                    n.PC = 0, min.MAF = 0, plot = FALSE, P3D = FALSE, n.core = n_cores)
 
 
 # Save

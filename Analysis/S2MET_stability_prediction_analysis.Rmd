@@ -1,0 +1,66 @@
+---
+title: "S2MET Stability Prediction Analysis"
+bibliography: C:/Users/Jeff/Documents/Literature/library.bib
+---
+
+This notebook will outline genome-wide predictions of stability/sensitivity using the S2MET data, along with predictions of BCAP lines using BOPA markers
+
+
+## Introduction
+
+Load packages and set directories
+
+```{r setup}
+
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(broom)
+library(stringr)
+
+# Project and other directories
+source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+```
+
+
+## Results
+
+### Cross-Validation of Training Set Using GBS Markers
+
+These are the result of random cross-validation using only the 175 training population individuals and GBS markers
+
+```{r crossv.gbs.tp}
+
+# Load the results
+load(file.path(result_dir, "S2MET_stability_crossv_results.RData"))
+
+# Plot
+(g_crossv_gbs <- crossv_gbs_out %>%
+  ungroup() %>%
+  mutate(coef = ifelse(coef == "b", "Sensitivity", "GenotypeMean")) %>%
+  ggplot(aes(x = trait, y = acc, fill = coef)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = acc - acc_sd, ymax = acc + acc_sd), 
+                position = position_dodge(0.9), width = 0.5) +
+  ylab("Prediction Accuracy") +
+  xlab(NULL) +
+  ylim(c(0, 1)) +
+  scale_fill_brewer(palette = "Set2", guide = guide_legend(title = NULL)) +
+  labs(
+    title = "Cross-Validation Accuracy for Genotype Mean and Sensitivity",
+    subtitle = str_c("Based on ", unique(crossv_gbs_out$crossv_iter), " iterations using ", 
+                     unique(crossv_gbs_out$p_train) * 100, "% training.\nError bars are 1 SD.")
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = c(0.85, 0.85),
+    legend.background = element_rect(fill = "grey85", color = NA)
+  ))
+
+# Save this
+save_file <- file.path(fig_dir, "crossv_gbs.jpg")
+ggsave(filename = save_file, plot = g_crossv_gbs, width = 6, height = 5)
+
+
+```
