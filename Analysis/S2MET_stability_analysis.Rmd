@@ -19,9 +19,24 @@ library(lme4)
 library(broom)
 library(stringr)
 library(FW)
+library(ggridges)
+library(pbr)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+
+# Remove the environments in which the vp was only observed
+S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
+  group_by(trait, environment) %>%
+  filter(sum(line_name %in% tp) > 1) %>%
+  ungroup()
+
+# Number of environments and entries
+env <- pull(distinct(S2_MET_BLUEs_use, environment))
+n_env <- n_distinct(env)
+n_entries <- n_distinct(S2_MET_BLUEs_use$line_name)
+
 
 ```
 
@@ -35,79 +50,28 @@ Use the environment means to calculate the FW stability coefficient. Try both a 
 The model for the regression coefficients looks like:
 
 $$
-y_{ij} = \mu + g_i + b_ih_j + \epsilon_{ij},
+y_{ij} = \mu + G_i + (1 + b_i)E_j + \epsilon_{ij},
 $$
 
-where $y_{ij}$ is the BLUE of the *i*th genotype in the *j*th environment, $\mu$ is the overall mean, $g_i$ is the effect of the *i*th genotype, $h_j$ is the mean of the *j*th environment, and $b_i$ is the regression coefficient of the response on the mean of the *j*th environment, and $\epsilon_{ij}$ is the random error.
+where $y_{ij}$ is the BLUE of the *i*th genotype in the *j*th environment, $\mu$ is the overall mean, $g_i$ is the effect of the *i*th genotype, $E_j$ is the mean of the *j*th environment, and $b_i$ is the regression coefficient of the response on the mean of the *j*th environment, and $\epsilon_{ij}$ is the random error.
 
-Fit the model
+To fit FW, we first fit a regular quantitative genetic model:
 
-```{r fw.fixed}
+$$
+y_{ij} = \mu + G_i + E_j + \epsilon_{ij}
+$$
 
-# Remove the environments in which the vp was only observed
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-  group_by(trait, environment) %>%
-  filter(sum(line_name %in% tp) > 1)
+to obtain the environmental effects $E_j$. We then fit the following model for every genotype
 
-# Number of environments and entries
-n_env <- n_distinct(S2_MET_BLUEs_use$environment)
-n_entries <- n_distinct(S2_MET_BLUEs_use$line_name)
+$$
+y_j = \mu + (1 + b)E_j + \epsilon_{ij}
+$$
 
+## Results
 
-# Group by trait and fit the model
-fw_fit <- S2_MET_BLUEs_use %>% 
-  group_by(trait) %>%
-  do(fw_fit = FW(y = .$value, VAR = .$line_name, ENV = .$environment, method = "OLS"))
-
-# Extract the sensitivity coefficients
-fw_coef <- fw_fit %>%
-  mutate(fw_g = list({
-    fw_fit$g %>% 
-      as.data.frame() %>%
-      rownames_to_column("line_name") %>%
-      rename(g = V1) })) %>%
-  mutate(fw_b = list({
-    fw_fit$b %>% 
-      as.data.frame() %>%
-      rownames_to_column("line_name") %>%
-      rename(b = V1) })) %>%
-  mutate(fw_h = list({
-    fw_fit$h %>% 
-      as.data.frame() %>%
-      rownames_to_column("environment") %>%
-      rename(h = V1) }))  
-
-# Unnest the g and b coefficients
-fw_line_coefs <- fw_coef %>% 
-  unnest(fw_g, fw_b) %>% 
-  select(-line_name1) %>% 
-  mutate(b = b + 1)
-
-fw_env_coef <- fw_coef %>%
-  unnest(fw_h)
-
-# Color by entry subpopulation (i.e. program)
-S2_MET_BLUEs_use_entries <- left_join(S2_MET_BLUEs_use, select(entry_list, Line, Program), 
-                                      by = c("line_name" = "Line"))
-
-# Levels of breeding program
-program_levels <- sort(unique(S2_MET_BLUEs_use_entries$Program))
-
-# Add the regression coefficients
-S2_MET_BLUEs_fw <- S2_MET_BLUEs_use_entries %>% 
-  left_join(., fw_line_coefs, by = c("trait", "line_name")) %>% 
-  left_join(., fw_env_coef, by = c("trait", "environment")) %>%
-  ungroup() %>%
-  mutate(Program = parse_factor(Program, levels = program_levels))
-
-# Save this
-save_file <- file.path(result_dir, "S2MET_fw_regression_results.RData")
-save("S2_MET_BLUEs_fw", file = save_file)
-
-```
+Plot the FW regression (regular version)
 
 
-Plot the FW regression
 
 ```{r plot.fw}
 
@@ -116,10 +80,11 @@ load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
 
 # Plot the genotypic value by environmental mean
 (g_fw_reg <- S2_MET_BLUEs_fw %>% 
+  filter(stability_term == "b") %>%
   ggplot(aes(x = h, y = value, col = Program, group = line_name)) + 
   geom_point() + 
-  geom_abline(aes(slope = b, intercept = g, col = Program), alpha = 0.15) +
-  facet_wrap(~ trait, ncol = 2, scales = "free") +
+  geom_abline(aes(slope = estimate, intercept = g, col = Program), alpha = 0.15) +
+  facet_wrap(stability_term ~ trait, ncol = 2, scales = "free") +
   ylab("Genotypic Mean") +
   xlab("Environmental Effect") +
   labs(
@@ -138,17 +103,40 @@ ggsave(filename = save_file, plot = g_fw_reg, width = 8, height = 6)
 ```
 
 
+Plot stability across ECs
+
+```{r plot.fw}
+
+# Load fw data
+load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
+
+# Plot the genotypic value by environmental mean
+(g_fw_reg_one_year <- S2_MET_BLUEs_one_year_fw %>% 
+    filter(stability_term == "b") %>%
+    ggplot(aes(x = h_ec, y = value, col = Program, group = line_name)) + 
+    geom_point() + 
+    geom_abline(aes(slope = estimate, intercept = g, col = Program), alpha = 0.15) +
+    facet_grid(variable ~ trait))
+
+save_file <- file.path(fig_dir, "fw_plots.jpg")
+ggsave(filename = save_file, plot = g_fw_reg, width = 8, height = 6)
+
+```
+
+
+
 Extract FW stability coefficients and plot a histogram
 
 ```{r plot.b}
 
 # Plot distrubutions for those coefficients
-(g_dist_b <- S2_MET_BLUEs_fw %>% 
-  select(trait, line_name, g, b, Program) %>% 
-  distinct() %>%
-  ggplot(aes(x = b, y = Program, fill = Program)) +
+(g_dist_sens <- S2_MET_BLUEs_fw %>% 
+   select(trait, line_name, Program, g, b, delta) %>% 
+   distinct() %>% 
+   gather(sens_coef, value, -trait:-g) %>%
+  ggplot(aes(x = value, y = Program, fill = Program)) +
   geom_density_ridges() +
-  facet_grid(trait ~ .) +
+  facet_wrap(trait ~ sens_coef, scales = "free_x", ncol = 2) +
   ylab("") +
   xlab("Sensitivity Coefficient") +
   scale_fill_discrete(drop = FALSE) +
@@ -161,7 +149,7 @@ Extract FW stability coefficients and plot a histogram
   ))
 
 save_file <- file.path(fig_dir, "dist_fw_coef.jpg")
-ggsave(filename = save_file, plot = g_dist_b, width = 6, height = 8)
+ggsave(filename = save_file, plot = g_dist_sens, width = 6, height = 8)
 
 
 ```
@@ -171,14 +159,13 @@ Plot the relationship between the genotypic effect and the sensitivity
 
 ```{r plot.corr}
 
-# Plot the correlation between the intercept (genotypic mean overall) and the slope
 (g_coef_by_mean <- S2_MET_BLUEs_fw %>% 
-  select(trait, line_name, g, b, Program) %>% 
-  distinct() %>% 
+  select(trait, line_name, g, stability_term, estimate, Program) %>% 
+  filter(stability_term == "b") %>%
   group_by(trait) %>% 
-  mutate(corr = cor(g, b, use = "complete.obs"),
+  mutate(corr = cor(g, estimate, use = "complete.obs"),
          corr = str_c("r = ", round(corr, 3))) %>%
-  ggplot(aes(x = g, y = b, col = Program, group = FALSE)) +
+  ggplot(aes(x = g, y = estimate, col = Program, group = FALSE)) +
   geom_point() +
   geom_smooth(method = "lm", se = FALSE, col = "black") +
   geom_text(aes(x = Inf, y = Inf, label = corr, vjust = 1.5, hjust = 1.5), col = "black") +
@@ -202,7 +189,113 @@ ggsave(filename = save_file, plot = g_coef_by_mean, width = 8, height = 6)
 ```
 
 
+What is the relationship between the genotype mean and the non-linear stability (i.e. $\delta_j$)?
 
+```{r}
+
+(g_delta_by_mean <- S2_MET_BLUEs_fw %>% 
+  select(trait, line_name, g, delta, Program) %>% 
+  distinct() %>% 
+  group_by(trait) %>% 
+  mutate(corr = cor(g, delta, use = "complete.obs"),
+         corr = str_c("r = ", round(corr, 3))) %>%
+  ggplot(aes(x = g, y = delta, col = Program, group = FALSE)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, col = "black") +
+  geom_text(aes(x = Inf, y = Inf, label = corr, vjust = 1.5, hjust = 1.5), col = "black") +
+  facet_wrap(~ trait, scales = "free", ncol = 2) +
+  ylab("Non-Linear Sensitivity Coefficient") +
+  xlab("Genotype Mean") +
+  theme_bw() +
+  theme(
+    legend.position = c(0.75, 0.25),
+    legend.background = element_rect(fill = "grey85", color = NA)
+  ) +
+  labs(
+    title = "Relationship Between Genotype Mean and Non-Linear Sensitivity"
+  ))
+
+save_file <- file.path(fig_dir, "fw_delta_vs_mean.jpg")
+ggsave(filename = save_file, plot = g_delta_by_mean, width = 8, height = 6)
+
+```
+
+
+### Independent Environmental Gradients
+
+Visualize the distribution of environments around the environmental gradient
+
+```{r viz.env.cov}
+
+# Pull out the environments for which pheno data is available
+one_year_env_df1 <- one_year_env_df %>%
+  filter(environment %in% env)
+
+multi_year_env_df1 <- multi_year_env_df %>%
+  filter(environment %in% env)
+
+# How many variables?
+n_ecs <- n_distinct(one_year_env_df1$variable)
+
+# Plot
+one_year_env_df1 %>%
+  ggplot(aes(x = value, y = 0, col = environment)) +
+  geom_point() +
+  scale_color_discrete(guide = FALSE) +
+  facet_wrap("variable", scales = "free_x")
+
+
+```
+
+
+Fit a regression model to find significant environmental covariates. The model will use the environmental effect (calculated from BLUEs) as the response, such that:
+
+$$
+h_j = \beta_0 + x_1\beta_1 + x_2\beta_2 + ... + x_p\beta_p
+$$
+
+where $h_j$ is the effect of the *j*th environment, $\beta_0$ is the intercept, and $1, 2, ..., p$ signify the specific environment covariate
+
+```{r stepwise.lm.ec}
+
+# Filter out the 'monthly' variables
+one_year_env_df_filt <- one_year_env_df %>%
+  filter(!str_detect(variable, "^month"))
+
+multi_year_env_df_filt <- multi_year_env_df %>%
+  filter(!str_detect(variable, "^month"))
+
+S2_MET_BLUEs_one_year <- S2_MET_BLUEs_fw %>% 
+  distinct(environment, trait, h) %>%
+  left_join(., one_year_env_df_filt) %>%
+  spread(variable, value) %>%
+  select(-environment) %>%
+  group_by(trait) %>%
+  nest()
+
+# Fit the full model
+S2_MET_BLUEs_one_year_fit <- S2_MET_BLUEs_one_year %>%
+  group_by(trait) %>%
+  do(fit = {
+    df <- unnest(., data)
+    lm(h ~ ., data = select(df, -trait)) })
+
+# Stepwise regression
+S2_MET_BLUEs_one_year_step <- S2_MET_BLUEs_one_year_fit %>% 
+  ungroup() %>% 
+  mutate(step_fit = map(fit, step, direction = "backward", trace = 0)) %>%
+  mutate(terms_to_keep = map(step_fit, terms), 
+         terms_to_keep = map(terms_to_keep, attr, "term.labels"))
+
+# Extract the usable terms
+S2_MET_BLUEs_one_year_terms <- S2_MET_BLUEs_one_year_step %>% 
+  unnest(terms_to_keep)
+
+  
+
+
+
+```
 
 
 

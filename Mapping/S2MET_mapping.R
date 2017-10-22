@@ -92,8 +92,9 @@ load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
 # Format the phenotypic data
 S2_MET_BLUEs_fw_tomodel <- S2_MET_BLUEs_fw %>% 
   filter(line_name %in% c(tp_geno, vp_geno)) %>%
-  select(line_name, trait, g, b) %>%
-  distinct() %>%
+  select(line_name, trait, g, stability_term, estimate) %>% 
+  distinct() %>% 
+  spread(stability_term, estimate) %>%
   gather(coef, value, -line_name, -trait) %>% 
   unite("trait_coef", trait, coef) %>% 
   spread(trait_coef, value) %>%
@@ -104,9 +105,9 @@ S2_MET_BLUEs_fw_tomodel <- S2_MET_BLUEs_fw %>%
 n_cores <- detectCores()
 
 
-### GWAS of Genotypic effect
+### GWAS of Genotypic effect and stability across environmental means
 gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
-                    n.PC = 0, min.MAF = 0, plot = FALSE, P3D = FALSE, n.core = n_cores)
+                    n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores)
 
 
 # Save
@@ -114,55 +115,24 @@ save_file <- file.path(result_dir, "S2MET_gwas_fw_results.RData")
 save("gwas_fw_out", file = save_file)
 
 
-# ### GWAS with Phenotypic Means
-# 
-# # Prepare phenotypic data
-# # Filter out the environments in which only the C1 population was grown
-# phenos_use <- S2_MET_BLUEs %>%
-#   group_by(trait, environment) %>% 
-#   filter(n() > 50) %>% 
-#   ungroup() %>%
-#   subset(select = c(line_name, environment, trait, value)) %>%
-#   spread(trait, value) %>%
-#   filter(line_name %in% c(tp_geno, vp_geno)) %>%
-#   as.data.frame()
-# 
-# # Prepare genotypic data
-# genos_use <- s2_imputed_genos %>%
-#   dplyr::select(marker = `rs#`, chrom, pos, which(names(.) %in% c(tp_geno, vp_geno))) %>%
-#   as.data.frame()
-# 
-# # Randomly sample 5 environments
-# sample_env <- sample(unique(phenos_use$environment), 5)
-# 
-# ## Test with PlantHeight
-# phenos_test <- subset(phenos_use, environment %in% sample_env,
-#                       select = c(line_name, environment, PlantHeight))
-# 
-# 
-# # Run GWAS
-# gwas_main_out <- rrBLUP::GWAS(pheno = phenos_test, geno = genos_use, fixed = "environment",
-#                       n.PC = 2, min.MAF = 0, P3D = FALSE, K = A)
-# 
-# ## Create model matrices
-# mf <- model.frame(formula = PlantHeight ~ line_name + environment, data = phenos_test, )
-# y <- model.response(mf)
-# 
-# # Fixed effects of environments
-# X <- model.matrix(~ environment, data = mf)
-# # Random effect of genotype
-# Z <- gws::ranef_model_matrix(~ g(line_name), data = mf, vcov = list(line_name = A))
-# 
-# # Fixed effect of markers
-# W <- s2_imputed_mat_use
-# 
-# 
-# # Test sommer
-# gwas_main_out_somm <- GWAS(Y = y, X = X, Z = Z, W = W, min.MAF = 0, gwas.plots = FALSE)
-# 
-# # Save
-# save_file <- file.path(map_dir, "S2MET_gwas_main_results.RData")
-# save("gwas_main_out", file = save_file)
+## GWAS of stability coefficients to ECs
 
+# Load results
+load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
 
+S2_MET_BLUEs_fw_one_year_tomodel <- S2_MET_BLUEs_one_year_fw %>% 
+  filter(line_name %in% c(tp_geno, vp_geno)) %>% 
+  select(line_name, trait, variable, stability_term, value = estimate) %>%
+  distinct() %>% 
+  unite("trait_coef", trait, variable, stability_term, sep = "_") %>% 
+  spread(trait_coef, value) %>%
+  as.data.frame()
 
+### Run GWAS
+gwas_fw_one_year_out <- GWAS(pheno = S2_MET_BLUEs_fw_one_year_tomodel, 
+                             geno = s2_imputed_genos_use, n.PC = 0, min.MAF = 0, 
+                             plot = FALSE, n.core = n_cores)
+
+# Save
+save_file <- file.path(result_dir, "S2MET_gwas_fw_ec_one_year_results.RData")
+save("gwas_fw_out", file = save_file)

@@ -23,7 +23,9 @@ source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
 ## Methods
 
-First examine population structure within the material
+### Population Structure
+
+First examine population structure within the germplasm
 
 ```{r pop.str}
 
@@ -65,16 +67,54 @@ ggsave(filename = save_file, plot = g_pop_str, width = 6, height = 5)
 ```
 
 
+### GWAS
 
-The first mapping trial used environments as fixed effects and fit the following model:
+#### Stability QTL
+
+First we will map QTL for trait stability. The stability coefficients are first calculated using FW regression, and the coefficients are then used in the GWAS mixed model:
 
 $$
-\mathbf{y = X \beta + Zg + Sa + e}
+y_{i} = \mu + \sum^m_{m=1} x_{im} \alpha_m + g_{i} + \epsilon_{i}
 $$
 
-where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{S}$ is the SNP marker matrix, and $\mathbf{a}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
+which models the stability of genotype *i* as the sum of the grand mean, the sum of the marker allele effects carried by genotype *i*, the residual genetic effect of genotype *i*, and the residual effect associated with the observation.
 
-I used the `GWAS()` function in the `rrBLUP` package to fit this model
+In vector notation this becomes:
+
+
+$$
+\mathbf{y = X \beta + Wm + Zu + e}
+$$
+
+where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
+
+I used the `GWAS()` function in the `rrBLUP` package to fit this model. The first round used the P + K model, and the second round used the K only model.
+
+
+#### Main Effect QTL and QTLxE
+
+The above model does not account for QTLxE interaction. We will therefore split up the modeling of main effect QTL, QTLxE, and stability QTL.
+
+We fit the following model for QTL main effects and QTLxE
+
+$$
+y_{ij} = \mu + E_j + \sum^m_{m=1} x_{im} (\alpha_m + \delta_{mj}) + g_{ij} + \epsilon_{ij}
+$$
+
+which models the mean of genotype *i* in environment *j* as the sum of the grand mean, the effect of the *j*th environment, the sum of the marker allele effects ($\alpha_m$) and environment-specific marker deviations ($\delta_{mj}$) carried by genotype *i*, the residual genetic effect of genotype *i* in environment *j*, and the residual effect associated with the observation.
+
+In vector notation this becomes:
+
+
+$$
+\mathbf{y = X \beta + Wm + Vd + Zu + e}
+$$
+
+where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, $\mathbf{m}$ is the vector of fixed additive SNP effects, $\mathbf{V}$ is the incidence matrix of SNPs across environments, and $\mathbf{d}$ is the vector of environment-specific SNP deviations. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
+
+
+## Results
+
 
 ```{r main.model1}
 
@@ -87,13 +127,13 @@ gwas_main_out1 <- gwas_fw_out %>%
   # Convert -log_p to p
   mutate(p_value = 10 ^ (-1 * neg_log_p))
 
-# Calculate the significant p_value at a FDR of x
-fdr = 0.05
-
-# Calculate the -log(p) for 
+# Correct the p_values for an FDR of 0.05
 gwas_main_out2 <- gwas_main_out1 %>%
   group_by(trait) %>%
-  mutate(neg_log_fdr = sommer::fdr2(p = neg_log_p, fdr.level = fdr)$fdr.10) %>%
+  mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
+         neg_log_p_adj = -log10(p_adj),
+         neg_log_fdr05 = -log10(0.05),
+         neg_log_fdr10 = -log10(0.10)) %>%
   ungroup() %>%
   separate(trait, c("trait", "coef"), sep = "_") %>%
   mutate(coef = ifelse(coef == "b", "Sensitivity", "GenotypeMean"))
@@ -133,21 +173,22 @@ ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
 (g_fw_gwas <- gwas_main_out2 %>%
   mutate(chrom = as.factor(chrom),
          pos = pos / 1000000) %>%
-  ggplot(aes(x = pos, y = neg_log_p, col = chrom)) +
+  ggplot(aes(x = pos, y = neg_log_p_adj, col = chrom)) +
   geom_point() +
-  geom_hline(aes(yintercept = neg_log_fdr)) +
+  geom_hline(aes(yintercept = neg_log_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log_fdr10, lty = "FDR 10%")) +
   facet_grid(trait + coef ~ chrom, space = "free_x", scale = "free", switch = "x") +
-  ylab("-log(p)") +
+  ylab("Adjusted -log(p)") +
   xlab("Position (Mbp)") +
   scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
+  scale_linetype(guide = guide_legend(title = NULL)) +
   theme_bw() +
   theme(
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.border = element_blank()
   ) +
   labs(
-    title = "GWAS of Genotypic Main Effects and Sensitivity Coefficients",
-    caption = "Horizontal line: significance level at FDR = 0.05"
+    title = "GWAS of Genotypic Main Effects and Sensitivity Coefficients"
   ))
 
 

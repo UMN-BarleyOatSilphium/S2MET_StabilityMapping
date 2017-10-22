@@ -54,3 +54,8 @@ entries <- entry_list %>%
 
 # Extract the tp and vp from the G matrix
 s2_imputed_mat_use <- s2_imputed_mat[c(tp_geno, vp_geno),]
+
+
+# Filter the S2 MET BLUEs for non-irrigated trials
+S2_MET_BLUEs <- S2_MET_BLUEs %>% 
+  filter(!str_detect(environment, "BZI|HTM"))
