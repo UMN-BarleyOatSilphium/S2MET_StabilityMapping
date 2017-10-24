@@ -8,7 +8,7 @@
 # List of packages to load
 # List of packages
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP")
+              "parallel", "purrrlyr", "rrBLUP", "pbr")
 
 # Set the directory of the R packages
 package_dir <- NULL
@@ -84,6 +84,13 @@ s2_imputed_genos_use <- s2_imputed_genos %>%
   select(marker = `rs#`, chrom, pos, which(names(.) %in% c(tp_geno, vp_geno))) %>%
   as.data.frame()
 
+# Filter the BLUEs to use
+S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
+  filter(!grepl(pattern = "BZI|HTM", x = environment),
+         line_name %in% c(tp_geno, vp_geno)) %>%
+  group_by(trait, environment) %>%
+  filter(sum(line_name %in% tp) > 1) %>%
+  ungroup()
 
 
 # Load the FW results
@@ -92,7 +99,7 @@ load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
 # Format the phenotypic data
 S2_MET_BLUEs_fw_tomodel <- S2_MET_BLUEs_fw %>% 
   filter(line_name %in% c(tp_geno, vp_geno)) %>%
-  select(line_name, trait, g, stability_term, estimate) %>% 
+  select(line_name, trait, stability_term, estimate) %>% 
   distinct() %>% 
   spread(stability_term, estimate) %>%
   gather(coef, value, -line_name, -trait) %>% 
@@ -100,19 +107,23 @@ S2_MET_BLUEs_fw_tomodel <- S2_MET_BLUEs_fw %>%
   spread(trait_coef, value) %>%
   as.data.frame()
 
+# Format the BLUEs across environments
+S2_MET_BLUEs_tomodel <- S2_MET_BLUEs_use %>% 
+  select(line_name, environment, trait, value) %>% 
+  spread(trait, value)
 
 # Detect cores
 n_cores <- detectCores()
 
 
-### GWAS of Genotypic effect and stability across environmental means
+## GWAS of genotype main effect and QTLxE
+gwas_qtlxe_out <- gwas_e(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use,
+                         impute.method = "pass", fixed = "environment", n.core = n_cores)
+
+
+### GWAS of Genotypic main effect,  and stability across environmental means
 gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
                     n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores)
-
-
-# Save
-save_file <- file.path(result_dir, "S2MET_gwas_fw_results.RData")
-save("gwas_fw_out", file = save_file)
 
 
 ## GWAS of stability coefficients to ECs
@@ -133,6 +144,9 @@ gwas_fw_one_year_out <- GWAS(pheno = S2_MET_BLUEs_fw_one_year_tomodel,
                              geno = s2_imputed_genos_use, n.PC = 0, min.MAF = 0, 
                              plot = FALSE, n.core = n_cores)
 
+
+
+
 # Save
-save_file <- file.path(result_dir, "S2MET_gwas_fw_ec_one_year_results.RData")
-save("gwas_fw_out", file = save_file)
+save_file <- file.path(result_dir, "S2MET_gwas_fw_results.RData")
+save("gwas_qtlxe_out", "gwas_fw_out", "gwas_fw_one_year_out", file = save_file)

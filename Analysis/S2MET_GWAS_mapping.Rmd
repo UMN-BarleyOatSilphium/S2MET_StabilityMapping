@@ -14,6 +14,8 @@ Load packages and set directories
 ```{r setup}
 
 library(tidyverse)
+library(stringr)
+library(readxl)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
@@ -113,6 +115,9 @@ $$
 where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, $\mathbf{m}$ is the vector of fixed additive SNP effects, $\mathbf{V}$ is the incidence matrix of SNPs across environments, and $\mathbf{d}$ is the vector of environment-specific SNP deviations. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
 
 
+
+
+
 ## Results
 
 
@@ -132,11 +137,11 @@ gwas_main_out2 <- gwas_main_out1 %>%
   group_by(trait) %>%
   mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
          neg_log_p_adj = -log10(p_adj),
-         neg_log_fdr05 = -log10(0.05),
-         neg_log_fdr10 = -log10(0.10)) %>%
+         neg_log_fdr05 = 0.05,
+         neg_log_fdr10 = 0.10) %>%
   ungroup() %>%
   separate(trait, c("trait", "coef"), sep = "_") %>%
-  mutate(coef = ifelse(coef == "b", "Sensitivity", "GenotypeMean"))
+  mutate(coef = str_replace_all(coef, c(g = "GenotypeMean", b = "LinearStability", delta = "NonLinearStability")))
 
 
 # Q-Q Plot per trait
@@ -195,6 +200,19 @@ ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
 # Save this
 save_file <- file.path(fig_dir, "gwas_fw_results.jpg")
 ggsave(filename = save_file, plot = g_fw_gwas, width = 12, height = 7, dpi = 500)
+
+
+```
+
+
+Results of GWAS for stability to environmental covariables
+
+```{r ec.stability.gwas}
+
+# Load the data
+load(file.path(result_dir, "S2MET_gwas_fw_ec_one_year_results.RData"))
+
+
 
 
 ```
