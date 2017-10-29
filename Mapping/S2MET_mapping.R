@@ -120,6 +120,8 @@ n_cores <- detectCores()
 gwas_qtlxe_out <- gwas_e(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use,
                          impute.method = "pass", fixed = "environment", n.core = n_cores)
 
+save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
+save("gwas_qtlxe_out", file = save_file)
 
 ### GWAS of Genotypic main effect,  and stability across environmental means
 gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
@@ -148,5 +150,5 @@ gwas_fw_one_year_out <- GWAS(pheno = S2_MET_BLUEs_fw_one_year_tomodel,
 
 
 # Save
-save_file <- file.path(result_dir, "S2MET_gwas_fw_results.RData")
+save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
 save("gwas_qtlxe_out", "gwas_fw_out", "gwas_fw_one_year_out", file = save_file)

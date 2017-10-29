@@ -121,6 +121,95 @@ where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect inci
 ## Results
 
 
+First, association for the main effect of QTL and QTLxE
+
+```{r qtlxe.model}
+
+# Load the data
+load(file.path(result_dir, "S2MET_gwas_qtlxe_results.RData"))
+
+# Correct p-values for multiple testing
+gwas_qtlxe_out1 <- gwas_qtlxe_out %>% 
+  gather(trait, p_value, -marker:-pos) %>%
+  group_by(trait) %>%
+  mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
+         neg_log_p = -log10(p_value),
+         neg_log_p_adj = -log10(p_adj),
+         neg_log_fdr05 = -log10(0.05),
+         neg_log_fdr10 = -log10(0.10)) %>%
+  ungroup() %>%
+  separate(trait, c("trait", "coef"), sep = "_") %>%
+  mutate(coef = str_replace_all(coef, c(main = "GenotypeMean", qtlxe = "QTLxEnvironment")))
+
+# Q-Q Plot per trait
+gwas_qq <- gwas_qtlxe_out1 %>%
+  group_by(trait, coef) %>%
+  arrange(trait, coef, p_value) %>% 
+  mutate(exp_neg_log_p = seq_along(neg_log_p), 
+         exp_neg_log_p = -(log10(exp_neg_log_p / (length(exp_neg_log_p)+1)))) %>%
+  arrange(trait, coef, chrom, pos)
+
+(g_gwas_qq <- gwas_qq %>%
+  ggplot(aes(x = exp_neg_log_p, y = neg_log_p)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, col = "red", lwd = 1) +
+  facet_grid(trait ~ coef) +
+  ylab("Observed -log10(p)") +
+  xlab("Expected -log10(p)") +
+  labs(
+    title = "Q-Q Plot of Association Results"
+  ) +
+  theme_bw() )
+
+# Save this
+save_file <- file.path(fig_dir, "gwas_qq.jpg")
+ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
+
+
+
+```
+
+Manhattan plot
+
+```{r plot.gwas}
+
+# Plot the GWAS results
+(g_qtlxe_gwas <- gwas_qtlxe_out1 %>%
+  mutate(chrom = as.factor(chrom),
+         pos = pos / 1000000) %>%
+  ggplot(aes(x = pos, y = neg_log_p_adj, col = chrom)) +
+  geom_point() +
+  geom_hline(aes(yintercept = neg_log_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + coef ~ chrom, space = "free_x", scale = "free", switch = "x") +
+  ylab("Adjusted -log(p)") +
+  xlab("Position (Mbp)") +
+  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
+  scale_linetype(guide = guide_legend(title = NULL)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.border = element_blank()
+  ) +
+  labs(
+    title = "GWAS of Genotypic Main Effects and Sensitivity Coefficients"
+  ))
+
+
+# Save this
+save_file <- file.path(fig_dir, "gwas_fw_results.jpg")
+ggsave(filename = save_file, plot = g_fw_gwas, width = 12, height = 7, dpi = 500)
+
+
+```
+
+
+
+
+
+
+
+
 ```{r main.model1}
 
 # Load the data
@@ -137,8 +226,8 @@ gwas_main_out2 <- gwas_main_out1 %>%
   group_by(trait) %>%
   mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
          neg_log_p_adj = -log10(p_adj),
-         neg_log_fdr05 = 0.05,
-         neg_log_fdr10 = 0.10) %>%
+         neg_log_fdr05 = -log10(0.05),
+         neg_log_fdr10 = -log10(0.10)) %>%
   ungroup() %>%
   separate(trait, c("trait", "coef"), sep = "_") %>%
   mutate(coef = str_replace_all(coef, c(g = "GenotypeMean", b = "LinearStability", delta = "NonLinearStability")))
