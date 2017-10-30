@@ -148,7 +148,7 @@ mar_effect_by_env <- S2_MET_BLUEs_use %>%
       setNames(c(mar_names, paste(rep(mar_names, length(env_names)), 
                                   rep(env_names, each = length(mar_names)), sep = ":"))) %>%
       data.frame(marker = names(.), effect = ., row.names = NULL, stringsAsFactors = FALSE) %>%
-      separate(marker, c("marker", "envi ronment"), sep = ":", fill = "right")
+      separate(marker, c("marker", "environment"), sep = ":", fill = "right")
     
   })
 
@@ -157,132 +157,62 @@ save_file <- file.path(result_dir, "S2MET_marker_eff_by_env.RData")
 save("mar_effect_by_env", file = save_file)
 
 
-# 
-# 
-# 
-# 
-# 
-# 
-# ## Load the FW regression results
-# load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
-# 
-# 
-# # Remove the environments in which the vp was only observed
-# S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-#   group_by(trait, environment) %>%
-#   filter(sum(line_name %in% tp) > 1,
-#          line_name %in% c(tp_geno, vp_geno)) %>%
-#   ungroup() %>%
-#   mutate(line_name = as.factor(line_name))
-# 
-# S2_MET_BLUEs_fw <- S2_MET_BLUEs_use %>% 
-#   group_by(trait) %>%
-#   do({
-#     FW(y = .$value, VAR = .$line_name, ENV = .$environment, method = "OLS")$h %>%
-#       as.data.frame() %>% rownames_to_column("environment") %>% rename(h = V1)
-#   })
-# 
-# 
-# # Compound symmetry + diagonal model for marker effects
-# # First return the marker matrix for each environment
-# S2_MET_BLUEs_use %>%
-#   group_by(trait, environment) %>%
-#   do({
-#     
-#     df <- .
-# 
-#     # Create a model.frame
-#     mf <- model.frame(value ~ line_name, data = df)
-#     # Get the model response
-#     y <- model.response(mf)
-#     # Get the matrix of line_name observations
-#     z <- model.matrix(~ -1 + line_name, mf)
-# 
-# ## Predict marker effects
-# # For each environment and trait, predict the marker effects
-# marker_effects_by_env <- S2_MET_BLUEs_use %>% 
-#   # filter(line_name %in% tp_geno) %>% droplevels() %>%
-#   group_by(trait, environment) %>%
-#   do({
-#     
-#     df <- .
-#     
-#     # Create a model.frame
-#     mf <- model.frame(value ~ line_name, data = df)
-#     # Get the model response
-#     y <- model.response(mf)
-#     # Get the matrix of line_name observations
-#     z <- model.matrix(~ -1 + line_name, mf)
-#     
-#     
-#     
-#     # Extract observations from the marker matrix
-#     Z <- z %*% s2_imputed_mat_use
-#     # Z <- z %*% s2tp_bopa_mat_use
-#     
-#     
-#     # Fit the model
-#     fit <- mixed.solve(y = y, Z = Z, method = "REML", SE = FALSE, return.Hinv = FALSE)
-#     
-#     # Extract and return the marker effects
-#     fit$u %>% 
-#       data_frame(marker = names(.), effect = .)
-#     
-#   })
-#     
-# 
-# # Add the gradients to the marker effect environment data frame
-# marker_effects_by_env1 <- marker_effects_by_env %>% 
-#   left_join(., distinct(S2_MET_BLUEs_fw, trait, environment, h), by = c("trait", "environment")) %>%
-#   # Add environmental variables
-#   left_join(., spread(one_year_env_df, variable, value)) %>%
-#   gather(gradient, value, -trait:-effect)
-# 
-# 
-# # Now fit the FW regression model for each marker using h or environmental gradients as the predictor
-# marker_fw_fit <- marker_effects_by_env1 %>%
-#   group_by(trait, marker, gradient) %>% 
-#   do({
-#     fw_fit <- lm(effect ~ value, data = .)
-#     data_frame(tidy = list(tidy(fw_fit)), df = df.residual(fw_fit))
-#   })
-#     
-# 
-# 
-# # Extract the coefficient for h and perform a signficance test for greater
-# # than zero or less than zero
-# marker_fw_coef <- marker_fw_fit %>% 
-#   unnest() %>% 
-#   filter(term == "h") %>%
-#   mutate(stable = pt(statistic, df = df, lower.tail = TRUE),
-#          sensitive = pt(statistic, df = df, lower.tail = FALSE)) %>%
-#   gather(test, p_value, -trait:-p.value)
-# 
-# 
-# ## Map
-# # Adjust the p-values for multiple testing and convert to -log10
-# marker_fw_adj <- marker_fw_coef %>% 
-#   group_by(trait, test) %>% 
-#   mutate(p_val_adj = p.adjust(p_value, method = "fdr", n = n()), 
-#          neg_log_p = -log10(p_val_adj),
-#          fdr05 = -log10(0.05),
-#          fdr10 = -log10(0.10))
-# 
-# 
-# # Add marker position data
-# marker_fw_adj1 <- s2_imputed_genos %>% 
-#   select(marker = `rs#`, alleles:pos) %>%
-#   mutate(chrom = as.factor(chrom)) %>%
-#   right_join(., marker_fw_adj, by = "marker") %>%
-#   arrange(trait, chrom, pos)
-# 
-# 
-# ## plot
-# marker_fw_adj1 %>%
-#   ggplot(aes(x = pos, y = neg_log_p, col = chrom)) +
-#   geom_point() +
-#   facet_grid(trait + test ~ chrom, scales = "free") +
-#   geom_hline(aes(yintercept = fdr05, lty = "FDR 05%")) +
-#   geom_hline(aes(yintercept = fdr10, lty = "FDR 10%"))
-#   
-# 
+## Load the marker effect by environment results
+load(file.path(result_dir, "S2MET_marker_eff_by_env.RData"))
+# Loa the FW regression results
+load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
+
+
+## Combine the marker effects by environment with the environmental effect from
+## FW regression
+S2_MET_marker_env <- left_join(filter(mar_effect_by_env, !is.na(environment)), 
+                               distinct(S2_MET_BLUEs_fw, trait, environment, h))
+
+# Run FW regression of marker effects per environment
+S2_MET_marker_fw <- S2_MET_marker_env %>% 
+  group_by(trait, marker) %>% 
+  # Need to adjust the scale so they are the same - remember for genotypes and environments
+  # they are already on the same scale 
+  # mutate_at(vars(effect, h), scale) %>% 
+  do({
+    df <- .
+    # Fit the model
+    fw_fit <- lm(effect ~ h, data = df)
+    df_resid <- df.residual(fw_fit)
+    # Grab the coefficients and standard errors
+    fw_coef <- tidy(fw_fit) %>% 
+      subset(term == "h", term:std.error) %>%
+      # Calculate the resid MS of the regression (E and R 1966 stability)
+      add_row(term = "delta", estimate = sum(resid(fw_fit)^2) / df_resid) %>%
+      mutate(df = df_resid)
+    
+    # Return a data.frame with the model fit, the coefficients, and the residuals
+    data_frame(coef = list(fw_coef), resid = list(resid(fw_fit)))
+  })
+
+# Calculate the pooled error
+S2_MET_marker_fw1 <- S2_MET_marker_fw %>% 
+  group_by(trait) %>% 
+  # Sum of squared residuals / residual df
+  mutate(pooled_df = (length(unlist(resid)) - (2 * n())),
+         pooled_error = sum(unlist(resid)^2) / pooled_df)
+
+# Run significance tests for the "b" term and the "delta" term
+S2_MET_marker_fw_sig <- S2_MET_marker_fw1 %>% 
+  unnest(coef) %>%
+  mutate(term = if_else(term == "h", "b", term),
+         std.error = if_else(term == "b", std.error, pooled_error),
+         statistic = estimate / std.error,
+         # The test for stability is a t test for the regression coefficient and
+         # an F test for the deviations from the predictions
+         stable = if_else(term == "b", 1 - pt(q = statistic, df = df, lower.tail = FALSE),
+                            1 - pf(q = statistic, df1 = df, df2 = pooled_df, lower.tail = FALSE)),
+         sensitive = 1 - stable) %>%
+  select(-pooled_df, -pooled_error, -df) %>%
+  gather(test, p_value, -trait:-statistic) %>%
+  ungroup()
+    
+
+## Save the results
+save_file <- file.path(result_dir, "S2MET_marker_eff_fw_results.RData")
+save("S2_MET_marker_fw_sig", file = save_file)

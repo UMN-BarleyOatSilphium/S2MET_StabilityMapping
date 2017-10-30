@@ -1,0 +1,75 @@
+---
+title: "S2 MET Marker Stability Analysis"
+output: html_notebook
+bibliography: C:/Users/Jeff/Documents/Literature/library.bib
+---
+
+This notebook will outline the analysis of GWAS mapping procedures using the S2MET data.
+
+
+## Introduction
+
+Load packages and set directories
+
+```{r setup}
+
+library(tidyverse)
+library(stringr)
+library(readxl)
+
+# Project and other directories
+source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+# Load other genotype data
+load(file.path(geno_dir, "S2_genos_hmp.RData"))
+
+```
+
+
+## Results
+
+Marker stability over the environmental index
+
+```{r mar.stability}
+
+# Load the data
+load(file.path(result_dir, "S2MET_marker_eff_fw_results.RData"))
+
+# Add marker positions
+marker_fw_join <- full_join(snp_info, S2_MET_marker_fw_sig, by = c("rs#" = "marker")) %>%
+  rename(marker = `rs#`)
+
+# Correct for multiple testing
+marker_fw_tomodel <- marker_fw_join %>% 
+  group_by(trait, term, test) %>% 
+  mutate(p_adj = p.adjust(p_value, "fdr"),
+         neg_log_p = -log10(p_adj),
+         fdr05 = -log10(0.05),
+         fdr10 = -log10(0.10))
+
+# Plot
+(g_marker_fw <- marker_fw_tomodel %>%
+  filter(term == "b") %>%
+  mutate(chrom = as.factor(chrom),
+         pos = pos / 1000000) %>%
+  ggplot(aes(x = pos, y = neg_log_p, col = chrom)) +
+  geom_point() +
+  geom_hline(aes(yintercept = fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + test ~ chrom, space = "free_x", scale = "free", switch = "x") +
+  ylab("Adjusted -log(p)") +
+  xlab("Position (Mbp)") +
+  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
+  scale_linetype(guide = guide_legend(title = NULL)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.border = element_blank()
+  ))
+
+
+
+
+
+```
+
