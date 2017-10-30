@@ -7,9 +7,9 @@
 #PBS -r n
 
 # Change the working directory
-cd /panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping
+cd /panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/Mapping
 
 module load R/3.4.0
 
 # Clustering and prediction
-Rscript Mapping/S2MET_mapping.R
+Rscript S2MET_mapping.R
