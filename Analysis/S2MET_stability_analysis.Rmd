@@ -105,7 +105,7 @@ ggsave(filename = save_file, plot = g_fw_reg, width = 8, height = 6)
 
 Plot stability across ECs
 
-```{r plot.fw}
+```{r plot.fw.ec}
 
 # Load fw data
 load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))

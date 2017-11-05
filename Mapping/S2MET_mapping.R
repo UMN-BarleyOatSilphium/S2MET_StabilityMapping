@@ -78,11 +78,17 @@ entries <- entry_list %>%
 
 # Extract the tp and vp from the G matrix
 s2_imputed_mat_use <- s2_imputed_mat[c(tp_geno, vp_geno),]
+# Only the TP
+tp_imputed_mat_use <- s2_imputed_mat_use[c(tp_geno),]
 
 # Format the genotype data
 s2_imputed_genos_use <- s2_imputed_genos %>% 
   select(marker = `rs#`, chrom, pos, which(names(.) %in% c(tp_geno, vp_geno))) %>%
   as.data.frame()
+# Only TP
+tp_imputed_genos_use <- s2_imputed_genos_use %>% 
+  select(marker:pos, which(names(.) %in% tp_geno))
+
 
 # Filter the BLUEs to use
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
@@ -91,7 +97,10 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   group_by(trait, environment) %>%
   filter(sum(line_name %in% tp) > 1) %>%
   ungroup()
-
+# Only TP
+S2_MET_BLUEs_use_tp <- S2_MET_BLUEs_use %>% 
+  filter(line_name %in% tp_geno) %>% 
+  droplevels()
 
 # Load the FW results
 load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
@@ -112,43 +121,75 @@ S2_MET_BLUEs_tomodel <- S2_MET_BLUEs_use %>%
   select(line_name, environment, trait, value) %>% 
   spread(trait, value)
 
+# Format the BLUEs across environments
+S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_use_tp %>% 
+  select(line_name, environment, trait, value) %>% 
+  spread(trait, value)
+
+
 # Detect cores
 n_cores <- detectCores()
 
 
-## GWAS of genotype main effect and QTLxE
-gwas_qtlxe_out <- gwas_e(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use,
-                         impute.method = "pass", fixed = "environment", n.core = n_cores)
+# Vector of model types
+gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")
 
-save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
-save("gwas_qtlxe_out", file = save_file)
+### GWAS of main effect
+# TP only
+gwas_tp_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel_tp, geno = tp_imputed_genos_use, 
+                                       fixed = ~ environment, model = ., impute.method = "pass", 
+                                       n.PC = 2, n.core = n_cores))
 
-### GWAS of Genotypic main effect,  and stability across environmental means
-gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
-                    n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores)
+# TP and VP
+gwas_all_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use, 
+                                       fixed = ~ environment, model = ., impute.method = "pass",
+                                       n.PC = 2, n.core = n_cores))
 
 
-## GWAS of stability coefficients to ECs
-
-# Load results
-load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
-
-S2_MET_BLUEs_fw_one_year_tomodel <- S2_MET_BLUEs_one_year_fw %>% 
-  filter(line_name %in% c(tp_geno, vp_geno)) %>% 
-  select(line_name, trait, variable, stability_term, value = estimate) %>%
-  distinct() %>% 
-  unite("trait_coef", trait, variable, stability_term, sep = "_") %>% 
-  spread(trait_coef, value) %>%
-  as.data.frame()
-
-### Run GWAS
-gwas_fw_one_year_out <- GWAS(pheno = S2_MET_BLUEs_fw_one_year_tomodel, 
-                             geno = s2_imputed_genos_use, n.PC = 0, min.MAF = 0, 
-                             plot = FALSE, n.core = n_cores)
+## Save
+save_file <- file.path(result_dir, "S2MET_gwas_pop_model_comparison.RData")
+save("gwas_tp_main", "gwas_all_main", file = save_file)
 
 
 
 
-# Save
-save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
-save("gwas_qtlxe_out", "gwas_fw_out", "gwas_fw_one_year_out", file = save_file)
+
+# 
+# 
+# 
+# ## GWAS of genotype main effect and QTLxE
+# gwas_qtlxe_out <- gwas_e(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use,
+#                          impute.method = "pass", fixed = "environment", n.core = n_cores)
+# 
+# save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
+# save("gwas_qtlxe_out", file = save_file)
+# 
+# ### GWAS of Genotypic main effect,  and stability across environmental means
+# gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
+#                     n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores)
+# 
+# 
+# ## GWAS of stability coefficients to ECs
+# 
+# # Load results
+# load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
+# 
+# S2_MET_BLUEs_fw_one_year_tomodel <- S2_MET_BLUEs_one_year_fw %>% 
+#   filter(line_name %in% c(tp_geno, vp_geno)) %>% 
+#   select(line_name, trait, variable, stability_term, value = estimate) %>%
+#   distinct() %>% 
+#   unite("trait_coef", trait, variable, stability_term, sep = "_") %>% 
+#   spread(trait_coef, value) %>%
+#   as.data.frame()
+# 
+# ### Run GWAS
+# gwas_fw_one_year_out <- GWAS(pheno = S2_MET_BLUEs_fw_one_year_tomodel, 
+#                              geno = s2_imputed_genos_use, n.PC = 0, min.MAF = 0, 
+#                              plot = FALSE, n.core = n_cores)
+# 
+# 
+# 
+# 
+# # Save
+# save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
+# save("gwas_qtlxe_out", "gwas_fw_out", "gwas_fw_one_year_out", file = save_file)
