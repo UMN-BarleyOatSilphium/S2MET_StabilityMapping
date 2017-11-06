@@ -128,11 +128,16 @@ S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_use_tp %>%
 
 
 # Detect cores
-n_cores <- detectCores()
+n_cores <- detectCores() 
 
 
 # Vector of model types
-gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")
+gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")[4]
+
+
+S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_tomodel_tp %>% group_by(line_name) %>% slice(1:3)
+tp_imputed_genos_use <- tp_imputed_genos_use %>% group_by(chrom) %>% slice(1:25)
+
 
 ### GWAS of main effect
 # TP only
