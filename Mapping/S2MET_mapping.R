@@ -132,11 +132,7 @@ n_cores <- detectCores()
 
 
 # Vector of model types
-gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")[4]
-
-
-S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_tomodel_tp %>% group_by(line_name) %>% slice(1:3)
-tp_imputed_genos_use <- tp_imputed_genos_use %>% group_by(chrom) %>% slice(1:25)
+gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")
 
 
 ### GWAS of main effect
@@ -145,15 +141,24 @@ gwas_tp_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel_tp, geno = t
                                        fixed = ~ environment, model = ., impute.method = "pass", 
                                        n.PC = 2, n.core = n_cores))
 
+
+gwas_tp_main <- set_names(gwas_tp_main, gwas_models)
+
+## Save
+save_file <- file.path(result_dir, "S2MET_gwas_tp_model_comparison.RData")
+save("gwas_tp_main", file = save_file)
+
+
 # TP and VP
 gwas_all_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use, 
                                        fixed = ~ environment, model = ., impute.method = "pass",
                                        n.PC = 2, n.core = n_cores))
 
+gwas_all_main <- set_names(gwas_all_main, gwas_models)
 
 ## Save
-save_file <- file.path(result_dir, "S2MET_gwas_pop_model_comparison.RData")
-save("gwas_tp_main", "gwas_all_main", file = save_file)
+save_file <- file.path(result_dir, "S2MET_gwas_all_model_comparison.RData")
+save("gwas_all_main", file = save_file)
 
 
 
