@@ -397,6 +397,7 @@ sim_results <- param_df %>%
       
 # Save the results
 save_file <- file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData")
+save("sim_results", file = save_file)
 
 
 # ## Manipulate data
