@@ -130,19 +130,38 @@ S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_use_tp %>%
 # Detect cores
 n_cores <- detectCores() 
 
+# ## First conduct GWAS of main effects (no QxE) by looking at other models
+# gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")
+# 
+# gwas_tp_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel_tp, geno = tp_imputed_genos_use, 
+#                                        fixed = ~ environment, model = ., impute.method = "pass", 
+#                                        n.PC = 2, n.core = n_cores, test.qxe = FALSE, P3D = TRUE)) %>%
+#   set_names(gwas_models)
+# 
+# ## Save
+# save_file <- file.path(result_dir, "S2MET_gwas_tp_model_comparison.RData")
+# save("gwas_tp_main", file = save_file)
+
+
+
+## Now run GWAS for the main effect and QxE using a subset of models
 
 # Vector of model types
-gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")
+gwas_models <- c("simple", "K", "G", "KE", "GE")
 
 
-### GWAS of main effect
+### GWAS of main effect and QxE
 # TP only
 gwas_tp_main_qxe <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel_tp, geno = tp_imputed_genos_use, 
                                            fixed = ~ environment, model = ., impute.method = "pass", 
+<<<<<<< HEAD
                                            n.PC = 2, n.core = n_cores, test.qxe = TRUE, P3D = TRUE)) %>%
+=======
+                                           n.PC = 0, n.core = n_cores, test.qxe = TRUE, P3D = TRUE)) %>%
+>>>>>>> ffb618191a96b619612d8cf8ca6f72453a4f6b9d
                           set_names(gwas_models)
 
-## Save
+ ## Save
 save_file <- file.path(result_dir, "S2MET_gwas_tp_main_qxe_model_comparison.RData")
 save("gwas_tp_main_qxe", file = save_file)
 
