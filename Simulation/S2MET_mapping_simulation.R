@@ -18,10 +18,10 @@ invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir
 
 ## Directories
 proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping//"
-# proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
+proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
 
 alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
-# alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
+alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 
 # Other directories
 fig_dir <- file.path(proj_dir, "Figures/")
@@ -67,9 +67,9 @@ use_map <- map_to_table(genome) %>%
 ### Set some simulation parameters
 n_qtl_list <- c(30, 100) # Number of QTL
 h2_list <- c(0.5, 0.8) # Heritability
-n_pop_list <- c(175, 350, 700, 1400)
+n_pop_list <- c(175, 350, 700)
 
-n_iter <- 10 # Number of simulation iterations
+n_iter <- 25 # Number of simulation iterations
 
 
 ### Contstant parameters
