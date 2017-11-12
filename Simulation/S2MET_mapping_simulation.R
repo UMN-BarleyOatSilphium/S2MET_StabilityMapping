@@ -395,6 +395,10 @@ sim_results <- param_df %>%
   }, mc.cores = n_cores)
     
       
+# Save the results
+save_file <- file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData")
+
+
 # ## Manipulate data
 # test <-trial_list_df %>% 
 #   filter(datatype == "marker_association") %>% 
