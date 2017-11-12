@@ -15,9 +15,14 @@ Load packages and set directories
 
 ```{r setup}
 
-library(tidyverse)
+library(dplyr)
+library(tibble)
+library(tidyr)
 library(stringr)
+library(purrr)
+library(ggplot2)
 library(readxl)
+library(lme4)
 library(rrBLUP)
 library(broom)
 
@@ -44,30 +49,38 @@ First examine population structure within the germplasm
 ```{r pop.str}
 
 # Calculate the A matrix
-A <- A.mat(X = s2_imputed_mat_use, min.MAF = 0, max.missing = 1)
+A_all <- A.mat(X = s2_imputed_mat_use, min.MAF = 0, max.missing = 1)
+A_tp <- A.mat(X = s2_imputed_mat_use[tp_geno,], min.MAF = 0, max.missing = 1)
+
+A_list <- list(all = A_all, tp = A_tp)
 
 ## Visualize pop structure
-A_prcomp <- prcomp(A)
+A_prcomp <- map(A_list, prcomp)
 
 # Extract the proportion explained by each PC
-lambda <- round(A_prcomp$sdev / sum(A_prcomp$sdev), 3) * 100
+lambda <- map(A_prcomp, "sdev") %>% map(~round(. / sum(.), 3) * 100)
 
 # Convert to data.frame
-A_prcomp_df <- A_prcomp$rotation %>% 
-  as.data.frame() %>% 
-  rownames_to_column("line_name")
+A_prcomp_df_list <- map(A_prcomp, "rotation") %>% 
+  map(~as.data.frame(.) %>% rownames_to_column("line_name"))
 
-A_prcomp_df1 <- left_join(A_prcomp_df, entry_list, c("line_name" = "Line")) %>% 
-  dplyr::select(line_name, program = Program, parent = `Parent?`, starts_with("PC")) %>%
-  mutate(program = ifelse(str_detect(line_name, "^2MS"), "M2", program))
+A_prcomp_df <- A_prcomp_df_list %>%
+  map(~left_join(., entry_list, by = c("line_name" = "Line")) %>%
+        select(line_name, program = Program, parent = `Parent?`, starts_with("PC")) %>%
+        mutate(program = if_else(str_detect(line_name, "^2MS"), "M2", program))) %>%
+  list(., c("All", "TP")) %>% 
+  pmap(~mutate(.x, population = .y)) %>% 
+  bind_rows()
+
 
 # Plot
-(g_pop_str <- A_prcomp_df1 %>% 
+(g_pop_str <- A_prcomp_df %>% 
   ggplot(aes(x = PC1, y = PC2, col = program)) + 
   geom_point(size = 2) + 
-  ylab(str_c("PC2 (", lambda[2], "%)")) +
-  xlab(str_c("PC1 (", lambda[1], "%)")) +
+  ylab("PC2") +
+  xlab("PC1") +
   scale_color_discrete(guide = guide_legend(title = "Breeding\nProgram")) +
+  facet_grid(~ population) +
   labs(
     title = "Population Structure of the S2MET Genotypes",
     subtitle = "The 'M2' program includes genotypes derived\nfrom crosses made among genotypes from the other programs."
@@ -99,9 +112,7 @@ trait_BLUEs <- S2_MET_BLUEs_use %>%
     
     # Set the contrasts of line_name and environment
     df_use <- df %>%
-      mutate_at(vars(line_name, environment), as.factor) %>%
-      mutate(line_name = `contrasts<-`(x = line_name, value = contr.sum(n = levels(line_name))),
-             environment = `contrasts<-`(x = environment, value = contr.sum(n = levels(environment))))
+      mutate_at(vars(line_name, environment), as.factor)
     
     # Fit the model
     fit <- lmer(value ~ -1 + line_name + environment + (1|line_name:environment), data = df_use,
@@ -113,23 +124,32 @@ trait_BLUEs <- S2_MET_BLUEs_use %>%
       mutate(term = str_replace(term, "line_name", "")) %>% 
       select(line_name = term, value = estimate) })
 
-# Combine the trait and PCs
-trait_pop_str <- left_join(select(A_prcomp_df1, line_name:PC2), trait_BLUEs) 
+# Combine the trait and PCs, duplicating the BLUEs to make summarizing smoother
+trait_pop_str <- A_prcomp_df %>% 
+  select(line_name:parent, population, PC1:PC3) %>% 
+  gather(PC, eigenvalue, -line_name:-population) %>% 
+  left_join(., trait_BLUEs, by = "line_name")
 
-trait_pop_str %>%
-  group_by(trait) %>%
-  summarize(trait_popstr1_cor = cor(PC1, value),
-            trait_popstr2_cor = cor(PC2, value))
+# Correlate trait BLUEs with eigenvectors
+trait_pop_str_summ <- trait_pop_str %>% 
+  group_by(population, PC, trait) %>% 
+  summarize(trait_str_cor = cor(eigenvalue, value))
+
 
 # Plot
-trait_pop_str %>% 
-  gather(PC, eigen, -line_name:-parent, -trait, -value) %>%
-  ggplot(aes(x = eigen, y = value)) +
+(g_trait_pop_str <- trait_pop_str %>% 
+  ggplot(aes(x = eigenvalue, y = value)) +
   geom_smooth(method = "lm", se = FALSE) +
   geom_point(aes(col = program)) +
-  facet_grid(trait ~ PC, scales = "free") +
+  facet_grid(trait + population ~ PC, scales = "free") +
   ylab("Genotypic Value") +
-  xlab("Eigenvalue")
+  xlab("Eigenvalue") +
+  labs(
+    title = "Relationship Between Trait and Population Structure"
+  ))
+
+save_file <- file.path(fig_dir, "trait_pop_str_relationship.jpg")
+ggsave(filename = save_file, plot = g_trait_pop_str, width = 6, height = 8, dpi = 500)
 
 ```
 
