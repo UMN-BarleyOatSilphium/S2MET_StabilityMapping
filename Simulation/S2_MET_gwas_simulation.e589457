@@ -1,0 +1,29 @@
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+Loading pbr: lme4
+Loading pbr: agridat
+
+Attaching package: 'pbsim'
+
+The following objects are masked from 'package:qtl':
+
+    chrlen, chrnames, markernames, nchr, nind, nmar, nqtl
+
+Warning message:
+In mclapply(X = ., FUN = function(trial) { :
+  scheduled core 1 encountered error in user code, all values of the job will be affected
+Error in gzfile(file, "wb") : cannot open the connection
+Calls: save -> gzfile
+In addition: Warning message:
+In gzfile(file, "wb") :
+  cannot open compressed file 'C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping///Results/S2MET_mapping_gwas_qxe_simulation.RData', probable reason 'No such file or directory'
+Execution halted
