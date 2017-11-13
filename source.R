@@ -17,6 +17,7 @@ map_dir <- file.path(proj_dir, "Mapping")
 entry_dir <- file.path(alt_proj_dir, "Plant_Materials")
 analysis_dir <- file.path(proj_dir, "Analysis")
 result_dir <- file.path(proj_dir, "Results")
+sim_dir <- file.path(proj_dir, "Simulation")
 
 
 # Load the phenotypic data

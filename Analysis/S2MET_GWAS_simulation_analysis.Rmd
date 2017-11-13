@@ -1,0 +1,336 @@
+---
+title: "S2 MET GWAS Simulation Analysis"
+output: html_notebook
+bibliography: C:/Users/Jeff/Documents/Literature/library.bib
+---
+
+## Introduction
+
+This notebook will provide some code to analyze the results of the GWAS simulation in the context of detecting QxE.
+
+Set up directories and load packages
+
+```{r setup}
+
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(stringr)
+library(purrr)
+library(ggplot2)
+library(readxl)
+library(gtable)
+library(grid)
+
+# Project and other directories
+source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+# Load the results
+load(file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData"))
+
+# Remove errors
+which_clean <- !map_lgl(sim_results, ~inherits(., "try-error"))
+
+sim_results1 <- sim_results[which_clean]
+
+```
+
+## Methods
+
+The simulation looked at different genetic architectures and population sizes for the ability to detect QTL using an association mapping approach. The simulation compared a number of models. Originally, the number of replications was 25, however this would be increased in the actual analysis
+
+
+## Results
+
+Summarize the results
+
+```{r load.result}
+# Combine the revised parameter df with the results
+param_df1 <- param_df %>% 
+  filter(which_clean) %>%
+  as_data_frame() %>%
+  mutate(data = sim_results1) %>%
+  unnest()
+
+## Summarize the marker association results
+mar_assoc_result <- param_df1 %>% 
+  filter(datatype == "marker_association") %>% 
+  unnest() %>%
+  complete(n_qtl, h2, n_pop, iter, model, sig_cutoff, term, true_false, neg_pos) %>%
+  select(-datatype)
+
+## Summarize qtl discovery results
+qtl_disc_result <- param_df1 %>% 
+  filter(datatype == "qtl_discovery") %>%
+  mutate(data = map(data, ~list(., names(.)) %>% pmap(., ~mutate(.x, term = .y)) %>% bind_rows())) %>%
+  unnest() %>%
+  complete(n_qtl, h2, n_pop, iter, model, sig_cutoff, term) %>%
+  select(-datatype)
+  
+## Summarize number of significant markers
+sig_mar_summ <- mar_assoc_result %>% 
+  filter(neg_pos == "positive") %>% 
+  group_by_at(vars(n_qtl:term)) %>% 
+  summarize(sig_mar = sum(n, na.rm = T)) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  summarize_at(vars(sig_mar), funs(mean, sd), na.rm = TRUE) %>%
+  ungroup()
+
+## Number of false positives
+power_false_pos_summ <- mar_assoc_result %>% 
+  filter(neg_pos == "positive", true_false == "false") %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  summarize_at(vars(n), funs(mean, sd), na.rm = TRUE) %>%
+  ungroup()
+
+## False discovery rate (i.e. ratio of false positives to total positives)
+## and power (i.e. 1 - fdr)
+power_fdr_summ <- mar_assoc_result %>% 
+  filter(neg_pos == "positive") %>% 
+  spread(true_false, n) %>% 
+  mutate(fdr = false / (false + true), power = 1 - fdr) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  summarize_at(vars(fdr, power), funs(mean, sd), na.rm = TRUE) %>%
+  ungroup()
+
+
+## Number of true QTL discovered
+qtl_disc_summ <- qtl_disc_result %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  summarize_at(vars(n_discovered), funs(mean, sd), na.rm = TRUE) %>%
+  ungroup()
+
+
+## Number of true QTL per FALSE discoveries
+qtl_disc_fdr_summ <- full_join(qtl_disc_result, filter(mar_assoc_result, true_false == "false", neg_pos == "positive")) %>%
+  mutate(disc_per_false = n_discovered / n) %>%
+  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  summarize_at(vars(disc_per_false), funs(mean, sd), na.rm = TRUE) %>%
+  ungroup()
+
+
+
+
+
+```
+
+
+Plot the number of significant markers
+
+```{r sig.mar.plot}
+
+# ggplot modifier
+g_mod <- list(
+  geom_col(position = "dodge"),
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                position = position_dodge(0.9), width = 0.5),
+  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  ylab("Number of Significant Markers"),
+  xlab("Population Size"),
+  theme_bw())
+
+## Plot the number of significant markers per model
+(g_sig_mar_main <- sig_mar_summ %>% 
+  filter(term == "main_effect") %>%
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of Significant Markers for Main Effect QTL") + 
+  g_mod)
+
+(g_sig_mar_qxe <- sig_mar_summ %>% 
+  filter(term == "qxe") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of Significant Markers for Interaction QTL") + 
+  g_mod)
+
+# Save
+save_file <- file.path(fig_dir, "simulation_sig_mar_main.jpg")
+ggsave(filename = save_file, plot = g_sig_mar_main, width = 6, height = 8)
+
+save_file <- file.path(fig_dir, "simulation_sig_mar_qxe.jpg")
+ggsave(filename = save_file, plot = g_sig_mar_qxe, width = 6, height = 8)
+
+```
+
+
+Plot the false positives
+
+```{r false.pos.plot}
+
+## Define a plot modifier that is common to all plots
+g_mod <- list(
+  geom_col(position = "dodge"),
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                position = position_dodge(0.9), width = 0.5),
+  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  ylab("Number of False Positives"),
+  xlab("Population Size"),
+  theme_bw())
+
+
+## Plot the number of false positives per model
+(g_false_pos_main <- false_pos_summ %>% 
+  filter(term == "main_effect") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of False Positives for Main Effect QTL") + 
+  g_mod)
+
+(g_false_pos_qxe <- false_pos_summ %>% 
+  filter(term == "qxe") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of False Positives for Interaction QTL") +
+  g_mod)
+
+
+# New modifier
+g_mod <- list(
+  geom_col(position = "dodge"),
+  geom_errorbar(aes(ymin = fdr_mean - fdr_sd, ymax = fdr_mean + fdr_sd), 
+                position = position_dodge(0.9), width = 0.5),
+  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  ylab("False Discovery Rate"),
+  xlab("Population Size"),
+  theme_bw())
+
+## Plot the false discovery rate
+(g_fdr_main <- power_fdr_summ %>% 
+  filter(term == "main_effect") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = fdr_mean, fill = model, group = model)) + 
+  labs(title = "False Discovery Rate for Main Effect QTL") +
+  g_mod)
+
+(g_fdr_qxe <- power_fdr_summ %>% 
+  filter(term == "qxe") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = fdr_mean, fill = model, group = model)) + 
+  labs(title = "False Discovery Rate for Interaction QTL") +
+  g_mod)
+
+
+
+
+
+## Plot the power
+## New modifier
+g_mod <- list(
+  geom_col(position = "dodge"),
+  geom_errorbar(aes(ymin = power_mean - power_sd, ymax = power_mean + power_sd), 
+                position = position_dodge(0.9), width = 0.5),
+  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  ylab("Power"),
+  xlab("Population Size"),
+  theme_bw())
+
+(g_power_main <- power_fdr_summ %>% 
+  filter(term == "main_effect") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = power_mean, fill = model, group = model)) + 
+  labs(title = "Power to Detect Main Effect QTL") +
+  g_mod)
+
+(g_power_qxe <- power_fdr_summ %>% 
+  filter(term == "qxe") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = power_mean, fill = model, group = model)) + 
+  labs(title = "Power to Detect Interaction QTL") +
+  g_mod)
+
+
+## Save
+save_file <- file.path(fig_dir, "simulation_power_main.jpg")
+ggsave(filename = save_file, plot = g_power_main, width = 6, height = 8)
+
+save_file <- file.path(fig_dir, "simulation_power_qxe.jpg")
+ggsave(filename = save_file, plot = g_power_qxe, width = 6, height = 8)
+
+
+
+```
+
+Plot the number of QTL discovered
+
+```{r plot.disc.qtl}
+
+# New modifier
+g_mod <- list(
+  geom_col(position = "dodge"),
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), 
+                position = position_dodge(0.9), width = 0.5),
+  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  ylab("Number of QTL Discovered"),
+  xlab("Population Size"),
+  theme_bw())
+
+## Plot the number of QTL discovered
+(g_disc_main <- qtl_disc_summ %>% 
+  filter(term == "main_effect") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of Main Effect QTL Discovered") +
+  g_mod)
+
+(g_disc_qxe <- qtl_disc_summ %>% 
+  filter(term == "qxe") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of Interaction QTL Discovered") +
+  g_mod)
+
+## Save
+save_file <- file.path(fig_dir, "simulation_qtl_disc_main.jpg")
+ggsave(filename = save_file, plot = g_disc_main, width = 6, height = 8)
+
+save_file <- file.path(fig_dir, "simulation_qtl_disc_qxe.jpg")
+ggsave(filename = save_file, plot = g_disc_qxe, width = 6, height = 8)
+
+
+
+
+```
+
+Plot the number of discovered QTL per false discoveries
+
+```{r plot.disc.qtl.fdr}
+
+# New modifier
+g_mod <- list(
+  geom_col(position = "dodge"),
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), 
+                position = position_dodge(0.9), width = 0.5),
+  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  ylab("Number of QTL Discovered Per False Discovery"),
+  xlab("Population Size"),
+  theme_bw())
+
+## Plot the number of QTL discovered per false discovery
+(g_disc_fdr_main <- qtl_disc_fdr_summ %>% 
+  filter(term == "main_effect") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of Main Effect QTL Discovered Per False Discovery") +
+  g_mod)
+
+(g_disc_fdr_qxe <- qtl_disc_fdr_summ %>% 
+  filter(term == "qxe") %>% 
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  labs(title = "Number of Interaction QTL Discovered Per False Discovery") +
+  g_mod)
+
+
+## Save
+save_file <- file.path(fig_dir, "simulation_efficiency_main.jpg")
+ggsave(filename = save_file, plot = g_disc_fdr_main, width = 6, height = 8)
+
+save_file <- file.path(fig_dir, "simulation_efficiency_qxe.jpg")
+ggsave(filename = save_file, plot = g_disc_fdr_qxe, width = 6, height = 8)
+
+
+```
+
+
+

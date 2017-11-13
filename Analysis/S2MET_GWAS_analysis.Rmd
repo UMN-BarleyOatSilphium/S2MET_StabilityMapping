@@ -20,7 +20,7 @@ library(tibble)
 library(tidyr)
 library(stringr)
 library(purrr)
-library(ggplot2)
+library(ggplot2)-
 library(readxl)
 library(lme4)
 library(rrBLUP)
@@ -259,9 +259,90 @@ ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
 
 ```
 
+Load data for the genome scan for main effect and QxE
+
+
+
 Manhattan plot
 
-```{r plot.gwas}
+```{r plot.gwas.main.qxe}
+
+# Results for the TP only
+load(file.path(result_dir, "S2MET_gwas_tp_main_qxe_model_comparison.RData"))
+
+## Add the model name to the dfs
+gwas_tp_main_qxe_df <- gwas_tp_main_qxe %>% 
+  map_df(~mutate(.$scores, model = .$metadata$model)) %>% 
+  as_data_frame()
+
+# Correct p-values for multiple testing
+gwas_tp_main_qxe_adj <- gwas_tp_main_qxe_df %>% 
+  group_by(trait, term, model) %>% 
+  mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
+         neg_log_p = -log10(p_value),
+         neg_log_p_adj = -log10(p_adj),
+         neg_log_fdr05 = -log10(0.05),
+         neg_log_fdr10 = -log10(0.10)) %>%
+  ungroup()
+
+# Q-Q Plot per trait
+gwas_tp_main_qxe_qq <- gwas_tp_main_qxe_adj %>% 
+  group_by(trait, term, model) %>% 
+  arrange(p_value) %>% 
+  mutate(exp_p_value = punif(q = seq(0, 1, length.out = n())),
+         neg_log_exp_p_value = -log10(exp_p_value))
+
+(gwas_tp_main_qxe_qq_plot <- gwas_tp_main_qxe_qq %>%
+  ggplot(aes(x = neg_log_exp_p_value, y = neg_log_p, col = model)) +
+  geom_point() +
+  geom_abline(intercept = 0, slope = 1, col = "red", lwd = 1) +
+  facet_grid(trait ~ term, scales = "free_y") +
+  ylab("Observed -log10(p)") +
+  xlab("Expected -log10(p)") +
+  labs(
+    title = "Q-Q Plot of Association Results"
+  ) +
+  theme_bw() )
+
+## Manhattan plot
+(gwas_tp_main_qxe_man <- gwas_tp_main_qxe_adj %>%
+  mutate(chrom = as.factor(chrom),
+         pos = pos / 1000000) %>%
+  ggplot(aes(x = pos, y = neg_log_p_adj, col = chrom)) +
+  geom_point() +
+  geom_hline(aes(yintercept = neg_log_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + term + model ~ chrom, space = "free_x", scale = "free", switch = "x") +
+  ylab("Adjusted -log(p)") +
+  xlab("Position (Mbp)") +
+  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
+  scale_linetype(guide = guide_legend(title = NULL)) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.border = element_blank(),
+    panel.spacing.x = unit(0, units = "in")
+  ) +
+  labs(
+    title = "GWAS of Main Effect QTL and QxE"
+  ))
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
 
 # Plot the GWAS results
 (g_qtlxe_gwas <- gwas_qtlxe_out2 %>%

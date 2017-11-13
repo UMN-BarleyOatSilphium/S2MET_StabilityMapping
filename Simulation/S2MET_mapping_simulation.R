@@ -10,7 +10,7 @@ packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl",
 
 # Set the directory of the R packages
 package_dir <- NULL
-# package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
+package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
@@ -18,10 +18,10 @@ invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir
 
 ## Directories
 proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping//"
-# proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
+proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
 
 alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
-# alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
+alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 
 # Other directories
 fig_dir <- file.path(proj_dir, "Figures/")
@@ -29,6 +29,7 @@ map_dir <- file.path(proj_dir, "Mapping")
 entry_dir <- file.path(alt_proj_dir, "Plant_Materials")
 analysis_dir <- file.path(proj_dir, "Analysis")
 result_dir <- file.path(proj_dir, "Results")
+sim_dir <- file.path(proj_dir, "Simulation")
 
 data("s2_cap_genos")
 data("s2_snp_info")
@@ -67,9 +68,9 @@ use_map <- map_to_table(genome) %>%
 ### Set some simulation parameters
 n_qtl_list <- c(30, 100) # Number of QTL
 h2_list <- c(0.5, 0.8) # Heritability
-n_pop_list <- c(175, 350, 700, 1400)
+n_pop_list <- c(175, 350, 700)
 
-n_iter <- 10 # Number of simulation iterations
+n_iter <- 25 # Number of simulation iterations
 
 
 ### Contstant parameters
@@ -81,7 +82,7 @@ models <- c("K", "G", "KE", "GE") # Association models
 sig_cutoff <- c(0.01, 0.05, 0.10) # Significance thresholds
 
 ## Data frame of parameters
-param_df <- expand.grid(n_qtl = n_qtl_list, h2 = h2_list, n_pop = n_pop_list)
+param_df <- expand.grid(iter = seq(n_iter), n_qtl = n_qtl_list, h2 = h2_list, n_pop = n_pop_list)
 
 
 # Detect cores
@@ -93,17 +94,15 @@ sim_results <- param_df %>%
   split(.$core) %>%
   # Apply over cores
   mclapply(X = ., FUN = function(trial) {
+    # Apply down rows
+    by_row(trial, function(row) {
 
-    n_qtl <- trial$n_qtl
-    h2 <- trial$h2
-    n_pop <- trial$n_pop
-    
-    # Create list
-    trial_list <- vector("list", n_iter)
-    
-    # Iterate over replications
-    for (iter in seq(n_iter)) {
-    
+      n_qtl <- row$n_qtl
+      h2 <- row$h2
+      n_pop <- row$n_pop
+      iter <- row$iter
+      
+      
       ## Randomly sample the S2 population weighted by the proportion of each sub-population
       ## in the large population
       sample_pop <- program_info %>% 
@@ -197,50 +196,35 @@ sim_results <- param_df %>%
                                      fixed = ~ env, model = ., n.PC = 2, P3D = TRUE, 
                                      n.core = 1, test.qxe = T)) %>% set_names(models)
       
-      # Adjust p_values for main effect
-      gwas_main_adj_p <- gwas_main %>%
-        map("scores") %>% 
-        map(~filter(., term == "main_effect") %>% 
-              mutate(adj_p_value = p.adjust(p_value, "fdr")))
-      # Now for QxE
-      gwas_qxe_adj_p <- gwas_main %>%
-        map("scores") %>% 
-        map(~filter(., term == "qxe") %>% 
-              mutate(adj_p_value = p.adjust(p_value, "fdr")))
+      ## Adjust p-values
+      gwas_adj_p <- gwas_main %>% 
+        map(., ~mutate(.$scores, model = .$metadata$model)) %>% 
+        bind_rows() %>%
+        group_by(term, model) %>% 
+        mutate(adj_p_value = p.adjust(p_value, method = "fdr")) %>%
+        ungroup()
       
-      # Significant markers - map across different significance levels
-      sig_mar_main <- map(sig_cutoff, function(sig) 
-        map(gwas_main_adj_p, ~filter(., adj_p_value <= sig))) %>% 
-        set_names(paste("fdr", sig_cutoff, sep = ""))
+      # Determine significant markers
+      gwas_sig_mar <- gwas_adj_p %>% 
+        mutate(sig = list(as.data.frame(t(set_names(sig_cutoff, sig_cutoff))))) %>% 
+        unnest() %>% 
+        rename_at(vars(starts_with("0")), ~str_c("fdr", .)) %>% 
+        mutate_at(vars(starts_with("fdr")), funs(sig = adj_p_value <= .))
       
-      sig_mar_qxe <- map(sig_cutoff, function(sig) 
-        map(gwas_qxe_adj_p, ~filter(., adj_p_value <= sig))) %>% 
-        set_names(paste("fdr", sig_cutoff, sep = ""))
+      ## Split markers by model and by term
+      gwas_sig_mar_split <- gwas_sig_mar %>%
+        split(list(.$term, .$model))
       
-      
+  
       # Pull out the map and mark loci as a marker or a QTL
       loci <- use_map %>%
         left_join(., select(sample_qxe_effects, marker = qtl_name, chr = chr, pos, add_eff, starts_with("env")),
                   by = c("marker", "chr", "pos"))
       
       # Add significance to the mapped markers
-      loci_main <- sig_mar_main %>%
-        map(., ~map(., select, marker, chr = chrom, pos, p_value) %>% 
-              map(~left_join(loci, ., by = c("marker", "chr", "pos"))))
-      
-      loci_qxe <- sig_mar_qxe %>%
-        map(., ~map(., select, marker, chr = chrom, pos, p_value) %>% 
-              map(~left_join(loci, ., by = c("marker", "chr", "pos"))))
-      
-      # Assign as a marker or QTL and significant
-      loci1_main <- loci_main %>% 
-        map(., ~map(., ~mutate(., type = if_else(is.na(add_eff), "marker", "qtl"),
-                    sig = !is.na(p_value))))
-      
-      loci1_qxe <- loci_qxe %>% 
-        map(., ~map(., ~mutate(., type = if_else(is.na(add_eff), "marker", "qtl"),
-                               sig = !is.na(p_value))))
-      
+      loci_sig <- gwas_sig_mar_split %>% 
+        map(., ~left_join(loci, ., by = c("marker", "chr" = "chrom", "pos"))) %>% 
+        map(~mutate(., type = if_else(is.na(add_eff), "marker", "qtl")))
       
       ## Find the false positives for the main effect
       # If a marker is significant, but there is no adjacent QTL, declare a false positive
@@ -248,32 +232,46 @@ sim_results <- param_df %>%
       # If a marker is signficant, but there is an adjacent QTL, declare a true positive
       # If a marker is not significant, but there is an adjacent marker, declare a false negative
       
-      # Split by chromosome
-      mar_assoc_main <- loci1_main %>%
-        map(., ~map(., function(loc) {
-          loc %>%
-            split(.$chr) %>% 
+      # Split the loci by main effect or QxE
+      loci_sig_main <- loci_sig[str_detect(names(loci_sig), "main_effect")]
+      loci_sig_qxe <- loci_sig[str_detect(names(loci_sig), "qxe")]
+      
+      
+      mar_assoc_main <- loci_sig_main %>% 
+        map(~split(., .$chr) %>% 
             map(function(loci_map) {
+              loci_map <- as.data.frame(loci_map) %>%
+                arrange(pos)
               
-              assoc_results <- character(nrow(loci_map))
+              assoc_results <- vector("list", nrow(loci_map))
               for (i in seq_along(assoc_results)) {
                 if (loci_map[i,"type"] == "qtl") {
-                  assoc_results[i] <- NA
+                  assoc_results[[i]] <- NA
                   
-                } else if (loci_map[i,"sig"]) {
-                  assoc_results[i] <- ifelse(any(loci_map[c(i - 1, i + 1),"type"] == "qtl", na.rm = T), 
-                                             "true_positive", "false_positive")
+                } else if (is.na(loci_map[i,"p_value"])) {
+                  
+                  assoc_results[[i]] <- NA
                   
                 } else {
-                  # Is there a QTL in the adjacent interval?
-                  assoc_results[i] <- ifelse(any(loci_map[c(i - 1, i + 1),"type"] == "qtl", na.rm = T), 
-                                             "false_negative", "true_negative")
                   
+                  # IS there a QTL in the interval?
+                  is_qtl <- any(loci_map[c(i - 1, i + 1),"type"] == "qtl", na.rm = T)
+                  # What are the sinificance levels
+                  sig_levels <- loci_map[i,c("fdr0.01_sig", "fdr0.05_sig", "fdr0.1_sig")]
+                  
+                  if (is_qtl) {
+                    assoc_results[[i]] <- ifelse(sig_levels, "true_positive", "false_negative")
+                    
+                  } else {
+                    assoc_results[[i]] <- ifelse(sig_levels, "false_positive", "true_negative")
+                    
                   }
+                }
               }
-              data.frame(loci_map, assoc_results = assoc_results)
-              }) %>%
-            do.call("rbind", .) }))
+              cbind(select(loci_map, -contains("fdr")), 
+                    `dimnames<-`(x = do.call("rbind", assoc_results), list(NULL, str_c("fdr", sig_cutoff))))
+            }) %>%
+            do.call("rbind", .) )
       
       ## Find the false positives for the qxe effect
       # If a marker is significant, but there is no adjacent QTL, declare a false positive
@@ -282,115 +280,147 @@ sim_results <- param_df %>%
       # If a marker is not significant, but there is an adjacent marker, declare a false negative
       
       # Split by chromosome
-      mar_assoc_qxe <- loci1_qxe %>%
-        map(., ~map(., function(loc) {
-          loc %>%
-            split(.$chr) %>% 
-            map(function(loci_map) {
-              
-              assoc_results <- character(nrow(loci_map))
+      mar_assoc_qxe <- loci_sig_qxe %>% 
+        map(~split(., .$chr) %>% 
+              map(function(loci_map) {
+                loci_map <- as.data.frame(loci_map) %>%
+                  arrange(pos)
+                
+                assoc_results <- vector("list", nrow(loci_map))
               for (i in seq_along(assoc_results)) {
                 if (loci_map[i,"type"] == "qtl") {
                   assoc_results[i] <- NA
                   
-                  # A marker is a true positive if it is significant, there is a QTL
-                  # in the adjacent interval, and the QTL has a non-zero QxE effect
-                } else if (loci_map[i,"sig"]) {
-                  # Is there a QTL?
-                  is_qtl <- loci_map[c(i - 1, i + 1),"type"] == "qtl"
-                  # Is there qxe effect
-                  is_qxe <- rowSums(loci_map[c(i - 1, i + 1), c("env1", "env2")] != 0) > 0
+                } else if (is.na(loci_map[i,"p_value"])) {
                   
-                  assoc_results[i] <- ifelse(any(is_qtl & is_qxe, na.rm = T), "true_positive", "false_positive")
+                  assoc_results[i] <- NA
                   
                 } else {
-                  # Is there a QTL?
-                  is_qtl <- loci_map[c(i - 1, i + 1),"type"] == "qtl"
+                  
+                  # IS there a QTL in the interval?
+                  is_qtl <- any(loci_map[c(i - 1, i + 1),"type"] == "qtl", na.rm = T)
                   # Is there qxe effect
                   is_qxe <- rowSums(loci_map[c(i - 1, i + 1), c("env1", "env2")] != 0) > 0
+                  # Sig level
+                  sig_levels <- loci_map[i,c("fdr0.01_sig", "fdr0.05_sig", "fdr0.1_sig")]
                   
-                  # Is there a QTL in the adjacent interval?
-                  assoc_results[i] <- ifelse(any(is_qtl & is_qxe, na.rm = T), "false_negative", "true_negative")
+                  if (any(is_qtl & is_qxe, na.rm = T)) {
+                    assoc_results[[i]] <- ifelse(sig_levels, "true_positive", "false_negative")
+                    
+                  } else {
+                    assoc_results[[i]] <- ifelse(sig_levels, "false_positive", "true_negative")
+                    
+                  }
                   
                 }
+                
               }
-              data.frame(loci_map, assoc_results = assoc_results)
+                  
+              cbind(select(loci_map, -contains("fdr")), 
+                    `dimnames<-`(x = do.call("rbind", assoc_results), list(NULL, str_c("fdr", sig_cutoff))))
             }) %>%
-            do.call("rbind", .) }))
+            do.call("rbind", .) )
       
       
       
       ## Determine the number of true QTL detected
       # If a QTL is flanked by at least one significant marker, the QTL is discovered
       # Split by chromosome
-      qtl_discover_main <- loci1_main %>%
-        map(., ~map(., function(loc) {
-          loc %>%
-            split(.$chr) %>% 
-            map(function(loci_map) {
+      qtl_discover_main <- loci_sig_main %>% 
+        map(~split(., .$chr) %>% 
+              map(function(loci_map) {
               
               # Pull out markers and marker interval
               mar_map <- subset(x = loci_map, type == "marker")
               mar_interval <- mar_map$pos
+              # Marker significance
+              mar_sig <- mar_map[,c("fdr0.01_sig", "fdr0.05_sig", "fdr0.1_sig")]
               
               # Determine if QTL were discovered
-              subset(x = loci_map, type == "qtl") %>% 
+              loci_map_qtl <- subset(x = loci_map, type == "qtl") %>% 
+                select(-contains("fdr"))  %>% 
                 mutate(first_mar = findInterval(x = pos, vec = mar_interval), 
-                       sec_mar = first_mar + 1, discovered = mar_map[first_mar,"sig"] | mar_map[sec_mar,"sig"]) %>%
-                select(marker:env2, discovered) }) %>%
-            bind_rows() }))
+                       sec_mar = first_mar + 1)
+                
+              discovered <- t(apply(loci_map_qtl[,c("first_mar", "sec_mar")], 
+                                   MARGIN = 1, FUN = function(qtl) colMeans(mar_sig[c(qtl[1], qtl[2]),]) > 0)) 
+              
+              cbind(loci_map_qtl, discovered) %>% select(marker:env2, contains("fdr"))  }) %>%
+            bind_rows() )
       
-      qtl_discover_qxe <- loci1_qxe %>%
-        map(., ~map(., function(loc) {
-          loc %>%
-            split(.$chr) %>% 
-            map(function(loci_map) {
+      
+      
+      qtl_discover_qxe <- loci_sig_qxe %>%
+        map(~split(., .$chr) %>% 
+              map(function(loci_map) {
               
               # Pull out markers and marker interval
               mar_map <- subset(x = loci_map, type == "marker")
               mar_interval <- mar_map$pos
+              # Marker significance
+              mar_sig <- mar_map[,c("fdr0.01_sig", "fdr0.05_sig", "fdr0.1_sig")]
               
               # Determine if QTL were discovered
-              filter(loci_map, type == "qtl", env1 != 0 | env2 != 0) %>% 
+              loci_map_qtl <- loci_map %>%
+                subset(type == "qtl" & (env1 != 0 | env2 != 0)) %>%
+                select(-contains("fdr"))  %>% 
                 mutate(first_mar = findInterval(x = pos, vec = mar_interval), 
-                       sec_mar = first_mar + 1, discovered = mar_map[first_mar,"sig"] | mar_map[sec_mar,"sig"]) %>%
-                select(marker:env2, discovered) }) %>%
-            bind_rows() }))
+                       sec_mar = first_mar + 1)
+              
+              discovered <- t(apply(loci_map_qtl[,c("first_mar", "sec_mar")], 
+                                    MARGIN = 1, FUN = function(qtl) colMeans(mar_sig[c(qtl[1], qtl[2]),]) > 0))
+              
+              cbind(loci_map_qtl, discovered) %>% select(marker:env2, contains("fdr"))  }) %>%
+            bind_rows() )
+      
+      
+      
       
       # Separate true/false and negative/positive
       mar_assoc_main1 <- mar_assoc_main %>% 
-        as_data_frame() %>%
-        mutate(model = models, term = "main_effect") %>% 
-        gather(sig_cutoff, data, -model, -term)
+        bind_rows() %>% 
+        as_data_frame() %>% 
+        gather(sig_level, result, -marker:-type) %>%
+        filter(type == "marker")
       
       mar_assoc_qxe1 <- mar_assoc_qxe %>% 
-        as_data_frame() %>%
-        mutate(model = models, term = "qxe") %>% 
-        gather(sig_cutoff, data, -model, -term)
+        bind_rows() %>% 
+        as_data_frame() %>% 
+        gather(sig_level, result, -marker:-type) %>%
+        filter(type == "marker")
       
       assoc_count <- bind_rows(mar_assoc_main1, mar_assoc_qxe1) %>%
-        unnest() %>%
-        separate(col = assoc_results, into = c("true_false", "neg_pos"), sep = "_") %>% 
-        filter(type == "marker") %>% 
-        group_by(model, sig_cutoff, term, true_false, neg_pos) %>% 
-        summarize(n = n())
+        filter(!is.na(result)) %>%
+        separate(col = result, into = c("true_false", "neg_pos"), sep = "_") %>% 
+        group_by(model, sig_level, term, true_false, neg_pos) %>% 
+        summarize(n = n()) %>%
+        ungroup() %>%
+        complete(model, sig_level, term, true_false, neg_pos)
+      
+      
       
       # Count the number of QTL that were discovered
-      discovered_count <- map(list(qtl_discover_main, qtl_discover_qxe), ~as_data_frame(.) %>%
-                                mutate(model = models) %>% gather(sig_cutoff, data, -model) %>% 
-                                unnest() %>% group_by(model, sig_cutoff) %>% 
-                                summarize(n_discovered = sum(discovered), prop_discovered = mean(discovered))) %>%
-        set_names(c("main_effect", "qxe"))
+      qtl_discover_main1 <- list(qtl_discover_main, models) %>% 
+        pmap_df(~mutate(.x, model = .y, term = "main_effect")) %>% 
+        as_data_frame() %>% 
+        gather(sig_level, discovered, -marker:-env2, -model, -term) %>%
+        mutate(discovered = as.logical(discovered))
       
-      # Add DF to the list
-      trial_list[[iter]] <- data_frame(iter = iter, marker_association = list(assoc_count), qtl_discovery = list(discovered_count))
+      qtl_discover_qxe1 <- list(qtl_discover_qxe, models) %>% 
+        pmap_df(~mutate(.x, model = .y, term = "qxe")) %>% 
+        as_data_frame() %>%
+        gather(sig_level, discovered, -marker:-env2, -model, -term) %>%
+        mutate(discovered = as.logical(discovered))
       
-    } # Iteration loop close
-    
-    # Data.frame of model and list of contingency data.frames
-    trial_list %>% 
-      bind_rows() %>% 
-      gather(datatype, data, -iter)
+      
+      
+      # Count the number of QTL that were discovered
+      discovered_count <- bind_rows(qtl_discover_main1, qtl_discover_qxe1) %>%
+        group_by(model, term, sig_level) %>% 
+        summarize(n_discovered = sum(discovered, na.rm = T))
+      
+      # Return the association and discovery results
+      list(assoc_count = assoc_count, discovered_count = discovered_count) }, .to = "data")
     
   }, mc.cores = n_cores)
     
@@ -399,15 +429,3 @@ sim_results <- param_df %>%
 save_file <- file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData")
 save("sim_results", file = save_file)
 
-
-# ## Manipulate data
-# test <-trial_list_df %>% 
-#   filter(datatype == "marker_association") %>% 
-#   unnest() %>% select(-datatype) %>% 
-#   complete(iter, model, sig_cutoff, term, true_false, neg_pos) %>% 
-#   filter(neg_pos == "positive") %>% 
-#   spread(true_false, n) %>% 
-#   group_by(model, sig_cutoff, term) %>% 
-#   summarize(n_pos_mar = mean(true, na.rm = T), n_pos_mar_sd = sd(true, na.rm = T),
-#             n_false_pos = mean(false, na.rm = T), n_false_pos_sd = sd(false, na.rm = T))
-# 
