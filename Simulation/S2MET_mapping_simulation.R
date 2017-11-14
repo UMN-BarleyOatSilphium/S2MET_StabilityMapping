@@ -71,6 +71,7 @@ h2_list <- c(0.5, 0.8) # Heritability
 n_pop_list <- c(175, 350, 700)
 
 n_iter <- 25 # Number of simulation iterations
+max_qtl <- max(n_qtl_list)
 
 
 ### Contstant parameters
@@ -114,14 +115,16 @@ sim_results <- param_df %>%
         
       ### Simulate a genetic model
       genome1 <- sim_gen_model(genome = genome, qtl.model = matrix(NA, nrow = n_qtl, ncol = 4),
-                               add.dist = "geometric")
+                               add.dist = "geometric", max.qtl = max_qtl)
       
       # Create a population
       assoc_panel <- create_pop(genome = genome1, geno = pop_geno)
       
       # Randomly select p_qxe of the QTL
       sample_qxe <- pull_qtl(genome1) %>% 
-        sample_frac(size = p_qxe)
+        filter(add_eff != 0) %>%
+        sample_frac(size = p_qxe) %>%
+        arrange(chr, pos)
       
       
       ### Phenotype
@@ -132,8 +135,7 @@ sim_results <- param_df %>%
       varR <- (((varG / h2) - varG) * n_env) / (1 + varGE_scale)
       varGE <- varR * varGE_scale
       
-      # Should varGE be divided by the number of effective QTL?
-      
+    
       # Genotypic values
       geno_value <- matrix(data = assoc_panel$geno_val$trait1, nrow = n_pop, ncol = n_env * n_rep)
       
@@ -341,10 +343,18 @@ sim_results <- param_df %>%
                 select(-contains("fdr"))  %>% 
                 mutate(first_mar = findInterval(x = pos, vec = mar_interval), 
                        sec_mar = first_mar + 1)
-                
-              discovered <- t(apply(loci_map_qtl[,c("first_mar", "sec_mar")], 
-                                   MARGIN = 1, FUN = function(qtl) colMeans(mar_sig[c(qtl[1], qtl[2]),]) > 0)) 
               
+              # If no QTL are on the chromosome, skip
+              if (nrow(loci_map_qtl) > 0) {
+                discovered <- t(apply(loci_map_qtl[,c("first_mar", "sec_mar")], 
+                                      MARGIN = 1, FUN = function(qtl) 
+                                        colMeans(mar_sig[c(qtl[1], qtl[2]),]) > 0)) 
+                
+              } else {
+                discovered <- NULL
+                
+              }
+                
               cbind(loci_map_qtl, discovered) %>% select(marker:env2, contains("fdr"))  }) %>%
             bind_rows() )
       
@@ -367,8 +377,16 @@ sim_results <- param_df %>%
                 mutate(first_mar = findInterval(x = pos, vec = mar_interval), 
                        sec_mar = first_mar + 1)
               
-              discovered <- t(apply(loci_map_qtl[,c("first_mar", "sec_mar")], 
-                                    MARGIN = 1, FUN = function(qtl) colMeans(mar_sig[c(qtl[1], qtl[2]),]) > 0))
+              # If no QTL are on the chromosome, skip
+              if (nrow(loci_map_qtl) > 0) {
+                discovered <- t(apply(loci_map_qtl[,c("first_mar", "sec_mar")], 
+                                      MARGIN = 1, FUN = function(qtl) 
+                                        colMeans(mar_sig[c(qtl[1], qtl[2]),]) > 0))
+                
+              } else {
+                discovered <- NULL
+                
+              }
               
               cbind(loci_map_qtl, discovered) %>% select(marker:env2, contains("fdr"))  }) %>%
             bind_rows() )
