@@ -2,7 +2,6 @@
 ## 
 ## GWAS will be performed using the 1) phenotype BLUEs with environments as a fixed
 ## effect (i.e. phenotypic mean mapping), 2) all phenotypes to detect QTLxE interaction,
-## 3) the main effect and stability coefficient from FW regression
 
 
 # List of packages to load
@@ -102,8 +101,7 @@ S2_MET_BLUEs_use_tp <- S2_MET_BLUEs_use %>%
   filter(line_name %in% tp_geno) %>% 
   droplevels()
 
-# Load the FW results
-load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
+
 
 # Format the phenotypic data
 S2_MET_BLUEs_fw_tomodel <- S2_MET_BLUEs_fw %>% 
@@ -154,11 +152,7 @@ gwas_models <- c("simple", "K", "G", "KE", "GE")
 # TP only
 gwas_tp_main_qxe <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel_tp, geno = tp_imputed_genos_use, 
                                            fixed = ~ environment, model = ., impute.method = "pass", 
-<<<<<<< HEAD
-                                           n.PC = 2, n.core = n_cores, test.qxe = TRUE, P3D = TRUE)) %>%
-=======
                                            n.PC = 0, n.core = n_cores, test.qxe = TRUE, P3D = TRUE)) %>%
->>>>>>> ffb618191a96b619612d8cf8ca6f72453a4f6b9d
                           set_names(gwas_models)
 
  ## Save
