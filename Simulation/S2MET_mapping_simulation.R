@@ -70,7 +70,7 @@ n_qtl_list <- c(30, 100) # Number of QTL
 h2_list <- c(0.5, 0.8) # Heritability
 n_pop_list <- c(175, 350, 700)
 
-n_iter <- 25 # Number of simulation iterations
+n_iter <- 100 # Number of simulation iterations
 max_qtl <- max(n_qtl_list)
 
 
