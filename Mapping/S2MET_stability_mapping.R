@@ -127,6 +127,12 @@ gwas_pheno_fw <- models %>%
     list(pheno_fw_use, genos_use) %>% 
       pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
 
+
+save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
+save("gwas_pheno_fw", file = save_file)
+
+
+
 # GWAS for single-year ECs
 gwas_singleyear_ec_fw <- models %>%
   map(function(mod) 
@@ -142,7 +148,7 @@ gwas_multiyear_ec_fw <- models %>%
 
 ## Save
 save_file <- file.path(result_dir, "S2MET_fw_gwas_results.RData")
-save("gwas_pheno_fw", "gwas_singleyear_ec_fw", "gwas_multiyear_ec_fw", file = save_file)
+save("gwas_singleyear_ec_fw", "gwas_multiyear_ec_fw", file = save_file)
 
 
 

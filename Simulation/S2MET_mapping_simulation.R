@@ -70,7 +70,7 @@ n_qtl_list <- c(30, 100) # Number of QTL
 h2_list <- c(0.5, 0.8) # Heritability
 n_pop_list <- c(175, 350, 700)
 
-n_iter <- 100 # Number of simulation iterations
+n_iter <- 50 # Number of simulation iterations
 max_qtl <- max(n_qtl_list)
 
 
@@ -226,7 +226,9 @@ sim_results <- param_df %>%
       # Add significance to the mapped markers
       loci_sig <- gwas_sig_mar_split %>% 
         map(., ~left_join(loci, ., by = c("marker", "chr" = "chrom", "pos"))) %>% 
-        map(~mutate(., type = if_else(is.na(add_eff), "marker", "qtl")))
+        map(~mutate(., type = if_else(is.na(add_eff), "marker", "qtl"))) %>%
+        # Remove the QTL with no effect (i.e. masked)
+        map(~filter(., add_eff != 0 & type == "qtl" | type == "marker"))
       
       ## Find the false positives for the main effect
       # If a marker is significant, but there is no adjacent QTL, declare a false positive

@@ -15,12 +15,7 @@ Load packages and set directories
 
 ```{r setup}
 
-library(dplyr)
-library(tibble)
-library(tidyr)
-library(stringr)
-library(purrr)
-library(ggplot2)-
+library(tidyverse)
 library(readxl)
 library(lme4)
 library(rrBLUP)
@@ -201,11 +196,117 @@ $$
 
 where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, $\mathbf{m}$ is the vector of fixed additive SNP effects, $\mathbf{V}$ is the incidence matrix of SNPs across environments, and $\mathbf{d}$ is the vector of environment-specific SNP deviations. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
 
+The G and K models were fitted to scan for assocations.
+
+Load the data, adjust p-values, and plot
+
+```{r stability.gwas}
+
+# Load the data
+load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
+
+# Tranpose the list
+gwas_pheno_fw1 <- transpose(gwas_pheno_fw)
+
+# Add the model name to the df
+gwas_pheno_fw2 <- gwas_pheno_fw1 %>% 
+  map(~map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
+                filter(term == "main_effect")))
+
+## Adjust the p-values
+gwas_pheno_fw_adj <- gwas_pheno_fw2 %>%
+  map(~group_by(., trait, model) %>% 
+        mutate(p_adj = p.adjust(p_value, method = "fdr"),
+               neg_log10_p = -log10(p_value),
+               neg_log10_p_adj = -log10(p_adj),
+               neg_log10_fdr05 = -log10(0.05),
+               neg_log10_fdr10 = -log10(0.10)))
+
+
+## Quality control
+## QQ plot
+qq_gwas_pheno_fw_adj <- gwas_pheno_fw_adj %>% 
+  map(~arrange(., trait, model, p_value) %>% 
+        mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
+               neg_log10_p_exp = -log10(p_exp)))
+
+# Plot
+g_qq_all <- qq_gwas_pheno_fw_adj$pop_all %>%
+  ggplot(aes(x = neg_log10_p_exp, y = neg_log10_p, col = model)) + 
+  geom_point() + 
+  geom_abline(slope = 1, intercept = 0) + 
+  facet_wrap(~ trait, ncol = 2) +
+  labs(title = "QQ Plot", subtitle = "TP and VP") +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_all.jpg")
+ggsave(filename = save_file, plot = g_qq_all, width = 5, height = 7)
+
+
+g_qq_tp <- qq_gwas_pheno_fw_adj$pop_tp %>%
+  ggplot(aes(x = neg_log10_p_exp, y = neg_log10_p, col = model)) + 
+  geom_point() + 
+  geom_abline(slope = 1, intercept = 0) + 
+  facet_wrap(~ trait, ncol = 2) +
+  labs(title = "QQ Plot", subtitle = "TP") +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_tp.jpg")
+ggsave(filename = save_file, plot = g_qq_tp, width = 5, height = 7)
+
+
+## Manhattan plot
+g_man_all <- gwas_pheno_fw_adj$pop_all %>%
+  mutate(chrom = as.factor(chrom)) %>% 
+  ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + model ~ chrom, switch = "x", scales = "free") +
+  scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  ylab("-log(p)") +
+  xlab("Position") +
+  labs(title = "Assocation Analysis", subtitle = "TP + VP") +
+  theme_bw() +
+  theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank()
+  )
+
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_all.jpg")
+ggsave(filename = save_file, plot = g_man_all, width = 7, height = 12)
+
+
+g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
+  mutate(chrom = as.factor(chrom)) %>% 
+  ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + model ~ chrom, switch = "x", scales = "free") +
+  scale_color_manual(guide = FALSE, 
+                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  ylab("-log(p)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Assocation Analysis", subtitle = "TP") +
+  theme_bw() +
+  theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp.jpg")
+ggsave(filename = save_file, plot = g_man_tp, width = 7, height = 12)
+
+
+
+```
 
 
 
 
-## Results
+
 
 
 First, association for the main effect of QTL and QTLxE. We first look at the model comparisons for assocation analyses using the TP only

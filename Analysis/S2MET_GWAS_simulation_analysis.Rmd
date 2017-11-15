@@ -12,12 +12,7 @@ Set up directories and load packages
 
 ```{r setup}
 
-library(dplyr)
-library(tibble)
-library(tidyr)
-library(stringr)
-library(purrr)
-library(ggplot2)
+library(tidyverse)
 library(readxl)
 library(gtable)
 library(grid)
@@ -28,10 +23,8 @@ source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 # Load the results
 load(file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData"))
 
-# Remove errors
-which_clean <- !map_lgl(sim_results, ~inherits(., "try-error"))
-
-sim_results1 <- sim_results[which_clean]
+# Bind rows
+sim_result_df <- bind_rows(sim_results)
 
 ```
 
@@ -45,41 +38,44 @@ The simulation looked at different genetic architectures and population sizes fo
 Summarize the results
 
 ```{r load.result}
-# Combine the revised parameter df with the results
-param_df1 <- param_df %>% 
-  filter(which_clean) %>%
-  as_data_frame() %>%
-  mutate(data = sim_results1) %>%
-  unnest()
+
+# Unnest the marker assocation and qtl discovery results
+sim_result_df1 <- sim_result_df %>% 
+  mutate(marker_association = map(data, "assoc_count"), 
+         qtl_discovery = map(data, "discovered_count")) %>% 
+  select(-data) %>% 
+  gather(datatype, data, -iter:-core)
+
 
 ## Summarize the marker association results
-mar_assoc_result <- param_df1 %>% 
+mar_assoc_result <- sim_result_df1 %>% 
   filter(datatype == "marker_association") %>% 
   unnest() %>%
-  complete(n_qtl, h2, n_pop, iter, model, sig_cutoff, term, true_false, neg_pos) %>%
-  select(-datatype)
+  complete(n_qtl, h2, n_pop, iter, model, sig_level, term, true_false, neg_pos) %>%
+  select(-datatype, -core)
 
 ## Summarize qtl discovery results
-qtl_disc_result <- param_df1 %>% 
+qtl_disc_result <- sim_result_df1 %>% 
   filter(datatype == "qtl_discovery") %>%
-  mutate(data = map(data, ~list(., names(.)) %>% pmap(., ~mutate(.x, term = .y)) %>% bind_rows())) %>%
   unnest() %>%
-  complete(n_qtl, h2, n_pop, iter, model, sig_cutoff, term) %>%
-  select(-datatype)
+  complete(n_qtl, h2, n_pop, iter, model, sig_level, term) %>%
+  select(-datatype, -core) %>%
+  # Edit the significance level factors
+  mutate(sig_level = str_replace(sig_level, "_sig", ""))
   
 ## Summarize number of significant markers
 sig_mar_summ <- mar_assoc_result %>% 
   filter(neg_pos == "positive") %>% 
   group_by_at(vars(n_qtl:term)) %>% 
   summarize(sig_mar = sum(n, na.rm = T)) %>% 
-  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_level, term) %>% 
   summarize_at(vars(sig_mar), funs(mean, sd), na.rm = TRUE) %>%
   ungroup()
 
 ## Number of false positives
-power_false_pos_summ <- mar_assoc_result %>% 
+false_pos_summ <- mar_assoc_result %>% 
   filter(neg_pos == "positive", true_false == "false") %>% 
-  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_level, term) %>% 
   summarize_at(vars(n), funs(mean, sd), na.rm = TRUE) %>%
   ungroup()
 
@@ -89,22 +85,22 @@ power_fdr_summ <- mar_assoc_result %>%
   filter(neg_pos == "positive") %>% 
   spread(true_false, n) %>% 
   mutate(fdr = false / (false + true), power = 1 - fdr) %>% 
-  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_level, term) %>% 
   summarize_at(vars(fdr, power), funs(mean, sd), na.rm = TRUE) %>%
   ungroup()
 
 
 ## Number of true QTL discovered
 qtl_disc_summ <- qtl_disc_result %>% 
-  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_level, term) %>% 
   summarize_at(vars(n_discovered), funs(mean, sd), na.rm = TRUE) %>%
   ungroup()
 
 
-## Number of true QTL per FALSE discoveries
+## Number of true QTL per FALSE discovery
 qtl_disc_fdr_summ <- full_join(qtl_disc_result, filter(mar_assoc_result, true_false == "false", neg_pos == "positive")) %>%
   mutate(disc_per_false = n_discovered / n) %>%
-  group_by(n_qtl, h2, n_pop, model, sig_cutoff, term) %>% 
+  group_by(n_qtl, h2, n_pop, model, sig_level, term) %>% 
   summarize_at(vars(disc_per_false), funs(mean, sd), na.rm = TRUE) %>%
   ungroup()
 
@@ -124,7 +120,7 @@ g_mod <- list(
   geom_col(position = "dodge"),
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
                 position = position_dodge(0.9), width = 0.5),
-  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  facet_grid(n_qtl + h2 ~ sig_level),
   ylab("Number of Significant Markers"),
   xlab("Population Size"),
   theme_bw())
@@ -163,7 +159,7 @@ g_mod <- list(
   geom_col(position = "dodge"),
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
                 position = position_dodge(0.9), width = 0.5),
-  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  facet_grid(n_qtl + h2 ~ sig_level),
   ylab("Number of False Positives"),
   xlab("Population Size"),
   theme_bw())
@@ -190,7 +186,7 @@ g_mod <- list(
   geom_col(position = "dodge"),
   geom_errorbar(aes(ymin = fdr_mean - fdr_sd, ymax = fdr_mean + fdr_sd), 
                 position = position_dodge(0.9), width = 0.5),
-  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  facet_grid(n_qtl + h2 ~ sig_level),
   ylab("False Discovery Rate"),
   xlab("Population Size"),
   theme_bw())
@@ -210,7 +206,12 @@ g_mod <- list(
   labs(title = "False Discovery Rate for Interaction QTL") +
   g_mod)
 
+## Save
+save_file <- file.path(fig_dir, "simulation_sig_fdr_main.jpg")
+ggsave(filename = save_file, plot = g_fdr_main, width = 6, height = 8)
 
+save_file <- file.path(fig_dir, "simulation_sig_fdr_qxe.jpg")
+ggsave(filename = save_file, plot = g_fdr_qxe, width = 6, height = 8)
 
 
 
@@ -220,7 +221,7 @@ g_mod <- list(
   geom_col(position = "dodge"),
   geom_errorbar(aes(ymin = power_mean - power_sd, ymax = power_mean + power_sd), 
                 position = position_dodge(0.9), width = 0.5),
-  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  facet_grid(n_qtl + h2 ~ sig_level),
   ylab("Power"),
   xlab("Population Size"),
   theme_bw())
@@ -260,7 +261,7 @@ g_mod <- list(
   geom_col(position = "dodge"),
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), 
                 position = position_dodge(0.9), width = 0.5),
-  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  facet_grid(n_qtl + h2 ~ sig_level),
   ylab("Number of QTL Discovered"),
   xlab("Population Size"),
   theme_bw())
@@ -301,7 +302,7 @@ g_mod <- list(
   geom_col(position = "dodge"),
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), 
                 position = position_dodge(0.9), width = 0.5),
-  facet_grid(n_qtl + h2 ~ sig_cutoff),
+  facet_grid(n_qtl + h2 ~ sig_level),
   ylab("Number of QTL Discovered Per False Discovery"),
   xlab("Population Size"),
   theme_bw())
