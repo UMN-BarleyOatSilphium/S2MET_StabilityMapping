@@ -16,10 +16,13 @@ Load packages and set directories
 ```{r setup}
 
 library(tidyverse)
+library(purrrlyr)
 library(readxl)
 library(lme4)
 library(rrBLUP)
 library(broom)
+library(GenomicRanges)
+library(qvalue)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
@@ -31,6 +34,9 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   group_by(trait, environment) %>%
   filter(sum(line_name %in% tp) > 1) %>%
   ungroup()
+
+# Filter the genotype matrix for the TP only
+M <- s2_imputed_mat[tp_geno,]
 
 ```
 
@@ -84,7 +90,7 @@ A_prcomp_df <- A_prcomp_df_list %>%
 
 # Save this
 save_file <- file.path(fig_dir, "population_structure.jpg")
-ggsave(filename = save_file, plot = g_pop_str, width = 6, height = 5)
+ggsave(filename = save_file, plot = g_pop_str, width = 7, height = 5)
 
 ```
 
@@ -93,7 +99,7 @@ How is population structure correlated with the traits?
 
 First, fit a model to calculate BLUEs for each genotype across all environments
 
-```{r mme.blues}
+```{r mme.blues, eval=FALSE}
 
 trait_BLUEs <- S2_MET_BLUEs_use %>%
   group_by(trait) %>%
@@ -153,48 +159,128 @@ ggsave(filename = save_file, plot = g_trait_pop_str, width = 6, height = 8, dpi 
 
 ### GWAS
 
+The baseline model for GWAS is as follows:
+
+$$
+\mathbf{y = X \beta + Wm + Zu + e},
+$$
+
+where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
+
+I use population parameters previously determined [P3D; @Kang2010] to speed up the models without reducing detection power significantly. I also the `gwas()` function in my `pbr` package. Models included K and G [@Bernardo2013b; @Chen2016].
+
+
+#### Main Effect QTL
+
+This model was used to detect associations between loci and the genotypic mean of each trait.
+
+Load the data and plot results
+
+```{r main.effect.qtl}
+
+# Load the data
+load(file.path(result_dir, "S2MET_gwas_genotype_mean.RData"))
+
+# Convert to DF and filter for main effect assocations
+gwas_geno_mean1 <- gwas_tp_main %>% 
+  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
+  filter(term == "main_effect")
+
+## Adjust the p-values
+gwas_geno_mean_adj <- gwas_geno_mean1 %>%
+  group_by(model, trait) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
+
+
+
+## Quality control
+## QQ plot
+qq_gwas_geno_mean_adj <- gwas_geno_mean_adj %>% 
+  arrange(trait, model, p_value) %>% 
+  mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
+         neg_log10_p_exp = -log10(p_exp))
+
+# Plot
+g_qq <- qq_gwas_geno_mean_adj %>%
+  ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
+  geom_point() + 
+  geom_abline(slope = 1, intercept = 0) + 
+  facet_wrap(~ trait, ncol = 2) +
+  labs(title = "QQ Plot") +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "gwas_genotype_mean_qq.jpg")
+ggsave(filename = save_file, plot = g_qq, width = 5, height = 7)
+
+
+## Manhattan plot
+g_man <- gwas_geno_mean_adj %>%
+  mutate(chrom = as.factor(chrom)) %>% 
+  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  ylab("-log(q)") +
+  xlab("Position") +
+  labs(title = "Assocation Analysis", subtitle = "TP + VP") +
+  theme_bw() +
+  theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank()
+  )
+
+save_file <- file.path(fig_dir, "gwas_genotype_mean_man.jpg")
+ggsave(filename = save_file, plot = g_man, width = 9, height = 12)
+
+
+## Only consider the G model
+g_man <- gwas_geno_mean_adj %>%
+  filter(model == "G") %>%
+  mutate(chrom = as.factor(chrom)) %>%
+  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(guide = FALSE, 
+                     values = set_names(rep(umn_palette("Secondary_Tier2")[c(3,8)], length.out = 7), seq(1, 7))) +
+  scale_linetype_discrete(guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analysis for Train Mean",
+       caption = "G model. n = 175 lines used for association analysis.\nThe bold line indicates the genomewide FDR threshold at 5%; the dashed line at 10%.") +
+  theme_bw() +
+  theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_man_final.jpg")
+ggsave(filename = save_file, plot = g_man, width = 9, height = 7, dpi = 1000)
+
+
+```
+
+
+
 #### Stability QTL
 
 First we will map QTL for trait stability. The stability coefficients are first calculated using FW regression, and the coefficients are then used in the GWAS mixed model:
 
 $$
-y_{i} = \mu + \sum^m_{m=1} x_{im} \alpha_m + g_{i} + \epsilon_{i}
+\mathbf{y = 1\beta + Wm + Zu + e}
 $$
 
-which models the stability of genotype *i* as the sum of the grand mean, the sum of the marker allele effects carried by genotype *i*, the residual genetic effect of genotype *i*, and the residual effect associated with the observation.
-
-In vector notation this becomes:
-
-
-$$
-\mathbf{y = X \beta + Wm + Zu + e}
-$$
-
-where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
-
-I used the `GWAS()` function in the `rrBLUP` package to fit this model. The first round used the P + K model, and the second round used the K only model.
-
-
-#### Main Effect QTL and QTLxE
-
-The above model does not account for QTLxE interaction. We will therefore split up the modeling of main effect QTL, QTLxE, and stability QTL.
-
-We fit the following model for QTL main effects and QTLxE
-
-$$
-y_{ij} = \mu + E_j + \sum^m_{m=1} x_{im} (\alpha_m + \delta_{mj}) + g_{ij} + \epsilon_{ij}
-$$
-
-which models the mean of genotype *i* in environment *j* as the sum of the grand mean, the effect of the *j*th environment, the sum of the marker allele effects ($\alpha_m$) and environment-specific marker deviations ($\delta_{mj}$) carried by genotype *i*, the residual genetic effect of genotype *i* in environment *j*, and the residual effect associated with the observation.
-
-In vector notation this becomes:
-
-
-$$
-\mathbf{y = X \beta + Wm + Vd + Zu + e}
-$$
-
-where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, $\mathbf{m}$ is the vector of fixed additive SNP effects, $\mathbf{V}$ is the incidence matrix of SNPs across environments, and $\mathbf{d}$ is the vector of environment-specific SNP deviations. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
+where $\mathbf{y}$ is the response vector, $\mathbf{1}$ is a vector of 1s for the grand mean, $\mathbf{\beta}$ is the grand mean, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
 
 The G and K models were fitted to scan for assocations.
 
@@ -217,10 +303,10 @@ gwas_pheno_fw2 <- gwas_pheno_fw1 %>%
 gwas_pheno_fw_adj <- gwas_pheno_fw2 %>%
   map(~group_by(., trait, model) %>% 
         mutate(p_adj = p.adjust(p_value, method = "fdr"),
-               neg_log10_p = -log10(p_value),
-               neg_log10_p_adj = -log10(p_adj),
+               q_value = qvalue(p = p_value)$qvalue,
                neg_log10_fdr05 = -log10(0.05),
-               neg_log10_fdr10 = -log10(0.10)))
+               neg_log10_fdr10 = -log10(0.10)) %>%
+        mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) )
 
 
 ## Quality control
@@ -232,7 +318,7 @@ qq_gwas_pheno_fw_adj <- gwas_pheno_fw_adj %>%
 
 # Plot
 g_qq_all <- qq_gwas_pheno_fw_adj$pop_all %>%
-  ggplot(aes(x = neg_log10_p_exp, y = neg_log10_p, col = model)) + 
+  ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
   geom_point() + 
   geom_abline(slope = 1, intercept = 0) + 
   facet_wrap(~ trait, ncol = 2) +
@@ -244,7 +330,7 @@ ggsave(filename = save_file, plot = g_qq_all, width = 5, height = 7)
 
 
 g_qq_tp <- qq_gwas_pheno_fw_adj$pop_tp %>%
-  ggplot(aes(x = neg_log10_p_exp, y = neg_log10_p, col = model)) + 
+  ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
   geom_point() + 
   geom_abline(slope = 1, intercept = 0) + 
   facet_wrap(~ trait, ncol = 2) +
@@ -258,13 +344,14 @@ ggsave(filename = save_file, plot = g_qq_tp, width = 5, height = 7)
 ## Manhattan plot
 g_man_all <- gwas_pheno_fw_adj$pop_all %>%
   mutate(chrom = as.factor(chrom)) %>% 
-  ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
   geom_point() + 
   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait + model ~ chrom, switch = "x", scales = "free") +
+  facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
   scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
-  ylab("-log(p)") +
+  ylab("-log(q)") +
   xlab("Position") +
   labs(title = "Assocation Analysis", subtitle = "TP + VP") +
   theme_bw() +
@@ -279,14 +366,15 @@ ggsave(filename = save_file, plot = g_man_all, width = 7, height = 12)
 
 g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
   mutate(chrom = as.factor(chrom)) %>% 
-  ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
   geom_point() + 
   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait + model ~ chrom, switch = "x", scales = "free") +
+  facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
   scale_color_manual(guide = FALSE, 
                      values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
-  ylab("-log(p)") +
+  ylab("-log(q)") +
   xlab("Position (Mbp)") +
   labs(title = "Assocation Analysis", subtitle = "TP") +
   theme_bw() +
@@ -300,286 +388,535 @@ save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp.jpg")
 ggsave(filename = save_file, plot = g_man_tp, width = 7, height = 12)
 
 
-
-```
-
-
-
-
-
-
-
-First, association for the main effect of QTL and QTLxE. We first look at the model comparisons for assocation analyses using the TP only
-
-```{r qtlxe.model}
-
-# Load the data
-load(file.path(result_dir, "/S2MET_gwas_tp_model_comparison.RData"))
-
-## Add the model name to the dfs
-gwas_tp_main_df <- gwas_tp_main %>% 
-  map_df(~mutate(.$scores, model = .$metadata$model)) %>% 
-  as_data_frame()
-
-
-# Correct p-values for multiple testing
-gwas_tp_main_df_adj <- gwas_tp_main_df %>% 
-  group_by(trait, term, model) %>% 
-  mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
-         neg_log_p = -log10(p_value),
-         neg_log_p_adj = -log10(p_adj),
-         neg_log_fdr05 = -log10(0.05),
-         neg_log_fdr10 = -log10(0.10)) %>%
-  ungroup()
-
-# Q-Q Plot per trait
-gwas_tp_qq <- gwas_tp_main_df_adj %>% 
-  group_by(trait, term, model) %>% 
-  arrange(p_value) %>% 
-  mutate(exp_p_value = punif(q = seq(0, 1, length.out = n())),
-         neg_log_exp_p_value = -log10(exp_p_value))
-  
-
-(g_gwas_tp_qq <- gwas_tp_qq %>%
-  ggplot(aes(x = neg_log_exp_p_value, y = neg_log_p, col = model)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "red", lwd = 1) +
-  facet_grid(trait ~ term, scales = "free_y") +
-  ylab("Observed -log10(p)") +
-  xlab("Expected -log10(p)") +
-  labs(
-    title = "Q-Q Plot of Association Results"
-  ) +
-  theme_bw() )
-
-# Save this
-save_file <- file.path(fig_dir, "gwas_qq.jpg")
-ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
-
-
-
-```
-
-Load data for the genome scan for main effect and QxE
-
-
-
-Manhattan plot
-
-```{r plot.gwas.main.qxe}
-
-# Results for the TP only
-load(file.path(result_dir, "S2MET_gwas_tp_main_qxe_model_comparison.RData"))
-
-## Add the model name to the dfs
-gwas_tp_main_qxe_df <- gwas_tp_main_qxe %>% 
-  map_df(~mutate(.$scores, model = .$metadata$model)) %>% 
-  as_data_frame()
-
-# Correct p-values for multiple testing
-gwas_tp_main_qxe_adj <- gwas_tp_main_qxe_df %>% 
-  group_by(trait, term, model) %>% 
-  mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
-         neg_log_p = -log10(p_value),
-         neg_log_p_adj = -log10(p_adj),
-         neg_log_fdr05 = -log10(0.05),
-         neg_log_fdr10 = -log10(0.10)) %>%
-  ungroup()
-
-# Q-Q Plot per trait
-gwas_tp_main_qxe_qq <- gwas_tp_main_qxe_adj %>% 
-  group_by(trait, term, model) %>% 
-  arrange(p_value) %>% 
-  mutate(exp_p_value = punif(q = seq(0, 1, length.out = n())),
-         neg_log_exp_p_value = -log10(exp_p_value))
-
-(gwas_tp_main_qxe_qq_plot <- gwas_tp_main_qxe_qq %>%
-  ggplot(aes(x = neg_log_exp_p_value, y = neg_log_p, col = model)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "red", lwd = 1) +
-  facet_grid(trait ~ term, scales = "free_y") +
-  ylab("Observed -log10(p)") +
-  xlab("Expected -log10(p)") +
-  labs(
-    title = "Q-Q Plot of Association Results"
-  ) +
-  theme_bw() )
-
-## Manhattan plot
-(gwas_tp_main_qxe_man <- gwas_tp_main_qxe_adj %>%
+## Only use the TP and only consider the G model
+g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
+  filter(model == "G") %>%
+  separate(trait, into = c("trait", "stability"), sep = "_") %>%
   mutate(chrom = as.factor(chrom),
-         pos = pos / 1000000) %>%
-  ggplot(aes(x = pos, y = neg_log_p_adj, col = chrom)) +
-  geom_point() +
-  geom_hline(aes(yintercept = neg_log_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait + term + model ~ chrom, space = "free_x", scale = "free", switch = "x") +
-  ylab("Adjusted -log(p)") +
+         stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + stability ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(guide = FALSE, 
+                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  scale_linetype_discrete(guide = FALSE) +
+  ylab("-log(q)") +
   xlab("Position (Mbp)") +
-  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
-  scale_linetype(guide = guide_legend(title = NULL)) +
+  labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
+       caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
   theme_bw() +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.spacing.x = unit(x = 0, units = "in"),
     panel.border = element_blank(),
-    panel.spacing.x = unit(0, units = "in")
-  ) +
-  labs(
-    title = "GWAS of Main Effect QTL and QxE"
-  ))
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp_final.jpg")
+ggsave(filename = save_file, plot = g_man_tp, width = 10, height = 8)
 
 
 
-```
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-
-
-# Plot the GWAS results
-(g_qtlxe_gwas <- gwas_qtlxe_out2 %>%
+## Only use the TP and only consider the G model, plus only look at the slope from FW
+g_man_tp_typeii <- gwas_pheno_fw_adj$pop_tp %>%
+  filter(model == "G") %>%
+  separate(trait, into = c("trait", "stability"), sep = "_") %>%
   mutate(chrom = as.factor(chrom),
-         pos = pos / 1000000) %>%
-  ggplot(aes(x = pos, y = neg_log_p_adj, col = chrom)) +
-  geom_point() +
-  geom_hline(aes(yintercept = neg_log_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait + term ~ chrom, space = "free_x", scale = "free", switch = "x") +
-  ylab("Adjusted -log(p)") +
+         stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+  filter(stability == "Type II") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(guide = FALSE, 
+                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  scale_linetype_discrete(guide = FALSE) +
+  ylab("-log(q)") +
   xlab("Position (Mbp)") +
-  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
-  scale_linetype(guide = guide_legend(title = NULL)) +
+  labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
+       caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
   theme_bw() +
   theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.border = element_blank()
-  ) +
-  labs(
-    title = "GWAS of Genotypic Main Effects and Sensitivity Coefficients"
-  ))
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
 
-
-# Save this
-save_file <- file.path(fig_dir, "gwas_fw_results.jpg")
-ggsave(filename = save_file, plot = g_fw_gwas, width = 12, height = 7, dpi = 500)
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp_typeii.jpg")
+ggsave(filename = save_file, plot = g_man_tp_typeii, width = 9, height = 7, dpi = 1000)
 
 
 ```
 
 
+Combine the mean and stability manhattan plots into a single graph
 
 
+```{r plot.mean.and.stability}
 
-
-
-
-```{r main.model1}
-
-# Load the data
-load(file.path(result_dir, "S2MET_gwas_fw_results.RData"))
-
-# Gather data
-gwas_main_out1 <- gwas_fw_out %>% 
-  gather(trait, neg_log_p, -marker:-pos) %>%
-  # Convert -log_p to p
-  mutate(p_value = 10 ^ (-1 * neg_log_p))
-
-# Correct the p_values for an FDR of 0.05
-gwas_main_out2 <- gwas_main_out1 %>%
-  group_by(trait) %>%
-  mutate(p_adj = p.adjust(p = p_value, method = "fdr"),
-         neg_log_p_adj = -log10(p_adj),
-         neg_log_fdr05 = -log10(0.05),
-         neg_log_fdr10 = -log10(0.10)) %>%
+# Combine mean and stability into a single df.
+# Convert the stability -log10(q) values into their opposites (i.e. *-1)
+gwas_geno_mean_use <- gwas_geno_mean_adj %>%
   ungroup() %>%
-  separate(trait, c("trait", "coef"), sep = "_") %>%
-  mutate(coef = str_replace_all(coef, c(g = "GenotypeMean", b = "LinearStability", delta = "NonLinearStability")))
+  filter(model == "G")  %>%
+  select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10)
 
+gwas_pheno_fw_use <- gwas_pheno_fw_adj$pop_tp %>%
+  ungroup() %>%
+  filter(model == "G") %>%
+  separate(trait, into = c("trait", "stability"), sep = "_") %>%
+  mutate(stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+  filter(stability == "Type II") %>%
+  select(marker:trait, contains("neg_log10_fdr"), Stability = q_value_neg_log10)
 
-# Q-Q Plot per trait
-gwas_qq <- gwas_main_out2 %>%
-  group_by(trait, coef) %>%
-  arrange(trait, coef, p_value) %>% 
-  mutate(exp_neg_log_p = seq_along(neg_log_p), 
-         exp_neg_log_p = -(log10(exp_neg_log_p / (length(exp_neg_log_p)+1)))) %>%
-  arrange(trait, coef, chrom, pos)
+# Extract the palette for use in the manhattan plot
+palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)]
+odd_chrom <- seq(1, 7, by = 2)
 
-(g_gwas_qq <- gwas_qq %>%
-  ggplot(aes(x = exp_neg_log_p, y = neg_log_p)) +
-  geom_point() +
-  geom_abline(intercept = 0, slope = 1, col = "red", lwd = 1) +
-  facet_grid(trait ~ coef) +
-  ylab("Observed -log10(p)") +
-  xlab("Expected -log10(p)") +
-  labs(
-    title = "Q-Q Plot of Association Results"
-  ) +
-  theme_bw() )
+gwas_use <- full_join(gwas_geno_mean_use, gwas_pheno_fw_use) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10) %>% 
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
 
-# Save this
-save_file <- file.path(fig_dir, "gwas_qq.jpg")
-ggsave(filename = save_file, plot = g_gwas_qq, width = 6, height = 6)
+# color vector for ggplot
+color_value <- set_names(palette_use, unique(gwas_use$color))
 
-
-```
-
-
-```{r plot.gwas}
-
-# Plot the GWAS results
-(g_fw_gwas <- gwas_main_out2 %>%
-  mutate(chrom = as.factor(chrom),
-         pos = pos / 1000000) %>%
-  ggplot(aes(x = pos, y = neg_log_p_adj, col = chrom)) +
-  geom_point() +
-  geom_hline(aes(yintercept = neg_log_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait + coef ~ chrom, space = "free_x", scale = "free", switch = "x") +
-  ylab("Adjusted -log(p)") +
+## Plot
+g_mean_fw_man <- gwas_use %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
+  geom_hline(yintercept = 0)+
+  geom_point(aes(col = color)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_linetype_discrete(guide = FALSE) +
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
+                     guide = guide_legend(title = "Test")) +
+  ylab("-log(q)") +
   xlab("Position (Mbp)") +
-  scale_color_brewer(palette = "Set2", drop = FALSE, guide = FALSE) +
-  scale_linetype(guide = guide_legend(title = NULL)) +
+  labs(title = "Genomewide Assocation Analyses",
+       caption = "G model. n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
   theme_bw() +
   theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    # panel.border = element_rect(color = "grey75"),
+    panel.border = element_blank(),
     axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.border = element_blank()
-  ) +
-  labs(
-    title = "GWAS of Genotypic Main Effects and Sensitivity Coefficients"
-  ))
-
-
-# Save this
-save_file <- file.path(fig_dir, "gwas_fw_results.jpg")
-ggsave(filename = save_file, plot = g_fw_gwas, width = 12, height = 7, dpi = 500)
-
-
-```
-
-
-Results of GWAS for stability to environmental covariables
-
-```{r ec.stability.gwas}
-
-# Load the data
-load(file.path(result_dir, "S2MET_gwas_fw_ec_one_year_results.RData"))
-
-
+    axis.text.y = element_blank()
+  )
+  
+save_file <- file.path(fig_dir, "gwas_mean_and_pheno_fw.jpg")
+ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 7, dpi = 1000)
 
 
 ```
 
 
 
+
+
+
+#### Intervals around significant associations
+
+First apply some filters to extract the significant SNPs 
+
+```{r sig.overlap}
+
+# Load the marker effect stability results
+load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
+
+
+# Filter the main effect QTL and stability QTL for significant/suggestive markers
+gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
+  ungroup() %>% 
+  filter(model == "G") %>% 
+  mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
+                              q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
+                              TRUE ~ "no_association")) %>%
+  filter(interest != "no_association") %>%
+  select(marker:trait, interest)
+
+gwas_fw_interest_assoc <- gwas_pheno_fw_adj$pop_tp %>%
+  ungroup() %>% 
+  separate(trait, c("trait", "stability_term"), sep = "_") %>%
+  filter(model == "G", stability_term == "b") %>% 
+  mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
+                              q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
+                              TRUE ~ "no_association")) %>%
+  filter(interest != "no_association") %>%
+  select(marker:trait, interest)
+
+## Establish an outlier cutoff for marker effect stability
+# What should be the significance level
+alpha <- 0.01
+
+# For each trait, calculate empirical thresholds for significance
+marker_eff_pheno_fw_interest <- S2_MET_marker_eff_pheno_fw$pop_tp %>%
+  filter(stability_term == "b") %>%
+  group_by(trait) %>%
+  mutate(estimate = scale(estimate),
+         lower_perc = quantile(estimate, alpha / 2),
+         upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
+  ungroup() %>%
+  mutate(test = case_when(estimate <= lower_perc ~ "stable",
+                          estimate >= upper_perc ~ "sensitive",
+                          TRUE ~ "not_significant")) %>%
+  select(marker, chrom, pos, trait, test) %>%
+  distinct() %>%
+  mutate(interest = "significant") %>%
+  filter(test != "not_significant")
+
+
+# ## What happens if we test the marker slopes via a t-test?
+# gwas_markeff_pheno_fw_adj <- S2_MET_marker_eff_pheno_fw$pop_tp  %>%
+#   filter(stability_term == "b") %>%
+#   select(trait, marker:cM_pos, b_std_error:estimate) %>% 
+#   distinct() %>%
+#   group_by(trait) %>% 
+#   mutate(t_stat = estimate / b_std_error, 
+#          p_not_zero = 2 * pt(abs(t_stat), df, lower.tail = FALSE), 
+#          p_gt_zero = pt(t_stat, df, lower.tail = FALSE), 
+#          p_lt_zero = 1 - p_gt_zero) %>%
+#   # Correct for multiple testing
+#   mutate_at(vars(starts_with("p_")), funs(qvalue = qvalue(p = .)$qvalue)) %>%
+#   mutate_at(vars(contains("qvalue")), funs(neg_log = -log10(.))) %>%
+#   mutate(neg_log10_fdr05 = -log10(0.05),
+#          neg_log10_fdr10 = -log10(0.10))
+# 
+# # Test plot
+# gwas_markeff_pheno_fw_adj %>% 
+#   ggplot(aes(x = pos)) + 
+#   geom_point(aes(y = p_gt_zero_qvalue_neg_log)) + 
+#   geom_point(aes(y = -p_lt_zero_qvalue_neg_log)) + 
+#   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) + 
+#   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+#   geom_hline(aes(yintercept = -neg_log10_fdr05, lty = "FDR 05%")) + 
+#   geom_hline(aes(yintercept = -neg_log10_fdr10, lty = "FDR 10%")) +
+#   facet_grid(trait ~ chrom)
+
+
+```
+
+
+
+
+
+
+Now build intervals from each significant SNP for future overlap testing
+
+```{r find.overlaps}
+
+# Group the three dfs together
+sig_loci_df <- list(list(gwas_mean_interest_assoc, gwas_fw_interest_assoc), 
+                    c("mean", "stability")) %>% 
+  pmap_df(~mutate(.x, test = .y)) %>%
+  bind_rows(., marker_eff_pheno_fw_interest) %>%
+  # Rename some tests
+  mutate(test = case_when(test == "stable" ~ "marker_stability",
+                          test == "sensitive" ~ "marker_sensitivity",
+                          TRUE ~ test))
+
+# save
+save_file <- file.path(result_dir, "S2MET_genomewide_test_sig_loci.RData")
+save("sig_loci_df", file = save_file)
+
+## How many significant or suggestive hits did we get per trait, per test?
+sig_loci_df %>% 
+  group_by(trait, test, interest) %>% 
+  summarize(n = n()) %>% 
+  spread(interest, n) %>% 
+  mutate(suggestive = ifelse(is.na(significant), suggestive, significant + suggestive))
+
+
+# LD threshold for grouping markers
+LD_threshold <- 0.90
+# Window size for genomic region
+wind_size <- 100000
+
+# For each significant locus, find its LD with the next closest significant locus
+sig_loci_df_groups <- sig_loci_df %>% 
+  filter(interest == "significant") %>% 
+  group_by(trait, test, chrom) %>%
+  do({
+    # Grab the data
+    df <- .
+    
+    # Add +/- wind size to each position and assign preliminary groups based on overlap
+    df1 <- df %>% 
+      mutate(start = pos - wind_size, end = pos + wind_size,
+             prelim_group = IRanges(start = start, end = end) %>% 
+               findOverlaps(IRanges::reduce(.), .) %>% queryHits() ) %>%
+      as.data.frame()
+    
+    # If n_marker == 1, skip
+    if (nrow(df1) == 1) {
+      new_grps <- 1
+      
+    } else {
+    
+      # Subset the genotype matrix and calculate LD
+      LD <- cor(M[,df1$marker])^2
+      # Extract the 'adjacent' LD
+      adj_LD <- diag(LD[,-1])
+      
+      # Vector of new groups
+      new_grps <- numeric(nrow(df1))
+      new_grps[df1$prelim_group == 1] <- 1
+      
+      # Iterate over preliminary groups in the df
+      for (grp in unique(df1$prelim_group)) {
+        # Skip if 1
+        if (grp == 1) next
+        
+        # Extract the markers in that group plus the markers in previous group
+        grp_mar <- subset(df1, prelim_group == grp, marker, drop = TRUE)
+        prev_mar <- subset(df1, prelim_group == grp - 1, marker, drop = TRUE)
+        
+        # Are any markers in the previous group in high LD?
+        any_LD <- colSums(LD[grp_mar, prev_mar, drop = FALSE] >= LD_threshold)
+        # If any are, merge the groups
+        if (any(any_LD > 0)) {
+          # Change the grp number of those groups matching the previous group
+          # to the new group number
+          new_grps[new_grps == grp - 1] <- grp
+          
+        }
+        # Add the current grp
+        new_grps[df1$prelim_group == grp] <- grp
+      }
+      
+    }
+
+      # Add groups to the markers
+      df1 %>% mutate(group = str_c("group", new_grps)) })
+
+# ## Do the same for suggestive regions
+# sug_loci_df_groups <- sig_loci_df %>% 
+#   group_by(trait, test, chrom) %>%
+#   do({
+#     # Grab the data
+#     df <- .
+#     
+#     # Add +/- 250 kbp to each position and assign preliminary groups based on overlap
+#     df1 <- df %>% 
+#       mutate(start = pos - 250000, end = pos + 250000,
+#              prelim_group = IRanges(start = start, end = end) %>% 
+#                findOverlaps(reduce(.), .) %>% queryHits() ) %>%
+#       as.data.frame()
+#     
+#     # If n_marker == 1, skip
+#     if (nrow(df1) == 1) {
+#       new_grps <- 1
+#       
+#     } else {
+#     
+#       # Subset the genotype matrix and calculate LD
+#       LD <- cor(M[,df1$marker])^2
+#       # Extract the 'adjacent' LD
+#       adj_LD <- diag(LD[,-1])
+#       
+#       # Vector of new groups
+#       new_grps <- numeric(nrow(df1))
+#       new_grps[df1$prelim_group == 1] <- 1
+#       
+#       # Iterate over preliminary groups in the df
+#       for (grp in seq(2, max(df1$prelim_group))) {
+#         # Extract the markers in that group plus the markers in previous group
+#         grp_mar <- subset(df1, prelim_group == grp, marker, drop = TRUE)
+#         prev_mar <- subset(df1, prelim_group == grp - 1, marker, drop = TRUE)
+#         
+#         # Are any markers in the previous group in high LD?
+#         any_LD <- colSums(LD[grp_mar, prev_mar, drop = FALSE] >= LD_threshold)
+#         # If any are, merge the groups
+#         if (any(any_LD > 0)) {
+#           # Change the grp number of those groups matching the previous group
+#           # to the new group number
+#           new_grps[new_grps == grp - 1] <- grp
+#           
+#         }
+#         # Add the current grp
+#         new_grps[df1$prelim_group == grp] <- grp
+#       }
+#       
+#     }
+# 
+#       # Add groups to the markers
+#       df1 %>% 
+#         mutate(group = str_c("group", new_grps)) })
+
+## Condense groups into intervals
+sig_loci_df_intervals <- sig_loci_df_groups %>% 
+  group_by(group, add = T) %>% 
+  mutate(interval_start = min(start), interval_end = max(end)) %>%
+  ungroup() %>%
+  # Assign a y axis value to each test
+  mutate(test = factor(test, levels = c("mean", "stability", "marker_stability", "marker_sensitivity")),
+         y_level = as.numeric(test))
+
+# How many intervals per chromosome, per trait, per test
+sig_loci_df_intervals %>% 
+  group_by(trait, test, chrom) %>% 
+  summarize(n_interval = n_distinct(group)) %>% 
+  mutate(total_interval = sum(n_interval))
+
+
+# sug_loci_df_intervals <- sug_loci_df_groups %>% 
+#   group_by(group, add = T) %>% 
+#   mutate(interval_start = min(start), interval_end = max(end)) %>%
+#   ungroup() %>%
+#   # Assign a y axis value to each test
+#   mutate(test = factor(test, levels = c("mean", "stability", "stable", "sensitive")),
+#          y_level = as.numeric(test))
+
+## Plot the windows
+g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
+  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
+  geom_segment(data = sig_loci_df_intervals, 
+               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = test),
+               lwd = 2.5, lineend = "round") +
+  ylab("") +
+  xlab("Position (Mbp)") +
+  ylim(c(0, 10)) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing.x = unit(0, "in"),
+        panel.border = element_rect(color = "grey75"))
+
+save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
+ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
+
+
+# # Plot for suggestive windows
+# g_sug_windows <- ggplot(data = snp_info, aes(x = pos)) + 
+#   geom_segment(aes(x = min(pos), xend = max(pos), y = 0, yend = 0), lwd = 1.5) +
+#   geom_segment(data = sug_loci_df_intervals, 
+#                aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = test),
+#                lwd = 2.5, lineend = "round") +
+#   ylim(c(0, 10)) +
+#   facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+#   theme_bw() +
+#   theme(axis.text.y = element_blank(),
+#         panel.spacing.x = unit(0, "in"),
+#         panel.border = element_rect(color = "grey75"))
+# 
+# save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
+# ggsave(filename = save_file, plot = g_windows, height = 7, width = 9)
+
+
+```
+
+Window overlap
+
+First find the overlap between mean and stability and quantify
+
+Then find the overlap between stability and marker effect stability
+
+```{r window.overlap}
+
+# Convert the mean and stability intervals into GRanges
+sig_intervals <- sig_loci_df_intervals %>% 
+  droplevels() %>% 
+  mutate(seqnames = str_c("chr", .$chrom, "H")) %>%
+  distinct(trait, test, interval_start, interval_end, seqnames) %>%
+  group_by(test, trait) %>% 
+  do(range = GRanges(seqnames = .$seqnames, ranges = IRanges(start = .$interval_start, end = .$interval_end))) %>%
+  select(trait, names(.)) %>%
+  spread(test, range)
+
+
+
+# Write a function that takes two lists of Ranges and finds the overlaps
+# and number of overlaps
+find_overlaps <- function(q, s) {
+  # If null, return NA
+  if (is.null(q) | is.null(s)) {
+    data_frame(hits = list(NA), query_hits = list(NA), subject_hits = list(NA),
+               query_length = as.integer(NA), subject_length = as.integer(NA),
+               query_hits_n = as.integer(NA), subject_hits_n = as.integer(NA))
+               
+    
+  } else {
+    # Find overlaps
+    hits <- suppressWarnings(findOverlaps(query = q, subject = s))
+    # Data frame of query and subject hits, lengths, number
+    data_frame(hits = list(hits)) %>% 
+      mutate(query_hits = map(hits, ~q[queryHits(.),]), 
+             subject_hits = map(hits, ~s[subjectHits(.),]),
+             query_length = length(q), subject_length = length(s)) %>% 
+      mutate_at(vars(contains("_hits")), funs(n = map_dbl(., length)))
+  }
+}
+
+
+
+# For each trait, find the overlaps between mean and stability
+interval_overlaps <- sig_intervals %>% 
+  mutate(mean_stability_overlap = list(mean, stability) %>% pmap(find_overlaps),
+         stability_mar_stability_overlap = list(stability, marker_stability) %>% pmap(find_overlaps),
+         stability_mar_sensitivity_overlap = list(stability, marker_sensitivity) %>% pmap(find_overlaps),
+         mar_stability_mar_sensitivity_overlap = list(marker_stability, marker_sensitivity) %>% pmap(find_overlaps) )
+    
+# Extract the data.frame results
+interval_overlaps_df <- interval_overlaps %>% 
+  select(trait, contains("overlap")) %>% 
+  gather(overlap, data, -trait) %>% 
+  unnest() %>% 
+  # Calculate proportions
+  mutate(prop_query_hits = query_hits_n / query_length,
+         prop_subject_hits = subject_hits_n / subject_length)
+
+interval_overlaps_df %>% select(trait, overlap, query_hits_n:prop_subject_hits)
+
+```
+
+
+Gene models in the intervals
+
+For the main effect and stability intervals, find gene annotations
+
+```{r gene.ann}
+
+# Load a venn diagram package
+library(Vennerable)
+
+# Load the gene annotation data
+load("C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation/barley_genomic_ranges.RData")
+
+# OVerlap the intervals and merge
+sig_intervals_annotation <- sig_intervals %>% 
+  gather(test, range, -trait) %>%
+  filter(!map_lgl(range, is.null)) %>%
+  mutate(overlap = map(range, ~mergeByOverlaps(query = ., subject = barley_grange_list$genes)))
+
+# Save the cross-overlaps and the overlaps with the gene models
+save_file <- file.path(result_dir, "genomewide_analysis_interval_overlaps.RData")
+save("interval_overlaps_df", "sig_intervals_annotation", file = save_file)
+
+  
+# For each trait and test, extact a list if unique gene IDs
+sig_intervals_gene_ids <- sig_intervals_annotation %>% 
+  mutate(gene_ids = map(overlap, ~unique(.$gene_id)))
+
+# Create set lists for Venn diagrams
+sig_intervals_venn <- sig_intervals_gene_ids %>% 
+  group_by(trait) %>% 
+  do(gene_venn = set_names(.$gene_ids, .$test) %>% Venn)
+
+
+# Plot a venn diagram of the gene ID overlaps between mean, stability, and marker stability
+sig_intervals_venn$gene_venn %>% map(~plot(., doWeights = FALSE, type = if_else(NumberOfSets(.) < 4, "circles", "ellipses")))
+
+
+```
 
 
 

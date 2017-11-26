@@ -1,0 +1,150 @@
+---
+title: "A Genomewide Analysis of Phenotypic Stability in Barley"
+author: "Jeff Neyhart"
+date: "November 21, 2017"
+output: pdf_document
+bibliography: C:/Users/Jeff/Documents/Literature/library.bib
+---
+
+```{r load.packages.data, include=FALSE}
+
+library(tidyverse)
+library(readxl)
+
+
+# Project and other directories
+source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+
+# Remove the environments in which the vp was only observed
+S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
+  group_by(trait, environment) %>%
+  filter(sum(line_name %in% tp) > 1) %>%
+  ungroup()
+
+# Number of environments and entries
+env <- pull(distinct(S2_MET_BLUEs_use, environment))
+n_env <- n_distinct(env)
+n_entries <- n_distinct(S2_MET_BLUEs_use$line_name)
+
+# Load fw data
+load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+
+
+```
+
+
+## Introduction
+
+This summary is a brief description of analysis that will presented as a poster at the Plant And Animal Genome (PAG) conference in January, 2017. I hope this document will serve as a source of context when examining the poster abstract (in a separate attachment)
+
+
+
+## Methods
+
+This analysis uses data from `r n_env` environments over years 2015 - 2017. Genomewide analyses were conducted using only the 183-line training population genotyped with `r ncol(s2_imputed_mat)` SNPs via genotyping-by-sequencing. SNPs were called using the new barley reference genome [@Mascher2017], so all variants have physical genome positions. Phenotype data was spatially adjusted and best linear unbiased estimates (BLUEs) for each line were calculated for each trial/environment. This analysis only covers the traits `GrainYield`, `HeadingDate`, and `PlantHeight`.
+
+Phenotypic stability was calculated using Finlay-Wilkinson regression [@Finlay1963], where the BLUE of each line is regressed on the mean of all BLUEs in an environment. The slope of this regression is an estimate of phenotypic stability. Large slope coefficients (i.e. > 1) are indicative of below-average stability (or high sensitivity), while small slope coefficients are indicative of above-average stability. 
+
+I conducted genomewide association (GWA) analyses of the phenotypic mean and phenotypic stability The model for phenotypic mean accounted for environments as a fixed effect and corrected for background genetic effect separately for markers on different chromosomes [see @Bernardo2013b or @Chen2016]. The model for phenotypic stability was the same, except no fixed effects were included (besides the overall mean). 
+
+
+
+## Results and Discussion
+
+Environments covered a suitable range for each trait, as noted in Table 1.
+
+
+```{r tab1, echo = FALSE}
+
+S2_MET_pheno_fw$pop_tp %>%
+  group_by(trait) %>% summarize_at(vars(h), funs(min, max)) %>% 
+  mutate(range = round(max - min, digits = 2)) %>% 
+  select(trait, range) %>% 
+  knitr::kable(
+    caption = "Range in environmental effects for each trait"
+  )
+
+```
+
+
+Results of Finlay-Wilkinson regression highlighted the three response groups that are indicative of genotype-environment interaction. In Figure \ref{fig:fig1}, I picked the three lines per trait that have the greatest and smallest regression slopes, and the slope that is closest to 0. It turns out that all of the lines are unique for these three traits. 
+
+```{r fig1, echo = FALSE, out.width=".8\\linewidth", fig.align='center', fig.cap="Example result from Finlay-Wilkinson regression."}
+
+knitr::include_graphics(path = file.path(fig_dir,"pheno_fw_tp_example.jpg"))
+
+```
+
+
+\newpage 
+
+A first glance at the relationship between the genotype mean and the phenotypic stability (defined by the regression slope) indicates that the two are moderately correlated for `GrainYield` and `PlantHeight`, but not for `HeadingDate`. Figure \ref{fig:fig2} illustrates this. Note some of the relationships between genotype mean and the breeding program. For instance, North Dakota material (N2) tends to have a earlier `HeadingDate` and higher `GrainYield`.
+
+
+```{r fig2, echo = FALSE, out.width=".8\\linewidth", fig.align='center', fig.cap="Comparison of the genotype mean and stability for each trait."}
+
+knitr::include_graphics(path = file.path(fig_dir,"pheno_fw_stability_mean_tp.jpg"))
+
+```
+
+
+Next, I conducted genomewide association analyses for the genotype mean and stability of each trait [as in @Lacaze2009; @Kusmec2017]. The double-Manhattan plot is show in Figure \ref{fig:fig3}. 
+
+```{r fig3, echo = FALSE, fig.align='center', out.extra='angle=90', fig.cap="GWA of the genotype mean and stability."}
+
+knitr::include_graphics(path = file.path(fig_dir,"gwas_mean_and_pheno_fw.jpg"))
+
+```
+
+
+
+Significant associations (p < 0.05) were detected for all traits and for both the genotype mean and the stability, except for `GrainYield` stability. Table 2 shows the number of significant SNPs per trait and test.
+
+
+```{r tab2, echo = FALSE, fig.cap=""}
+# Load data of the significant peaks
+load(file.path(result_dir, "S2MET_genomewide_test_sig_loci.RData"))
+
+# Output a table
+sig_loci_df %>% 
+  filter(test %in% c("mean", "stability"), interest == "significant") %>%
+  group_by(trait, test) %>% 
+  summarize(n_marker = n()) %>% 
+  ungroup() %>% 
+  complete(trait, test, fill = list(n_marker = 0)) %>% 
+  knitr::kable(
+    caption = "Number of significant SNPs per trait and test."
+  )
+
+```
+
+
+To determine if any of the significance regions for genotype mean overlapped with those for stability, I defined interval around significant SNPs. I first grouped any significant SNPs that were within $\pm 100$ kbp of each other. For the remaining groups, I aggregregated adjacent groups of markers if the markers between the groups were in high LD ($r^2 \ge 0.90$). I found that no genotype mean interval overlapped with any of the phenotypic stability intervals for both `HeadingDate` and `PlantHeight`. `GrainYield` had no significant marker associations for stability, so the comparison could not be made.
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+## References
+
+
+
+
+
+
+
+
+
+
+
+
+
+

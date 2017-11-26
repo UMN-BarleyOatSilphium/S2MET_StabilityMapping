@@ -20,6 +20,7 @@ library(broom)
 library(stringr)
 library(FW)
 library(ggridges)
+library(ggforce)
 library(pbr)
 
 # Project and other directories
@@ -69,38 +70,243 @@ $$
 
 ## Results
 
+### Summary
+
+What is the range in environmental effects per trait?
+
+```{r env.range}
+
+# Load fw data
+load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+
+# Combine df and mark the population
+S2_MET_pheno_fw_comb <- S2_MET_pheno_fw %>%
+  list(., names(.)) %>% 
+  pmap_df(~mutate(.x, population = .y)) %>%
+  mutate(program = as.factor(program))
+
+S2_MET_pheno_fw_comb %>%
+  filter(population == "pop_all") %>%
+  group_by(trait) %>% summarize_at(vars(h), funs(min, max)) %>% 
+  mutate(range = max - min) %>% 
+  select(trait, range)
+
+S2_MET_pheno_fw_comb %>%
+  filter(population == "pop_tp") %>%
+  group_by(trait) %>% summarize_at(vars(h), funs(min, max)) %>% 
+  mutate(range = max - min) %>% 
+  select(trait, range)
+
+
+```
+
+
+
+### Normal FW Regression
+
 Plot the FW regression (regular version)
 
-
+This is typical FW regression (i.e. using the phenotypic means)
 
 ```{r plot.fw}
 
-# Load fw data
-load(file.path(result_dir, "S2MET_fw_regression_results.RData"))
 
-# Plot the genotypic value by environmental mean
-(g_fw_reg <- S2_MET_BLUEs_fw %>% 
+# Plot both the TP and VP
+g_pheno_fw_all <- S2_MET_pheno_fw_comb %>%
   filter(stability_term == "b") %>%
-  ggplot(aes(x = h, y = value, col = Program, group = line_name)) + 
+  ggplot(aes(x = h, y = value, col = program, group = line_name)) + 
   geom_point() + 
-  geom_abline(aes(slope = estimate, intercept = g, col = Program), alpha = 0.15) +
-  facet_wrap(stability_term ~ trait, ncol = 2, scales = "free") +
+  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
+  facet_wrap(trait ~ population, ncol = 2, scales = "free") +
   ylab("Genotypic Mean") +
   xlab("Environmental Effect") +
   labs(
-    title = "Finlay-Wilkinson Regression for All S2MET Entries"
+    title = "Finlay-Wilkinson Regression"
+  ) +
+  # scale_color_brewer(palette = "Set2") +
+  theme_bw() +
+  theme(legend.background = element_rect(fill = "grey85", color = NA))
+
+# Plot just the TP
+g_pheno_fw_tp <- S2_MET_pheno_fw_comb %>%
+  filter(stability_term == "b", population == "pop_tp") %>%
+  ggplot(aes(x = h, y = value, col = program, group = line_name)) + 
+  geom_point() + 
+  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
+  facet_wrap(~ trait, ncol = 2, scales = "free") +
+  scale_color_discrete(drop = FALSE) +
+  ylab("Genotypic Mean") +
+  xlab("Environmental Effect") +
+  labs(
+    title = "Finlay-Wilkinson Regression"
   ) +
   # scale_color_brewer(palette = "Set2") +
   theme_bw() +
   theme(
     legend.position = c(0.75, 0.25),
     legend.background = element_rect(fill = "grey85", color = NA)
-  ))
+  )
 
-save_file <- file.path(fig_dir, "fw_plots.jpg")
-ggsave(filename = save_file, plot = g_fw_reg, width = 8, height = 6)
+save_file <- file.path(fig_dir, "pheno_fw_all.jpg")
+ggsave(filename = save_file, plot = g_pheno_fw_all, width = 8, height = 6)
+
+save_file <- file.path(fig_dir, "pheno_fw_tp.jpg")
+ggsave(filename = save_file, plot = g_pheno_fw_tp, width = 8, height = 6)
+
+
+## Subset genotypes to highlight different responses
+pheno_fw_example <- S2_MET_pheno_fw_comb %>%
+  filter(stability_term == "b", population == "pop_tp") %>% 
+  select(trait, line_name, g, estimate) %>% 
+  distinct() %>% 
+  group_by(trait) %>% 
+  filter(estimate == min(estimate) | estimate == max(estimate) | abs(1 - estimate) == min(abs(1 - estimate)))
+
+g_pheno_fw_tp_example <- S2_MET_pheno_fw_comb %>%
+  filter(stability_term == "b", population == "pop_tp") %>% 
+  select(trait, environment, line_name, value, h) %>% 
+  ggplot(aes(x = h, y = value)) + 
+  geom_point() + 
+  geom_abline(data = pheno_fw_example, aes(intercept = g, slope = estimate, col = line_name), lwd = 1) + 
+  scale_color_discrete(guide = guide_legend(title = "Line Name", ncol = 2)) +
+  facet_wrap(~ trait, ncol = 2, scales = "free") +
+  ylab("Genotype Mean") +
+  xlab("Environment Effect") +
+  labs(title = "Range of Environemntal Effects and Example Line Responses") +
+  theme_bw() +
+  theme(legend.position = c(0.75, 0.25),
+        legend.background = element_rect(fill = "grey85", color = NA) )
+
+save_file <- file.path(fig_dir, "pheno_fw_tp_example.jpg")
+ggsave(filename = save_file, plot = g_pheno_fw_tp_example, width = 8, height = 6)
+
+
 
 ```
+
+
+Plot a histogram of FW stability coefficients
+
+```{r plot.b}
+
+# Plot distrubutions of the stability coefficients
+
+g_stability_dist_all <- S2_MET_pheno_fw_comb %>% 
+  filter(population == "pop_all") %>%
+  select(trait, line_name, program, stability_term, estimate, population) %>%
+  distinct() %>% 
+  ggplot(aes(x = estimate, y = program, fill = program)) +
+  geom_density_ridges() +
+  facet_wrap(trait ~ stability_term, scales = "free_x", ncol = 2) +
+  ylab("") +
+  xlab("Sensitivity Coefficient") +
+  scale_fill_discrete(drop = FALSE) +
+  theme_bw() +
+  theme(axis.text.y = element_blank()) +
+  labs(title = "Distribution of Sensitivity Coefficients by Breeding Program",
+       caption = "The program 'BA' contains one line.")
+
+## Plot just the TP
+g_stability_dist_tp <- S2_MET_pheno_fw_comb %>% 
+  filter(population == "pop_tp") %>%
+  select(trait, line_name, program, stability_term, estimate, population) %>%
+  distinct() %>% 
+  ggplot(aes(x = estimate, y = program, fill = program)) +
+  geom_density_ridges() + facet_wrap(trait ~ stability_term, scales = "free_x", ncol = 2) +
+  ylab("") +
+  xlab("Sensitivity Coefficient") +
+  scale_fill_discrete(drop = FALSE) +
+  theme_bw() +
+  theme(axis.text.y = element_blank()) +
+  labs(title = "Distribution of Sensitivity Coefficients by Breeding Program",
+       caption = "The program 'BA' contains one line.")
+
+## Plot the slope and MSE measures separately to standardize the scale
+g_stability_b_dist_tp <- S2_MET_pheno_fw_comb %>% 
+  filter(population == "pop_tp", stability_term == "b") %>%
+  select(trait, line_name, program, stability_term, estimate, population) %>%
+  distinct() %>% 
+  ggplot(aes(x = estimate, y = program, fill = program)) +
+  geom_density_ridges() + facet_wrap(~ trait, ncol = 1) +
+  ylab("") +
+  xlab("Sensitivity Coefficient") +
+  scale_fill_discrete(drop = FALSE) +
+  theme_bw() +
+  theme(axis.text.y = element_blank()) +
+  labs(title = "Distribution of Sensitivity Coefficients by Breeding Program",
+       caption = "The program 'BA' contains one line.")
+
+
+
+save_file <- file.path(fig_dir, "pheno_fw_dist_all.jpg")
+ggsave(filename = save_file, plot = g_stability_dist_all, width = 6, height = 8)
+
+save_file <- file.path(fig_dir, "pheno_fw_dist_tp.jpg")
+ggsave(filename = save_file, plot = g_stability_dist_tp, width = 6, height = 8)
+
+save_file <- file.path(fig_dir, "pheno_fw_dist_b_tp.jpg")
+ggsave(filename = save_file, plot = g_stability_b_dist_tp, width = 6, height = 8)
+
+```
+
+
+Plot the relationship between the genotypic effect and the sensitivity
+
+```{r plot.corr}
+
+g_stability_and_mean <- S2_MET_pheno_fw_comb %>% 
+  select(trait, line_name, g, stability_term, estimate, program, population) %>% 
+  distinct() %>%
+  filter(stability_term == "b") %>%
+  group_by(trait, population) %>% 
+  mutate(corr = cor(g, estimate, use = "complete.obs"),
+         corr = str_c("r = ", round(corr, 3))) %>%
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, col = "black") +
+  geom_text(aes(x = Inf, y = -Inf, label = corr, vjust = -1, hjust = 1), col = "black") +
+  facet_wrap(trait ~ population, scales = "free_x", ncol = 2) +
+  ylab("Sensitivity Coefficient") +
+  xlab("Genotype Mean") +
+  theme_bw() +
+  theme(legend.background = element_rect(fill = "grey85", color = NA)) +
+  labs(title = "Relationship Between Genotype Mean and Sensitivity" )
+
+save_file <- file.path(fig_dir, "pheno_fw_stability_mean.jpg")
+ggsave(filename = save_file, plot = g_stability_and_mean, width = 6, height = 8)
+
+
+# Plot just for TP
+g_stability_and_mean_Tp <- S2_MET_pheno_fw_comb %>% 
+  filter(population == "pop_tp") %>%
+  select(trait, line_name, g, stability_term, estimate, program, population) %>% 
+  distinct() %>%
+  filter(stability_term == "b") %>%
+  group_by(trait, population) %>% 
+  mutate(corr = cor(g, estimate, use = "complete.obs"),
+         corr = str_c("r = ", round(corr, 3))) %>%
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, col = "black") +
+  geom_text(aes(x = Inf, y = -Inf, label = corr, vjust = -1, hjust = 1), col = "black") +
+  facet_wrap(~ trait, scales = "free_x", ncol = 2) +
+  ylab("Sensitivity Coefficient") +
+  xlab("Genotype Mean") +
+  labs(title = "Relationship Between Genotype Mean and Sensitivity" ) +
+  theme_bw() +
+  theme(legend.background = element_rect(fill = "grey85", color = NA),
+        legend.position = c(0.75, 0.25))
+  
+
+save_file <- file.path(fig_dir, "pheno_fw_stability_mean_tp.jpg")
+ggsave(filename = save_file, plot = g_stability_and_mean_Tp, width = 6, height = 6)
+
+
+
+```
+
+
+### Environmental Covariate Sensitivity
 
 
 Plot stability across ECs
@@ -110,142 +316,95 @@ Plot stability across ECs
 # Load fw data
 load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
 
-# Plot the genotypic value by environmental mean
-(g_fw_reg_one_year <- S2_MET_BLUEs_one_year_fw %>% 
-    filter(stability_term == "b") %>%
-    ggplot(aes(x = h_ec, y = value, col = Program, group = line_name)) + 
-    geom_point() + 
-    geom_abline(aes(slope = estimate, intercept = g, col = Program), alpha = 0.15) +
-    facet_grid(variable ~ trait))
+# Combine the populations into one df
+S2_MET_ec_oneyear_fw_comb <- S2_MET_ec_oneyear_fw %>% 
+  list(., names(.)) %>% 
+  pmap_df(~mutate(.x, population = .y))
 
-save_file <- file.path(fig_dir, "fw_plots.jpg")
-ggsave(filename = save_file, plot = g_fw_reg, width = 8, height = 6)
+S2_MET_ec_multiyear_fw_Comb <- S2_MET_ec_multiyear_fw %>% 
+  list(., names(.)) %>% 
+  pmap_df(~mutate(.x, population = .y))
 
-```
+## Plot the value of each genotype in each environment over the environmental
+## gradient based on ECs
+g_ec_oneyear_fw_tp <- S2_MET_ec_oneyear_fw_comb %>% 
+  filter(stability_term == "b", population == "pop_tp") %>%
+  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
+  geom_point() + 
+  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
+  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
+  theme_bw()
 
-
-
-Extract FW stability coefficients and plot a histogram
-
-```{r plot.b}
-
-# Plot distrubutions for those coefficients
-(g_dist_sens <- S2_MET_BLUEs_fw %>% 
-   select(trait, line_name, Program, g, b, delta) %>% 
-   distinct() %>% 
-   gather(sens_coef, value, -trait:-g) %>%
-  ggplot(aes(x = value, y = Program, fill = Program)) +
-  geom_density_ridges() +
-  facet_wrap(trait ~ sens_coef, scales = "free_x", ncol = 2) +
-  ylab("") +
-  xlab("Sensitivity Coefficient") +
-  scale_fill_discrete(drop = FALSE) +
-  theme_bw() +
-  theme(
-    axis.text.y = element_blank()
-  ) +
-  labs(
-    title = "Distribution of Sensitivity Coefficients by Breeding Program"
-  ))
-
-save_file <- file.path(fig_dir, "dist_fw_coef.jpg")
-ggsave(filename = save_file, plot = g_dist_sens, width = 6, height = 8)
+## Iterate through the pages and save the graphs
+for (i in seq(n_pages(g_ec_oneyear_fw_tp))) {
+  save_file <- file.path(fig_dir, str_c("oneyear_ec_fw_tp", i, ".jpg"))
+  g <- g_ec_oneyear_fw_tp + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
+  ggsave(filename = save_file, plot = g, width = 9, height = 7)
+}
 
 
-```
+# Plot using all data
+g_ec_oneyear_fw_all <- S2_MET_ec_oneyear_fw_comb %>% 
+  filter(stability_term == "b", population == "pop_all") %>%
+  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
+  geom_point() + 
+  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
+  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
+  theme_bw()
 
-
-Plot the relationship between the genotypic effect and the sensitivity
-
-```{r plot.corr}
-
-(g_coef_by_mean <- S2_MET_BLUEs_fw %>% 
-  select(trait, line_name, g, stability_term, estimate, Program) %>% 
-  filter(stability_term == "b") %>%
-  group_by(trait) %>% 
-  mutate(corr = cor(g, estimate, use = "complete.obs"),
-         corr = str_c("r = ", round(corr, 3))) %>%
-  ggplot(aes(x = g, y = estimate, col = Program, group = FALSE)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, col = "black") +
-  geom_text(aes(x = Inf, y = Inf, label = corr, vjust = 1.5, hjust = 1.5), col = "black") +
-  facet_wrap(~ trait, scales = "free_x", ncol = 2) +
-  ylab("Sensitivity Coefficient") +
-  xlab("Genotype Mean") +
-  theme_bw() +
-  theme(
-    legend.position = c(0.75, 0.25),
-    legend.background = element_rect(fill = "grey85", color = NA)
-  ) +
-  labs(
-    title = "Relationship Between Genotype Mean and Sensitivity"
-  ))
-
-save_file <- file.path(fig_dir, "fw_coef_vs_mean.jpg")
-ggsave(filename = save_file, plot = g_coef_by_mean, width = 8, height = 6)
+## Iterate through the pages and save the graphs
+for (i in seq(n_pages(g_ec_oneyear_fw_all))) {
+  save_file <- file.path(fig_dir, str_c("oneyear_ec_fw_all", i, ".jpg"))
+  g <- g_ec_oneyear_fw_all + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
+  ggsave(filename = save_file, plot = g, width = 9, height = 7)
+}
 
 
 
-```
 
 
-What is the relationship between the genotype mean and the non-linear stability (i.e. $\delta_j$)?
+## Multi-year ECs
+g_ec_multiyear_fw_tp <- S2_MET_ec_multiyear_fw_Comb %>% 
+  filter(stability_term == "b", population == "pop_tp") %>%
+  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
+  geom_point() + 
+  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
+  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
+  theme_bw()
 
-```{r}
+## Iterate through the pages and save the graphs
+for (i in seq(n_pages(g_ec_multiyear_fw_tp))) {
+  save_file <- file.path(fig_dir, str_c("multiyear_ec_fw_tp", i, ".jpg"))
+  g <- g_ec_multiyear_fw_tp + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
+  ggsave(filename = save_file, plot = g, width = 9, height = 7)
+}
 
-(g_delta_by_mean <- S2_MET_BLUEs_fw %>% 
-  select(trait, line_name, g, delta, Program) %>% 
-  distinct() %>% 
-  group_by(trait) %>% 
-  mutate(corr = cor(g, delta, use = "complete.obs"),
-         corr = str_c("r = ", round(corr, 3))) %>%
-  ggplot(aes(x = g, y = delta, col = Program, group = FALSE)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, col = "black") +
-  geom_text(aes(x = Inf, y = Inf, label = corr, vjust = 1.5, hjust = 1.5), col = "black") +
-  facet_wrap(~ trait, scales = "free", ncol = 2) +
-  ylab("Non-Linear Sensitivity Coefficient") +
-  xlab("Genotype Mean") +
-  theme_bw() +
-  theme(
-    legend.position = c(0.75, 0.25),
-    legend.background = element_rect(fill = "grey85", color = NA)
-  ) +
-  labs(
-    title = "Relationship Between Genotype Mean and Non-Linear Sensitivity"
-  ))
 
-save_file <- file.path(fig_dir, "fw_delta_vs_mean.jpg")
-ggsave(filename = save_file, plot = g_delta_by_mean, width = 8, height = 6)
+# Plot using all data
+g_ec_multiyear_fw_all <- S2_MET_ec_multiyear_fw_Comb %>% 
+  filter(stability_term == "b", population == "pop_all") %>%
+  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
+  geom_point() + 
+  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
+  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
+  theme_bw()
+
+## Iterate through the pages and save the graphs
+for (i in seq(n_pages(g_ec_multiyear_fw_all))) {
+  save_file <- file.path(fig_dir, str_c("multiyear_ec_fw_all", i, ".jpg"))
+  g <- g_ec_multiyear_fw_all + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
+  ggsave(filename = save_file, plot = g, width = 9, height = 7)
+}
+
+
 
 ```
 
 
-### Independent Environmental Gradients
-
-Visualize the distribution of environments around the environmental gradient
-
-```{r viz.env.cov}
-
-# Pull out the environments for which pheno data is available
-one_year_env_df1 <- one_year_env_df %>%
-  filter(environment %in% env)
-
-multi_year_env_df1 <- multi_year_env_df %>%
-  filter(environment %in% env)
-
-# How many variables?
-n_ecs <- n_distinct(one_year_env_df1$variable)
-
-# Plot
-one_year_env_df1 %>%
-  ggplot(aes(x = value, y = 0, col = environment)) +
-  geom_point() +
-  scale_color_discrete(guide = FALSE) +
-  facet_wrap("variable", scales = "free_x")
 
 
-```
+
+
 
 
 Fit a regression model to find significant environmental covariates. The model will use the environmental effect (calculated from BLUEs) as the response, such that:

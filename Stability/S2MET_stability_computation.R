@@ -17,11 +17,14 @@ library(FW)
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
 
-# Remove the environments in which the vp was only observed
+# Remove the environments in which only the vp was observed
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   group_by(trait, environment) %>%
   filter(sum(line_name %in% tp) > 1) %>%
   ungroup()
+
+# How many environments?
+n_distinct(S2_MET_BLUEs_use$environment)
 
 ## Two populations - just the TP or the TP and the VP
 pop_all <- c(tp, vp)
@@ -66,10 +69,11 @@ gen_stab_coef <- list(S2_MET_BLUEs_to_model, env_h_coef) %>%
           fit <- lm(value ~ h, data = df)
           # Extract the different stability estimates
           tidy_fit <- tidy(fit)
-          data.frame(b = coef(fit)[2], 
+          data.frame(g = coef(fit)[1],
+                     b = coef(fit)[2], 
                      b_std_error = subset(tidy_fit, term == "h", std.error, drop = TRUE), # Regression coefficient
                      delta = mean(resid(fit)^2), row.names = NULL) }) %>% # delta = MSE
-        gather(stability_term, estimate, -trait, -line_name, -b_std_error) %>%
+        gather(stability_term, estimate, -trait:-g, -b_std_error) %>%
         ungroup() )
 
 # Assign entry subpopulation
@@ -105,10 +109,11 @@ geno_stab_coef_oneyear_ec <- S2_MET_BLUEs_to_model %>%
           fit <- lm(value ~ h_ec, data = df)
           # Extract the coefficient table
           tidy_fit <- tidy(fit)
-          data.frame(b = coef(fit)[2], 
+          data.frame(g = coef(fit)[1],
+                     b = coef(fit)[2], 
                      b_std_error = subset(tidy_fit, term == "h_ec", std.error, drop = TRUE), 
                      delta = mean(resid(fit)^2), row.names = NULL) }) %>%
-        gather(stability_term, estimate, -trait:-variable, -b_std_error) %>%
+        gather(stability_term, estimate, -trait:-g, -b_std_error) %>%
         ungroup() )
     
 geno_stab_coef_multiyear_ec <- S2_MET_BLUEs_to_model %>% 
@@ -120,13 +125,14 @@ geno_stab_coef_multiyear_ec <- S2_MET_BLUEs_to_model %>%
           fit <- lm(value ~ h_ec, data = df)
           # Extract the coefficient table
           tidy_fit <- tidy(fit)
-          data.frame(b = coef(fit)[2], 
+          data.frame(g = coef(fit)[1],
+                     b = coef(fit)[2], 
                      b_std_error = subset(tidy_fit, term == "h_ec", std.error, drop = TRUE), 
                      delta = mean(resid(fit)^2), row.names = NULL) }) %>%
-        gather(stability_term, estimate, -trait:-variable, -b_std_error) %>%
+        gather(stability_term, estimate, -trait:-g, -b_std_error) %>%
         ungroup() )
 
- # Combine with the above FW results for genotype means in environments
+# Combine with the above FW results for genotype means in environments
 S2_MET_ec_oneyear_fw <- S2_MET_pheno_fw %>% 
   map(~select(., trait, environment, line_name, value, program)) %>% 
   list(., geno_stab_coef_oneyear_ec) %>%

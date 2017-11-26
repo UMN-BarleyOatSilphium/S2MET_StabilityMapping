@@ -11,7 +11,7 @@ packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl",
 
 # Set the directory of the R packages
 package_dir <- NULL
-package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
+# package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
@@ -19,19 +19,19 @@ invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir
 
 ## Directories
 proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping//"
-proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
+# proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
 
 alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
-alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
+# alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 
 # Geno, pheno, and enviro data
 geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
 env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
-
-geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/GBS_Genos"
-pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
-env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
+# 
+# geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/GBS_Genos"
+# pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
+# env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
 
 
 # Other directories
@@ -75,52 +75,22 @@ checks <- entry_list %>%
 entries <- entry_list %>% 
   pull(Line)
 
-# Extract the tp and vp from the G matrix
-s2_imputed_mat_use <- s2_imputed_mat[c(tp_geno, vp_geno),]
-# Only the TP
-tp_imputed_mat_use <- s2_imputed_mat_use[c(tp_geno),]
-
 # Format the genotype data
-s2_imputed_genos_use <- s2_imputed_genos %>% 
+genos_use <- s2_imputed_genos %>% 
   select(marker = `rs#`, chrom, pos, which(names(.) %in% c(tp_geno, vp_geno))) %>%
   as.data.frame()
-# Only TP
-tp_imputed_genos_use <- s2_imputed_genos_use %>% 
-  select(marker:pos, which(names(.) %in% tp_geno))
-
 
 # Filter the BLUEs to use
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  filter(!grepl(pattern = "BZI|HTM", x = environment),
-         line_name %in% c(tp_geno, vp_geno)) %>%
+  # filter(!grepl(pattern = "BZI|HTM", x = environment),
+  filter(line_name %in% c(tp_geno)) %>%
   group_by(trait, environment) %>%
   filter(sum(line_name %in% tp) > 1) %>%
   ungroup()
-# Only TP
-S2_MET_BLUEs_use_tp <- S2_MET_BLUEs_use %>% 
-  filter(line_name %in% tp_geno) %>% 
-  droplevels()
 
-
-
-# Format the phenotypic data
-S2_MET_BLUEs_fw_tomodel <- S2_MET_BLUEs_fw %>% 
-  filter(line_name %in% c(tp_geno, vp_geno)) %>%
-  select(line_name, trait, stability_term, estimate) %>% 
-  distinct() %>% 
-  spread(stability_term, estimate) %>%
-  gather(coef, value, -line_name, -trait) %>% 
-  unite("trait_coef", trait, coef) %>% 
-  spread(trait_coef, value) %>%
-  as.data.frame()
 
 # Format the BLUEs across environments
 S2_MET_BLUEs_tomodel <- S2_MET_BLUEs_use %>% 
-  select(line_name, environment, trait, value) %>% 
-  spread(trait, value)
-
-# Format the BLUEs across environments
-S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_use_tp %>% 
   select(line_name, environment, trait, value) %>% 
   spread(trait, value)
 
@@ -128,17 +98,17 @@ S2_MET_BLUEs_tomodel_tp <- S2_MET_BLUEs_use_tp %>%
 # Detect cores
 n_cores <- detectCores() 
 
-# ## First conduct GWAS of main effects (no QxE) by looking at other models
-# gwas_models <- c("simple", "K", "Q", "QK", "G", "QG")
-# 
-# gwas_tp_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel_tp, geno = tp_imputed_genos_use, 
-#                                        fixed = ~ environment, model = ., impute.method = "pass", 
-#                                        n.PC = 2, n.core = n_cores, test.qxe = FALSE, P3D = TRUE)) %>%
-#   set_names(gwas_models)
-# 
-# ## Save
-# save_file <- file.path(result_dir, "S2MET_gwas_tp_model_comparison.RData")
-# save("gwas_tp_main", file = save_file)
+## First conduct GWAS of main effects (no QxE) by using the "K" and "G" models
+gwas_models <- c("K", "G")
+
+gwas_tp_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel, geno = genos_use,
+                                       fixed = ~ environment, model = ., impute.method = "pass",
+                                       n.PC = 0, n.core = n_cores, test.qxe = FALSE, P3D = TRUE)) %>%
+  set_names(gwas_models)
+
+## Save
+save_file <- file.path(result_dir, "S2MET_gwas_genotype_mean.RData")
+save("gwas_tp_main", file = save_file)
 
 
 
