@@ -79,7 +79,7 @@ n_env <- 2 # Number of environments
 n_rep <- 1 # Number of reps
 p_qxe <- 0.50 # Proportion QTL with QxE
 varGE_scale <- 0.5 # Scaling parameter of varGE to varR
-models <- c("K", "G", "KE", "GE") # Association models
+models <- c("K", "G", "KE", "GE", "KKE", "GGE") # Association models
 sig_cutoff <- c(0.01, 0.05, 0.10) # Significance thresholds
 
 ## Data frame of parameters
