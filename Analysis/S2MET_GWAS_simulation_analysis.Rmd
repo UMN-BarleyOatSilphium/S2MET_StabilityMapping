@@ -20,11 +20,17 @@ library(grid)
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
-# Load the results
-load(file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData"))
+# List result files
+result_files <- list.files(result_dir, full.names = TRUE, pattern = "simulation")
+
+result_list <- result_files %>%
+  map(function(f) {load(f); return(sim_results)})
 
 # Bind rows
-sim_result_df <- bind_rows(sim_results)
+sim_result_df <- map(result_list, bind_rows) %>% 
+  list(., seq(length(.))) %>% 
+  pmap(~mutate(.x, iter = (1000 * .y) + iter)) %>% 
+  bind_rows()
 
 # Alpha level for confidence intervals
 alpha <- 0.05
@@ -49,19 +55,19 @@ sim_result_df1 <- sim_result_df %>%
   select(-data) %>% 
   gather(datatype, data, -iter:-core) %>%
   unnest() %>%
-  mutate(model = parse_factor(model, levels = c("G", "K", "GE", "KE")))
+  mutate(model = parse_factor(model, levels = c("G", "K", "GE", "KE", "GGE", "KKE")))
 
 
 ## Summarize the marker association results
 mar_assoc_result <- sim_result_df1 %>% 
   filter(datatype == "marker_association") %>% 
-  complete(n_qtl, h2, n_pop, iter, model, sig_level, term, true_false, neg_pos) %>%
+  complete(n_qtl, h2, n_pop, iter, model, sig_level, term, true_false, neg_pos, fill = list(n = 0)) %>%
   select(-datatype, -core, -n_discovered)
 
 ## Summarize qtl discovery results
 qtl_disc_result <- sim_result_df1 %>% 
   filter(datatype == "qtl_discovery") %>%
-  complete(n_qtl, h2, n_pop, iter, model, sig_level, term) %>%
+  complete(n_qtl, h2, n_pop, iter, model, sig_level, term, fill = list(n = 0, n_discovered = 0)) %>%
   select(-datatype, -core) %>%
   # Edit the significance level factors
   mutate(sig_level = str_replace(sig_level, "_sig", ""))
@@ -308,6 +314,29 @@ save_file <- file.path(fig_dir, "simulation_power_qxe.jpg")
 ggsave(filename = save_file, plot = g_power_qxe, width = 6, height = 6)
 
 
+## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+
+g_power <- power_fdr_summ %>% 
+  filter(eval(exp)) %>%
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = power_mean, fill = model, group = model)) + 
+  labs(title = "Power to Detect QTL") + 
+  geom_col(position = "dodge") +
+  geom_errorbar(aes(ymin = power_mean - power_sd, ymax = power_mean + power_sd), 
+                position = position_dodge(0.9), width = 0.5) +
+  facet_grid(n_qtl + h2 ~ term, labeller = "label_both") +
+  ylab("Power") +
+  xlab("Population Size") +
+  ylim(c(0,1.1)) +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "simulation_sig_power.jpg")
+ggsave(filename = save_file, plot = g_power, width = 6, height = 6)
+
+
+
+
 
 ```
 
@@ -318,10 +347,10 @@ Plot the number of QTL discovered
 # New modifier
 g_mod <- list(
   geom_col(position = "dodge"),
-  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), 
+  geom_errorbar(aes(ymin = prop_discovered_mean - prop_discovered_sd, ymax = prop_discovered_mean + prop_discovered_sd), 
                 position = position_dodge(0.9), width = 0.5),
   facet_grid(n_qtl + h2 ~ sig_level),
-  ylab("Number of QTL Discovered"),
+  ylab("QTL Discovered"),
   xlab("Population Size"),
   ylim(c(-0.1,0.6)),
   theme_bw())
@@ -330,14 +359,14 @@ g_mod <- list(
 (g_disc_main <- qtl_disc_summ %>% 
   filter(term == "main_effect") %>% 
   mutate(n_pop = as.factor(n_pop)) %>% 
-  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  ggplot(aes(x = n_pop, y = prop_discovered_mean, fill = model, group = model)) + 
   labs(title = "Proportion of Main Effect QTL Discovered") +
   g_mod)
 
 (g_disc_qxe <- qtl_disc_summ %>% 
   filter(term == "qxe") %>% 
   mutate(n_pop = as.factor(n_pop)) %>% 
-  ggplot(aes(x = n_pop, y = mean, fill = model, group = model)) + 
+  ggplot(aes(x = n_pop, y = prop_discovered_mean, fill = model, group = model)) + 
   labs(title = "Proportion of Interaction QTL Discovered") +
   g_mod)
 
@@ -347,6 +376,28 @@ ggsave(filename = save_file, plot = g_disc_main, width = 6, height = 6)
 
 save_file <- file.path(fig_dir, "simulation_qtl_disc_qxe.jpg")
 ggsave(filename = save_file, plot = g_disc_qxe, width = 6, height = 6)
+
+
+## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+
+g_disc <- qtl_disc_summ %>% 
+  filter(eval(exp)) %>%
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = prop_discovered_mean, fill = model, group = model)) + 
+  labs(title = "QTL Discovery") + 
+  geom_col(position = "dodge") +
+  geom_errorbar(aes(ymin = prop_discovered_mean - prop_discovered_sd, 
+                    ymax = prop_discovered_mean + prop_discovered_sd), 
+                position = position_dodge(0.9), width = 0.5) +
+  facet_grid(n_qtl + h2 ~ term, labeller = "label_both") +
+  ylab("Proportion of QTL Discovered") +
+  xlab("Population Size") +
+  # ylim(c(0,1.1)) +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "simulation_sig_disc.jpg")
+ggsave(filename = save_file, plot = g_disc, width = 6, height = 6)
 
 
 
@@ -391,6 +442,31 @@ ggsave(filename = save_file, plot = g_disc_fdr_main, width = 6, height = 6)
 
 save_file <- file.path(fig_dir, "simulation_efficiency_qxe.jpg")
 ggsave(filename = save_file, plot = g_disc_fdr_qxe, width = 6, height = 6)
+
+
+
+## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+
+g_disc_fdr <- qtl_disc_fdr_summ %>% 
+  filter(eval(exp)) %>%
+  mutate(n_pop = as.factor(n_pop)) %>% 
+  ggplot(aes(x = n_pop, y = disc_per_false_mean, fill = model, group = model)) + 
+  labs(title = "Association Efficiency") + 
+  geom_col(position = "dodge") +
+  geom_errorbar(aes(ymin = disc_per_false_mean - disc_per_false_sd, 
+                    ymax = disc_per_false_mean + disc_per_false_sd), 
+                position = position_dodge(0.9), width = 0.5) +
+  facet_grid(n_qtl + h2 ~ term, labeller = "label_both") +
+  ylab("Number of QTL Discovered per False Discovery") +
+  xlab("Population Size") +
+  # ylim(c(0,1.1)) +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "simulation_sig_disc_fdr.jpg")
+ggsave(filename = save_file, plot = g_disc_fdr, width = 6, height = 6)
+
+
 
 
 ```

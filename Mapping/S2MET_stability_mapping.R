@@ -77,14 +77,11 @@ entries <- entry_list %>%
   pull(Line)
 
 
-## List of populations to use
-pops <- list(pop_all = c(tp_geno, vp_geno), pop_tp = tp_geno)
-
-# Filter the genotype data and create data.frames for use in GWAS
+# Filter the genotype data and create a data.frame for use in GWAS
 # Note 'select' can take a character vector as an argument.
-genos_use <- pops %>%
-  map(~select(s2_imputed_genos, marker = `rs#`, chrom, pos, .))
-  
+genos_use <- s2_imputed_genos %>%
+  select(marker = `rs#`, chrom, pos, tp_geno)
+
 
 # Load the FW results
 load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
@@ -92,26 +89,27 @@ load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
 
 ## Format the FW results as a phenotype data.frame
 ## Filter the lines that only have genotype data
-pheno_fw_use <- list(S2_MET_pheno_fw, pops) %>%
-  pmap(~select(.x, line_name, trait, stability_term, estimate) %>%
-        distinct() %>%
-        filter(line_name %in% .y) %>%
-        unite("trait_term", trait, stability_term, sep = "_") %>% 
-        spread(trait_term, estimate) )
+pheno_fw_use <- S2_MET_pheno_fw %>%
+  select(line_name, trait, stability_term, estimate) %>%
+  distinct() %>%
+  filter(line_name %in% tp_geno) %>%
+  unite("trait_term", trait, stability_term, sep = "_") %>% 
+  spread(trait_term, estimate)
+  
 
-ec_oneyear_fw_use <- list(S2_MET_ec_oneyear_fw, pops) %>% 
-  pmap(~select(.x, line_name, trait, variable, stability_term, estimate) %>% 
-        distinct() %>% 
-        filter(line_name %in% .y) %>%
-        unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
-        spread(trait_variable_term, estimate) )
+ec_oneyear_fw_use <- S2_MET_ec_oneyear_fw %>% 
+  select(line_name, trait, variable, stability_term, estimate) %>% 
+     distinct() %>% 
+     filter(line_name %in% tp_geno) %>%
+     unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
+     spread(trait_variable_term, estimate)
 
-ec_multiyear_fw_use <- list(S2_MET_ec_multiyear_fw, pops) %>% 
-  pmap(~select(.x, line_name, trait, variable, stability_term, estimate) %>% 
-         distinct() %>% 
-         filter(line_name %in% .y) %>%
-         unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
-         spread(trait_variable_term, estimate) )
+ec_multiyear_fw_use <- S2_MET_ec_multiyear_fw %>% 
+  select(line_name, trait, variable, stability_term, estimate) %>% 
+  distinct() %>% 
+  filter(line_name %in% tp_geno) %>%
+  unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
+  spread(trait_variable_term, estimate)
 
 
 ### GWAS
@@ -119,31 +117,25 @@ ec_multiyear_fw_use <- list(S2_MET_ec_multiyear_fw, pops) %>%
 n_cores <- detectCores()
 
 # Models to use
-models <- c("K", "G")
+models <- c("K", "G", "QK", "QG")
 
 ## GWAS for pheno FW
 gwas_pheno_fw <- models %>%
-  map(function(mod) 
-    list(pheno_fw_use, genos_use) %>% 
-      pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
+  map(., ~gwas(pheno = pheno_fw_use, geno = genos_use, model = ., n.PC = 2, P3D = TRUE, n.core = n_cores))
 
 
 save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
 save("gwas_pheno_fw", file = save_file)
 
 
-
+### GWAS for stability across ECs
 # GWAS for single-year ECs
 gwas_singleyear_ec_fw <- models %>%
-  map(function(mod) 
-    list(ec_oneyear_fw_use, genos_use) %>% 
-      pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
+  map(., ~gwas(pheno = ec_oneyear_fw_use, geno = genos_use, model = ., P3D = TRUE, n.core = n_cores))
 
 # GWAS for multi-year ECs
 gwas_multiyear_ec_fw <- models %>%
-  map(function(mod) 
-    list(ec_multiyear_fw_use, genos_use) %>% 
-      pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
+  map(., ~gwas(pheno = ec_multiyear_fw_use, geno = genos_use, model = ., P3D = TRUE, n.core = n_cores))
 
 
 ## Save
@@ -155,8 +147,79 @@ save("gwas_singleyear_ec_fw", "gwas_multiyear_ec_fw", file = save_file)
 
 
 
-
-
-
-
-
+# ### Archived code for testing the TP and the TP + VP
+# 
+# 
+# ## List of populations to use
+# pops <- list(pop_all = c(tp_geno, vp_geno), pop_tp = tp_geno)
+# 
+# # Filter the genotype data and create data.frames for use in GWAS
+# # Note 'select' can take a character vector as an argument.
+# genos_use <- pops %>%
+#   map(~select(s2_imputed_genos, marker = `rs#`, chrom, pos, .))
+#   
+# 
+# # Load the FW results
+# load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+# load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
+# 
+# ## Format the FW results as a phenotype data.frame
+# ## Filter the lines that only have genotype data
+# pheno_fw_use <- list(S2_MET_pheno_fw, pops) %>%
+#   pmap(~select(.x, line_name, trait, stability_term, estimate) %>%
+#         distinct() %>%
+#         filter(line_name %in% .y) %>%
+#         unite("trait_term", trait, stability_term, sep = "_") %>% 
+#         spread(trait_term, estimate) )
+# 
+# ec_oneyear_fw_use <- list(S2_MET_ec_oneyear_fw, pops) %>% 
+#   pmap(~select(.x, line_name, trait, variable, stability_term, estimate) %>% 
+#         distinct() %>% 
+#         filter(line_name %in% .y) %>%
+#         unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
+#         spread(trait_variable_term, estimate) )
+# 
+# ec_multiyear_fw_use <- list(S2_MET_ec_multiyear_fw, pops) %>% 
+#   pmap(~select(.x, line_name, trait, variable, stability_term, estimate) %>% 
+#          distinct() %>% 
+#          filter(line_name %in% .y) %>%
+#          unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
+#          spread(trait_variable_term, estimate) )
+# 
+# 
+# ### GWAS
+# # Detect cores
+# n_cores <- detectCores()
+# 
+# # Models to use
+# models <- c("K", "G")
+# 
+# ## GWAS for pheno FW
+# gwas_pheno_fw <- models %>%
+#   map(function(mod) 
+#     list(pheno_fw_use, genos_use) %>% 
+#       pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
+# 
+# 
+# save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
+# save("gwas_pheno_fw", file = save_file)
+# 
+# 
+# 
+# # GWAS for single-year ECs
+# gwas_singleyear_ec_fw <- models %>%
+#   map(function(mod) 
+#     list(ec_oneyear_fw_use, genos_use) %>% 
+#       pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
+# 
+# # GWAS for multi-year ECs
+# gwas_multiyear_ec_fw <- models %>%
+#   map(function(mod) 
+#     list(ec_multiyear_fw_use, genos_use) %>% 
+#       pmap(~gwas(pheno = .x, geno = .y, model = mod, P3D = TRUE, n.core = n_cores)))
+# 
+# 
+# ## Save
+# save_file <- file.path(result_dir, "S2MET_fw_gwas_results.RData")
+# save("gwas_singleyear_ec_fw", "gwas_multiyear_ec_fw", file = save_file)
+# 

@@ -23,6 +23,7 @@ library(rrBLUP)
 library(broom)
 library(GenomicRanges)
 library(qvalue)
+library(ggforce)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
@@ -291,33 +292,30 @@ Load the data, adjust p-values, and plot
 # Load the data
 load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
 
-# Tranpose the list
-gwas_pheno_fw1 <- transpose(gwas_pheno_fw)
-
 # Add the model name to the df
-gwas_pheno_fw2 <- gwas_pheno_fw1 %>% 
-  map(~map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
-                filter(term == "main_effect")))
+gwas_pheno_fw1 <- gwas_pheno_fw %>% 
+  map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
+           filter(term == "main_effect"))
 
 ## Adjust the p-values
-gwas_pheno_fw_adj <- gwas_pheno_fw2 %>%
-  map(~group_by(., trait, model) %>% 
-        mutate(p_adj = p.adjust(p_value, method = "fdr"),
-               q_value = qvalue(p = p_value)$qvalue,
-               neg_log10_fdr05 = -log10(0.05),
-               neg_log10_fdr10 = -log10(0.10)) %>%
-        mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) )
+gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
+  group_by(., trait, model) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
 
 
 ## Quality control
 ## QQ plot
 qq_gwas_pheno_fw_adj <- gwas_pheno_fw_adj %>% 
-  map(~arrange(., trait, model, p_value) %>% 
-        mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
-               neg_log10_p_exp = -log10(p_exp)))
+  arrange(., trait, model, p_value) %>% 
+  mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
+         neg_log10_p_exp = -log10(p_exp))
 
 # Plot
-g_qq_all <- qq_gwas_pheno_fw_adj$pop_all %>%
+g_qq <- qq_gwas_pheno_fw_adj %>%
   ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
   geom_point() + 
   geom_abline(slope = 1, intercept = 0) + 
@@ -325,46 +323,13 @@ g_qq_all <- qq_gwas_pheno_fw_adj$pop_all %>%
   labs(title = "QQ Plot", subtitle = "TP and VP") +
   theme_bw()
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_all.jpg")
-ggsave(filename = save_file, plot = g_qq_all, width = 5, height = 7)
+save_file <- file.path(fig_dir, "gwas_pheno_fw_qq.jpg")
+ggsave(filename = save_file, plot = g_qq, width = 5, height = 7)
 
 
-g_qq_tp <- qq_gwas_pheno_fw_adj$pop_tp %>%
-  ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
-  geom_point() + 
-  geom_abline(slope = 1, intercept = 0) + 
-  facet_wrap(~ trait, ncol = 2) +
-  labs(title = "QQ Plot", subtitle = "TP") +
-  theme_bw()
+# Manhattan plot - use pagination by trait
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_tp.jpg")
-ggsave(filename = save_file, plot = g_qq_tp, width = 5, height = 7)
-
-
-## Manhattan plot
-g_man_all <- gwas_pheno_fw_adj$pop_all %>%
-  mutate(chrom = as.factor(chrom)) %>% 
-  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
-  ylab("-log(q)") +
-  xlab("Position") +
-  labs(title = "Assocation Analysis", subtitle = "TP + VP") +
-  theme_bw() +
-  theme(
-    panel.spacing.x = unit(x = 0, units = "in"),
-    panel.border = element_blank()
-  )
-
-save_file <- file.path(fig_dir, "gwas_pheno_fw_man_all.jpg")
-ggsave(filename = save_file, plot = g_man_all, width = 7, height = 12)
-
-
-g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
+g_man_tp <- gwas_pheno_fw_adj %>%
   mutate(chrom = as.factor(chrom)) %>% 
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
@@ -384,18 +349,48 @@ g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man.jpg")
 ggsave(filename = save_file, plot = g_man_tp, width = 7, height = 12)
 
 
-## Only use the TP and only consider the G model
-g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
-  filter(model == "G") %>%
+## Only consider "G" models
+g_man_tp_G <- gwas_pheno_fw_adj %>%
+  filter(model %in% c("G", "QG")) %>%
   separate(trait, into = c("trait", "stability"), sep = "_") %>%
   mutate(chrom = as.factor(chrom),
          stability = if_else(stability == "b", "Type II", "Type III")) %>% 
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
+  geom_point() + 
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait + stability + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(guide = FALSE, 
+                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  scale_linetype_discrete(guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
+       caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+  theme_bw() +
+  theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_Gmodels.jpg")
+ggsave(filename = save_file, plot = g_man_tp_G, width = 10, height = 12)
+
+
+## Only consider the G model
+g_man_Gonly <- gwas_pheno_fw_adj %>%
+  filter(model == "G") %>%
+  separate(trait, into = c("trait", "stability"), sep = "_") %>%
+  mutate(chrom = as.factor(chrom),
+         stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+  # filter(stability == "Type II") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
   geom_point() + 
   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
@@ -414,39 +409,170 @@ g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp_final.jpg")
-ggsave(filename = save_file, plot = g_man_tp, width = 10, height = 8)
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_Gonly.jpg")
+ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 9, dpi = 1000)
 
 
 
-## Only use the TP and only consider the G model, plus only look at the slope from FW
-g_man_tp_typeii <- gwas_pheno_fw_adj$pop_tp %>%
-  filter(model == "G") %>%
-  separate(trait, into = c("trait", "stability"), sep = "_") %>%
-  mutate(chrom = as.factor(chrom),
-         stability = if_else(stability == "b", "Type II", "Type III")) %>% 
-  filter(stability == "Type II") %>%
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  scale_color_manual(guide = FALSE, 
-                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
-  scale_linetype_discrete(guide = FALSE) +
-  ylab("-log(q)") +
-  xlab("Position (Mbp)") +
-  labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
-       caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
-  theme_bw() +
-  theme(
-    panel.spacing.x = unit(x = 0, units = "in"),
-    panel.border = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
-
-save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp_typeii.jpg")
-ggsave(filename = save_file, plot = g_man_tp_typeii, width = 9, height = 7, dpi = 1000)
+######
+# ### Archived code for testing the TP and TP + VP
+# 
+# # Tranpose the list
+# gwas_pheno_fw1 <- transpose(gwas_pheno_fw)
+# 
+# # Add the model name to the df
+# gwas_pheno_fw2 <- gwas_pheno_fw1 %>% 
+#   map(~map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
+#                 filter(term == "main_effect")))
+# 
+# ## Adjust the p-values
+# gwas_pheno_fw_adj <- gwas_pheno_fw2 %>%
+#   map(~group_by(., trait, model) %>% 
+#         mutate(p_adj = p.adjust(p_value, method = "fdr"),
+#                q_value = qvalue(p = p_value)$qvalue,
+#                neg_log10_fdr05 = -log10(0.05),
+#                neg_log10_fdr10 = -log10(0.10)) %>%
+#         mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) )
+# 
+# 
+# ## Quality control
+# ## QQ plot
+# qq_gwas_pheno_fw_adj <- gwas_pheno_fw_adj %>% 
+#   map(~arrange(., trait, model, p_value) %>% 
+#         mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
+#                neg_log10_p_exp = -log10(p_exp)))
+# 
+# # Plot
+# g_qq_all <- qq_gwas_pheno_fw_adj$pop_all %>%
+#   ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
+#   geom_point() + 
+#   geom_abline(slope = 1, intercept = 0) + 
+#   facet_wrap(~ trait, ncol = 2) +
+#   labs(title = "QQ Plot", subtitle = "TP and VP") +
+#   theme_bw()
+# 
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_all.jpg")
+# ggsave(filename = save_file, plot = g_qq_all, width = 5, height = 7)
+# 
+# 
+# g_qq_tp <- qq_gwas_pheno_fw_adj$pop_tp %>%
+#   ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
+#   geom_point() + 
+#   geom_abline(slope = 1, intercept = 0) + 
+#   facet_wrap(~ trait, ncol = 2) +
+#   labs(title = "QQ Plot", subtitle = "TP") +
+#   theme_bw()
+# 
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_tp.jpg")
+# ggsave(filename = save_file, plot = g_qq_tp, width = 5, height = 7)
+# 
+# 
+# ## Manhattan plot
+# g_man_all <- gwas_pheno_fw_adj$pop_all %>%
+#   mutate(chrom = as.factor(chrom)) %>% 
+#   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+#   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+#   geom_point() + 
+#   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+#   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+#   facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
+#   scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+#   ylab("-log(q)") +
+#   xlab("Position") +
+#   labs(title = "Assocation Analysis", subtitle = "TP + VP") +
+#   theme_bw() +
+#   theme(
+#     panel.spacing.x = unit(x = 0, units = "in"),
+#     panel.border = element_blank()
+#   )
+# 
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_man_all.jpg")
+# ggsave(filename = save_file, plot = g_man_all, width = 7, height = 12)
+# 
+# 
+# g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
+#   mutate(chrom = as.factor(chrom)) %>% 
+#   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+#   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
+#   geom_point() + 
+#   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+#   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+#   facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
+#   scale_color_manual(guide = FALSE, 
+#                      values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+#   ylab("-log(q)") +
+#   xlab("Position (Mbp)") +
+#   labs(title = "Assocation Analysis", subtitle = "TP") +
+#   theme_bw() +
+#   theme(
+#     panel.spacing.x = unit(x = 0, units = "in"),
+#     panel.border = element_blank(),
+#     axis.text.x = element_text(angle = 45, hjust = 1)
+#   )
+# 
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp.jpg")
+# ggsave(filename = save_file, plot = g_man_tp, width = 7, height = 12)
+# 
+# 
+# ## Only use the TP and only consider the G model
+# g_man_tp <- gwas_pheno_fw_adj$pop_tp %>%
+#   filter(model == "G") %>%
+#   separate(trait, into = c("trait", "stability"), sep = "_") %>%
+#   mutate(chrom = as.factor(chrom),
+#          stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+#   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+#   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
+#   geom_point() + 
+#   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+#   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+#   facet_grid(trait + stability ~ chrom, switch = "x", scales = "free", space = "free_x") +
+#   scale_color_manual(guide = FALSE, 
+#                      values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+#   scale_linetype_discrete(guide = FALSE) +
+#   ylab("-log(q)") +
+#   xlab("Position (Mbp)") +
+#   labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
+#        caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+#   theme_bw() +
+#   theme(
+#     panel.spacing.x = unit(x = 0, units = "in"),
+#     panel.border = element_blank(),
+#     axis.text.x = element_text(angle = 45, hjust = 1)
+#   )
+# 
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp_final.jpg")
+# ggsave(filename = save_file, plot = g_man_tp, width = 10, height = 8)
+# 
+# 
+# 
+# ## Only use the TP and only consider the G model, plus only look at the slope from FW
+# g_man_tp_typeii <- gwas_pheno_fw_adj$pop_tp %>%
+#   filter(model == "G") %>%
+#   separate(trait, into = c("trait", "stability"), sep = "_") %>%
+#   mutate(chrom = as.factor(chrom),
+#          stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+#   filter(stability == "Type II") %>%
+#   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+#   geom_point() + 
+#   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+#   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+#   facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+#   scale_color_manual(guide = FALSE, 
+#                      values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+#   scale_linetype_discrete(guide = FALSE) +
+#   ylab("-log(q)") +
+#   xlab("Position (Mbp)") +
+#   labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
+#        caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+#   theme_bw() +
+#   theme(
+#     panel.spacing.x = unit(x = 0, units = "in"),
+#     panel.border = element_blank(),
+#     axis.text.x = element_text(angle = 45, hjust = 1)
+#   )
+# 
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_man_tp_typeii.jpg")
+# ggsave(filename = save_file, plot = g_man_tp_typeii, width = 9, height = 7, dpi = 1000)
 
 
 ```

@@ -75,9 +75,11 @@ checks <- entry_list %>%
 entries <- entry_list %>% 
   pull(Line)
 
+## ONly use the TP to map
+
 # Format the genotype data
 genos_use <- s2_imputed_genos %>% 
-  select(marker = `rs#`, chrom, pos, which(names(.) %in% c(tp_geno, vp_geno))) %>%
+  select(marker = `rs#`, chrom, pos, which(names(.) %in% c(tp_geno))) %>%
   as.data.frame()
 
 # Filter the BLUEs to use
@@ -90,7 +92,7 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 
 
 # Format the BLUEs across environments
-S2_MET_BLUEs_tomodel <- S2_MET_BLUEs_use %>% 
+phenos_use <- S2_MET_BLUEs_use %>% 
   select(line_name, environment, trait, value) %>% 
   spread(trait, value)
 
@@ -99,14 +101,15 @@ S2_MET_BLUEs_tomodel <- S2_MET_BLUEs_use %>%
 n_cores <- detectCores() 
 
 ## First conduct GWAS of main effects (no QxE) by using the "K" and "G" models
-gwas_models <- c("K", "G")
+models <- c("K", "G", "QK", "QG")
 
-gwas_tp_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel, geno = genos_use,
-                                       fixed = ~ environment, model = ., impute.method = "pass",
-                                       n.PC = 0, n.core = n_cores, test.qxe = FALSE, P3D = TRUE)) %>%
-  set_names(gwas_models)
+gwas_tp_main <- models %>%
+  map(~gwas(pheno = phenos_use, geno = genos_use, fixed = ~ environment,
+            model = ., impute.method = "pass", n.PC = 2, n.core = n_cores, 
+            test.qxe = FALSE, P3D = TRUE)) %>%
+  set_names(models)
 
-## Save
++## Save
 save_file <- file.path(result_dir, "S2MET_gwas_genotype_mean.RData")
 save("gwas_tp_main", file = save_file)
 

@@ -70,7 +70,7 @@ n_qtl_list <- c(30, 100) # Number of QTL
 h2_list <- c(0.5, 0.8) # Heritability
 n_pop_list <- c(175, 350, 700)
 
-n_iter <- 50 # Number of simulation iterations
+n_iter <- 100 # Number of simulation iterations
 max_qtl <- max(n_qtl_list)
 
 
@@ -85,6 +85,10 @@ sig_cutoff <- c(0.01, 0.05, 0.10) # Significance thresholds
 ## Data frame of parameters
 param_df <- expand.grid(iter = seq(n_iter), n_qtl = n_qtl_list, h2 = h2_list, n_pop = n_pop_list)
 
+
+## Subset 
+param_df <- param_df %>%
+  filter( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) )
 
 # Detect cores
 n_cores <- detectCores()
