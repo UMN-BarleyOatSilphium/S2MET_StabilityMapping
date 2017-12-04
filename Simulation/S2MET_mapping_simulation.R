@@ -448,8 +448,19 @@ sim_results <- param_df %>%
     
   }, mc.cores = n_cores)
     
-      
+
+
 # Save the results
+## Determine if a file is already there
 save_file <- file.path(result_dir, "S2MET_mapping_gwas_qxe_simulation.RData")
+present <- file.exists(save_file)
+
+# Use while loop to edit the file until it does not exist
+i = 1
+while(present) {
+  save_file <- file.path(result_dir, str_c("S2MET_mapping_gwas_qxe_simulation", i, ".RData"))
+  present <- file.exists(save_file)
+}
+
 save("sim_results", file = save_file)
 
