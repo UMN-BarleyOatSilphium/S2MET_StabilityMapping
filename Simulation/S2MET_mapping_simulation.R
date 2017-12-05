@@ -88,7 +88,7 @@ param_df <- expand.grid(iter = seq(n_iter), n_qtl = n_qtl_list, h2 = h2_list, n_
 
 ## Subset 
 param_df <- param_df %>%
-  filter( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) )
+  filter( (n_qtl == 30 & h2 == 0.8) | (n_qtl == 100 & h2 == 0.5) )
 
 # Detect cores
 n_cores <- detectCores()

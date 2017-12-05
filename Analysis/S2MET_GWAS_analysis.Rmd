@@ -28,6 +28,8 @@ library(ggforce)
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
+tp_geno <- tp_geno_multi
+
 load(file.path(geno_dir, "S2_genos_hmp.RData"))
 
 # Filter environments for those in which the TP was observed
@@ -51,10 +53,10 @@ First examine population structure within the germplasm
 ```{r pop.str}
 
 # Calculate the A matrix
-A_all <- A.mat(X = s2_imputed_mat_use, min.MAF = 0, max.missing = 1)
-A_tp <- A.mat(X = s2_imputed_mat_use[tp_geno,], min.MAF = 0, max.missing = 1)
+# A_all <- A.mat(X = M, min.MAF = 0, max.missing = 1)
+A_tp <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
-A_list <- list(all = A_all, tp = A_tp)
+A_list <- list(tp = A_tp)
 
 ## Visualize pop structure
 A_prcomp <- map(A_list, prcomp)
@@ -75,23 +77,41 @@ A_prcomp_df <- A_prcomp_df_list %>%
   bind_rows()
 
 
+# # Plot
+# (g_pop_str <- A_prcomp_df %>%
+#   ggplot(aes(x = PC1, y = PC2, col = program)) +
+#   geom_point(size = 2) +
+#   ylab("PC2") +
+#   xlab("PC1") +
+#   scale_color_discrete(guide = guide_legend(title = "Breeding\nProgram")) +
+#   facet_grid(~ population) +
+#   labs(
+#     title = "Population Structure of the S2MET Genotypes",
+#     subtitle = "The 'M2' program includes genotypes derived\nfrom crosses made among genotypes from the other programs."
+#   ) +
+#   theme_bw())
+# 
+# # Save this
+# save_file <- file.path(fig_dir, "population_structure.jpg")
+# ggsave(filename = save_file, plot = g_pop_str, width = 7, height = 5)
+
+
 # Plot
-(g_pop_str <- A_prcomp_df %>% 
-  ggplot(aes(x = PC1, y = PC2, col = program)) + 
-  geom_point(size = 2) + 
+(g_pop_str <- A_prcomp_df %>%
+    filter(population == "TP") %>%
+  ggplot(aes(x = PC1, y = PC2, col = program)) +
+  geom_point(size = 2) +
   ylab("PC2") +
   xlab("PC1") +
   scale_color_discrete(guide = guide_legend(title = "Breeding\nProgram")) +
   facet_grid(~ population) +
-  labs(
-    title = "Population Structure of the S2MET Genotypes",
-    subtitle = "The 'M2' program includes genotypes derived\nfrom crosses made among genotypes from the other programs."
-  ) +
+  labs(title = "Population Structure of the S2MET Genotypes",
+       caption = str_c("No. markers = ", ncol(M))) +
   theme_bw())
 
 # Save this
 save_file <- file.path(fig_dir, "population_structure.jpg")
-ggsave(filename = save_file, plot = g_pop_str, width = 7, height = 5)
+ggsave(filename = save_file, plot = g_pop_str, width = 5, height = 5)
 
 ```
 
@@ -289,8 +309,11 @@ Load the data, adjust p-values, and plot
 
 ```{r stability.gwas}
 
+
 # Load the data
-load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
+# load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
+load(file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData"))
+
 
 # Add the model name to the df
 gwas_pheno_fw1 <- gwas_pheno_fw %>% 
@@ -323,7 +346,8 @@ g_qq <- qq_gwas_pheno_fw_adj %>%
   labs(title = "QQ Plot", subtitle = "TP and VP") +
   theme_bw()
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_qq.jpg")
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_qq.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_qq, width = 5, height = 7)
 
 
@@ -341,7 +365,8 @@ g_man_tp <- gwas_pheno_fw_adj %>%
                      values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
   ylab("-log(q)") +
   xlab("Position (Mbp)") +
-  labs(title = "Assocation Analysis", subtitle = "TP") +
+  labs(title = "Assocation Analysis", 
+       caption = str_c("No. markers: ", ncol(M), "; No. lines: ", nrow(M))) +
   theme_bw() +
   theme(
     panel.spacing.x = unit(x = 0, units = "in"),
@@ -349,7 +374,8 @@ g_man_tp <- gwas_pheno_fw_adj %>%
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_man.jpg")
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_man.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_man_tp, width = 7, height = 12)
 
 
@@ -371,7 +397,8 @@ g_man_tp_G <- gwas_pheno_fw_adj %>%
   ylab("-log(q)") +
   xlab("Position (Mbp)") +
   labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
-       caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+       caption = str_c("No. markers: ", ncol(M), "; No. lines: ", nrow(M),
+                       "\nLines indicate significance threshold at FDR = 5% and 10%")) +
   theme_bw() +
   theme(
     panel.spacing.x = unit(x = 0, units = "in"),
@@ -379,7 +406,8 @@ g_man_tp_G <- gwas_pheno_fw_adj %>%
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_Gmodels.jpg")
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_Gmodels.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_Gmodels_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_man_tp_G, width = 10, height = 12)
 
 
@@ -401,7 +429,8 @@ g_man_Gonly <- gwas_pheno_fw_adj %>%
   ylab("-log(q)") +
   xlab("Position (Mbp)") +
   labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
-       caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+       caption = str_c("No. markers: ", ncol(M), "; No. lines: ", nrow(M),
+                       "\nLines indicate significance threshold at FDR = 5% and 10%")) +
   theme_bw() +
   theme(
     panel.spacing.x = unit(x = 0, units = "in"),
@@ -409,7 +438,8 @@ g_man_Gonly <- gwas_pheno_fw_adj %>%
     axis.text.x = element_text(angle = 45, hjust = 1)
   )
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_man_Gonly.jpg")
+# save_file <- file.path(fig_dir, "gwas_pheno_fw_man_Gonly.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_fw_man_Gonly_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 9, dpi = 1000)
 
 

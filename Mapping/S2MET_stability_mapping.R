@@ -27,6 +27,7 @@ alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
 
 # Geno, pheno, and enviro data
 geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
+bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
 env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
 
@@ -46,8 +47,9 @@ result_dir <- file.path(proj_dir, "Results")
 # Load the phenotypic data
 load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # Load the genotypic data
-load(file.path(geno_dir, "S2_genos_mat.RData"))
-load(file.path(geno_dir, "S2_genos_hmp.RData"))
+# load(file.path(geno_dir, "S2_genos_mat.RData"))
+# load(file.path(geno_dir, "S2_genos_hmp.RData"))
+load(file.path(geno_dir, "S2TP_multi_genos.RData"))
 # Load environmental data
 load(file.path(env_var_dir, "environmental_data_compiled.RData"))
 
@@ -60,13 +62,14 @@ tp <- entry_list %>%
   filter(Class == "S2TP") %>% 
   pull(Line)
 
-vp <- entry_list %>% 
-  filter(Class == "S2C1R") %>% 
-  pull(Line)
+# vp <- entry_list %>% 
+#   filter(Class == "S2C1R") %>% 
+#   pull(Line)
 
 # Find the tp and vp that are genotypes
-tp_geno <- intersect(tp, row.names(s2_imputed_mat))
-vp_geno <- intersect(vp, row.names(s2_imputed_mat))
+# tp_geno <- intersect(tp, row.names(s2_imputed_mat))
+tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
+# vp_geno <- intersect(vp, row.names(s2_imputed_mat))
 
 # Define the checks
 checks <- entry_list %>% 
@@ -77,10 +80,13 @@ entries <- entry_list %>%
   pull(Line)
 
 
-# Filter the genotype data and create a data.frame for use in GWAS
-# Note 'select' can take a character vector as an argument.
-genos_use <- s2_imputed_genos %>%
-  select(marker = `rs#`, chrom, pos, tp_geno)
+# # Filter the genotype data and create a data.frame for use in GWAS
+# # Note 'select' can take a character vector as an argument.
+# genos_use <- s2_imputed_genos %>%
+#   select(marker = `rs#`, chrom, pos, tp_geno)
+
+genos_use <- S2TP_imputed_multi_genos_hmp %>%
+  select(rs, chrom, pos, tp_geno)
 
 
 # Load the FW results
@@ -106,7 +112,7 @@ ec_oneyear_fw_use <- S2_MET_ec_oneyear_fw %>%
 
 ec_multiyear_fw_use <- S2_MET_ec_multiyear_fw %>% 
   select(line_name, trait, variable, stability_term, estimate) %>% 
-  distinct() %>% 
+  distinct() %>%  
   filter(line_name %in% tp_geno) %>%
   unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
   spread(trait_variable_term, estimate)
@@ -124,7 +130,8 @@ gwas_pheno_fw <- models %>%
   map(., ~gwas(pheno = pheno_fw_use, geno = genos_use, model = ., n.PC = 2, P3D = TRUE, n.core = n_cores))
 
 
-save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
+# save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
+save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData")
 save("gwas_pheno_fw", file = save_file)
 
 
