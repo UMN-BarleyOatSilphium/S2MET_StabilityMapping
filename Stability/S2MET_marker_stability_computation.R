@@ -27,6 +27,7 @@ alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
 
 # Geno, pheno, and enviro data
 geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
+bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
 env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
 
@@ -46,8 +47,9 @@ result_dir <- file.path(proj_dir, "Results")
 # Load the phenotypic data
 load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # Load the genotypic data
-load(file.path(geno_dir, "S2_genos_mat.RData"))
+# load(file.path(geno_dir, "S2_genos_mat.RData"))
 # load(file.path(geno_dir, "S2_genos_hmp.RData"))
+load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
 # Load environmental data
 load(file.path(env_var_dir, "environmental_data_compiled.RData"))
 
@@ -60,13 +62,14 @@ tp <- entry_list %>%
   filter(Class == "S2TP") %>% 
   pull(Line)
 
-vp <- entry_list %>% 
-  filter(Class == "S2C1R") %>% 
-  pull(Line)
+# vp <- entry_list %>% 
+#   filter(Class == "S2C1R") %>% 
+#   pull(Line)
 
 # Find the tp and vp that are genotypes
-tp_geno <- intersect(tp, row.names(s2_imputed_mat))
-vp_geno <- intersect(vp, row.names(s2_imputed_mat))
+# tp_geno <- intersect(tp, row.names(s2_imputed_mat))
+tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
+# vp_geno <- intersect(vp, row.names(s2_imputed_mat))
 
 # Define the checks
 checks <- entry_list %>% 
@@ -76,13 +79,14 @@ checks <- entry_list %>%
 entries <- entry_list %>% 
   pull(Line)
 
-# Define a list of two populations
-pop_list <- list(pop_all = c(tp_geno, vp_geno),
-                 pop_tp = tp_geno)
+# # Define a list of two populations
+# pop_list <- list(pop_all = c(tp_geno, vp_geno),
+#                  pop_tp = tp_geno)
 
 # Matrix of genotype data for all individuals
 # This must remain intact, and then will be subsetted below
-M <- s2_imputed_mat[c(tp_geno, vp_geno),]
+# M <- s2_imputed_mat[c(tp_geno, vp_geno),]
+M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
 
 # Remove the environments in which the vp was only observed
@@ -90,7 +94,8 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   # filter(!grepl(pattern = "BZI|HTM", x = environment)) %>% # Let this in.
   group_by(trait, environment) %>%
   filter(sum(line_name %in% tp) > 1,
-         line_name %in% c(tp_geno, vp_geno)) %>%
+         # line_name %in% c(tp_geno, vp_geno)) %>%
+         line_name %in% c(tp_geno)) %>%
   ungroup() %>%
   mutate(line_name = as.factor(line_name),
          environment = as.factor(environment))
@@ -98,36 +103,123 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 
 ## Calculate marker effects in each environment for each trait
 ## Do this for the 'all' population and the 'tp' population.
-S2_MET_marker_effect_env_list <- pop_list %>%
-  map(function(pop) {
-    S2_MET_BLUEs_use %>% 
-      filter(line_name %in% pop) %>% 
-      group_by(trait, environment) %>% 
-      do({
-        # Extract the data.frame
-        df <- .
-        
-        # Model frame
-        mf <- model.frame(value ~ line_name, df)
-        # Vector of responses
-        y <- model.response(mf)
-        # Matrix of line names to be used to subset the genotypes
-        Zline <- model.matrix(~ -1 + line_name, mf)
-        
-        # Subset the genotypes
-        M1 <- Zline %*% M
-          
-        # Fit the mixed model
-        fit <- mixed.solve(y = y, Z = M1)
-        
-        # Extract the marker effects and convert to data.frame, then output
-        fit$u %>% 
-          data_frame(marker = names(.), effect = ., beta = fit$beta) }) %>%
-      ungroup() })
+S2_MET_marker_effect_env <- S2_MET_BLUEs_use %>% 
+  group_by(trait, environment) %>% 
+  do({
+    # Extract the data.frame
+    df <- .
+    
+    # Model frame
+    mf <- model.frame(value ~ line_name, df)
+    # Vector of responses
+    y <- model.response(mf)
+    # Matrix of line names to be used to subset the genotypes
+    Zline <- model.matrix(~ -1 + line_name, mf)
+    
+    # Subset the genotypes
+    M1 <- Zline %*% M
+    
+    # Fit the mixed model
+    fit <- mixed.solve(y = y, Z = M1)
+    
+    # Extract the marker effects and convert to data.frame, then output
+    fit$u %>% 
+      data_frame(marker = names(.), effect = ., beta = fit$beta) }) %>%
+  ungroup()
 
-# Save
-save_file <- file.path(result_dir, "S2MET_marker_eff_by_env")
-save("S2_MET_marker_effect_env_list", file = save_file)
+
+### Perform FW regression using the marker effects
+
+## Load the phenotype FW regression results
+load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData" ))
+
+## Combine the marker effects by environment with the environmental effect from
+## FW regression
+S2_MET_marker_env_eff <- left_join(distinct(S2_MET_pheno_fw, trait, environment, h), 
+                                   S2_MET_marker_effect_env, by = c("environment", "trait"))
+
+
+# Map over the list and calculate FW regression slopes and deviations for each
+# of the markers
+marker_stability_coef <- S2_MET_marker_env_eff %>%
+  group_by(trait, marker) %>%
+  do({
+    # Extract the data
+    df <- .
+    
+    # Run the regression and tidy the results
+    fit <- lm(effect ~ h, data = df)
+    fit_tidy <- tidy(fit)
+    
+    # Return coefficients
+    data.frame(
+      b = subset(fit_tidy, term == "h", estimate, drop = T),
+      b_std_error = subset(fit_tidy, term == "h", std.error, drop = T),
+      df = df.residual(fit),
+      delta = mean(resid(fit)^2),
+      row.names = NULL
+    ) }) %>%
+  gather(stability_term, estimate, -trait, -marker, -b_std_error, -df) %>%
+  ungroup()
+
+
+## Add marker information (position, etc.)
+marker_stability_coef_info <- marker_stability_coef %>% 
+  left_join(select(S2TP_imputed_multi_genos_hmp, marker = rs, alleles:cM_pos), ., by = "marker")
+
+# Add the regression coefficients to the marker effects
+S2_MET_marker_eff_pheno_fw <- left_join(S2_MET_marker_env_eff, marker_stability_coef_info, 
+                                        by = c("marker", "trait")) %>%
+  # Rearrange some columns and edit some variables
+  select(., trait, environment, env_effect = h, marker, chrom, alleles, pos, cM_pos, 
+         mar_effect = effect, b_std_error, df, stability_term, estimate)
+
+
+## Save the results
+save_file <- file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData")
+save("S2_MET_marker_effect_env", "S2_MET_marker_eff_pheno_fw", file = save_file)
+
+
+
+
+
+
+
+
+# ## Archive of code to calculate marker stability using the TP or TP + VP
+# 
+# ## Calculate marker effects in each environment for each trait
+# ## Do this for the 'all' population and the 'tp' population.
+# S2_MET_marker_effect_env_list <- pop_list %>%
+#   map(function(pop) {
+#     S2_MET_BLUEs_use %>% 
+#       filter(line_name %in% pop) %>% 
+#       group_by(trait, environment) %>% 
+#       do({
+#         # Extract the data.frame
+#         df <- .
+#         
+#         # Model frame
+#         mf <- model.frame(value ~ line_name, df)
+#         # Vector of responses
+#         y <- model.response(mf)
+#         # Matrix of line names to be used to subset the genotypes
+#         Zline <- model.matrix(~ -1 + line_name, mf)
+#         
+#         # Subset the genotypes
+#         M1 <- Zline %*% M
+#           
+#         # Fit the mixed model
+#         fit <- mixed.solve(y = y, Z = M1)
+#         
+#         # Extract the marker effects and convert to data.frame, then output
+#         fit$u %>% 
+#           data_frame(marker = names(.), effect = ., beta = fit$beta) }) %>%
+#       ungroup() })
+# 
+# # Save
+# save_file <- file.path(result_dir, "S2MET_marker_eff_by_env")
+# save("S2_MET_marker_effect_env_list", file = save_file)
 
 # 
 # 
@@ -197,55 +289,39 @@ save("S2_MET_marker_effect_env_list", file = save_file)
 # save_file <- file.path(result_dir, "S2MET_marker_eff_by_env.RData")
 # save("mar_effect_by_env", file = save_file)
 
+# # Map over the list and calculate FW regression slopes and deviations for each
+# # of the markers
+# marker_stability_coef <- S2_MET_marker_env_eff %>%
+#   map(~group_by(., trait, marker) %>%
+#         do({
+#           # Extract the data
+#           df <- .
+#           
+#           # Run the regression and tidy the results
+#           fit <- lm(effect ~ h, data = df)
+#           fit_tidy <- tidy(fit)
+#           
+#           # Return coefficients
+#           data.frame(
+#             b = subset(fit_tidy, term == "h", estimate, drop = T),
+#             b_std_error = subset(fit_tidy, term == "h", std.error, drop = T),
+#             df = df.residual(fit),
+#             delta = mean(resid(fit)^2),
+#             row.names = NULL
+#           ) }) %>%
+#         gather(stability_term, estimate, -trait, -marker, -b_std_error, -df) %>%
+#         ungroup() )
+# 
+# 
+# ## Add marker information (position, etc.)
+# marker_stability_coef_info <- marker_stability_coef %>% 
+#   map(~left_join(rename(snp_info, marker = `rs#`), ., by = "marker"))
+# 
+# # Add the regression coefficients to the marker effects
+# S2_MET_marker_eff_pheno_fw <- list(S2_MET_marker_env_eff, marker_stability_coef_info) %>%
+#   pmap(~left_join(.x, .y, by = c("marker", "trait"))) %>%
+#   # Rearrange some columns and edit some variables
+#   map(~select(., trait, environment, env_effect = h, marker, chrom, alleles, pos, cM_pos, 
+#               mar_effect = effect, b_std_error, df, stability_term, estimate))
 
 
-### Perform FW regression using the marker effects
-
-## Load the phenotype FW regression results
-load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData" ))
-
-## Combine the marker effects by environment with the environmental effect from
-## FW regression
-S2_MET_marker_env_eff <- list(S2_MET_pheno_fw, S2_MET_marker_effect_env_list) %>% 
-  pmap(~left_join(x = distinct(.x, trait, environment, h), y = .y, by = c("environment", "trait")))
-
-
-# Map over the list and calculate FW regression slopes and deviations for each
-# of the markers
-marker_stability_coef <- S2_MET_marker_env_eff %>%
-  map(~group_by(., trait, marker) %>%
-        do({
-          # Extract the data
-          df <- .
-          
-          # Run the regression and tidy the results
-          fit <- lm(effect ~ h, data = df)
-          fit_tidy <- tidy(fit)
-          
-          # Return coefficients
-          data.frame(
-            b = subset(fit_tidy, term == "h", estimate, drop = T),
-            b_std_error = subset(fit_tidy, term == "h", std.error, drop = T),
-            df = df.residual(fit),
-            delta = mean(resid(fit)^2),
-            row.names = NULL
-          ) }) %>%
-        gather(stability_term, estimate, -trait, -marker, -b_std_error, -df) %>%
-        ungroup() )
-
-
-## Add marker information (position, etc.)
-marker_stability_coef_info <- marker_stability_coef %>% 
-  map(~left_join(rename(snp_info, marker = `rs#`), ., by = "marker"))
-
-# Add the regression coefficients to the marker effects
-S2_MET_marker_eff_pheno_fw <- list(S2_MET_marker_env_eff, marker_stability_coef_info) %>%
-  pmap(~left_join(.x, .y, by = c("marker", "trait"))) %>%
-  # Rearrange some columns and edit some variables
-  map(~select(., trait, environment, env_effect = h, marker, chrom, alleles, pos, cM_pos, 
-              mar_effect = effect, b_std_error, df, stability_term, estimate))
-
-
-## Save the results
-save_file <- file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData")
-save("S2_MET_marker_eff_pheno_fw", file = save_file)

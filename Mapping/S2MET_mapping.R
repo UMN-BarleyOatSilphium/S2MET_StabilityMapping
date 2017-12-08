@@ -6,12 +6,20 @@
 
 # List of packages to load
 # List of packages
-packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP", "pbr")
+packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "parallel")
+
+# packages <- c(packages, "pbr")
+
 
 # Set the directory of the R packages
 package_dir <- NULL
-# package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
+package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
+# package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
+
+## Source the function from github
+source("https://github.com/neyhartj/pbr/blob/master/R/gwas.R")
+source("https://github.com/neyhartj/pbr/blob/master/R/gwas_support.R")
+
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
@@ -30,7 +38,7 @@ bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genoty
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
 env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
 
-geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
+geno_dir <- bopa_geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
 pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
 env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
 
@@ -46,9 +54,8 @@ result_dir <- file.path(proj_dir, "Results")
 # Load the phenotypic data
 load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # Load the genotypic data
-load(file.path(geno_dir, "S2_genos_mat.RData"))
-load(file.path(geno_dir, "S2_genos_hmp.RData"))
-
+# load(file.path(geno_dir, "S2_genos_mat.RData"))
+# load(file.path(geno_dir, "S2_genos_hmp.RData"))
 load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
 # Load environmental data
 load(file.path(env_var_dir, "environmental_data_compiled.RData"))
@@ -105,7 +112,9 @@ phenos_use <- S2_MET_BLUEs_use %>%
 
 
 # Detect cores
-n_cores <- detectCores() 
+n_cores <- detectCores()
+n_cores <- 1
+
 
 ## First conduct GWAS of main effects (no QxE) by using the "K" and "G" models
 models <- c("K", "G", "QK", "QG")

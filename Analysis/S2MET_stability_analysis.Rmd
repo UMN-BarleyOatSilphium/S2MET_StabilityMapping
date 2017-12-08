@@ -39,16 +39,18 @@ n_env <- n_distinct(env)
 n_entries <- n_distinct(S2_MET_BLUEs_use$line_name)
 
 
+# Load fw data
+load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+# Load the marker effect FW results
+load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
+
+
 ```
 
 
-## Finlay-Wilkinson Regression
+### Finlay-Wilkinson Regression
 
-Use the environment means to calculate the FW stability coefficient. Try both a fixed linear model and a mixed model where the regression coefficients are random effects
-
-### Fixed Effect Model
-
-The model for the regression coefficients looks like:
+Use the environment means to calculate the FW stability coefficient. The model for the regression coefficients looks like:
 
 $$
 y_{ij} = \mu + G_i + (1 + b_i)E_j + \epsilon_{ij},
@@ -70,182 +72,130 @@ $$
 
 ## Results
 
-### Summary
+### Phenotypic Stability
+
+#### Summary
 
 What is the range in environmental effects per trait?
 
 ```{r env.range}
 
-# Load fw data
-load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
-
 # Combine df and mark the population
-S2_MET_pheno_fw_comb <- S2_MET_pheno_fw %>%
-  list(., names(.)) %>% 
-  pmap_df(~mutate(.x, population = .y)) %>%
-  mutate(program = as.factor(program))
-
-S2_MET_pheno_fw_comb %>%
-  filter(population == "pop_all") %>%
-  group_by(trait) %>% summarize_at(vars(h), funs(min, max)) %>% 
-  mutate(range = max - min) %>% 
-  select(trait, range)
-
-S2_MET_pheno_fw_comb %>%
-  filter(population == "pop_tp") %>%
-  group_by(trait) %>% summarize_at(vars(h), funs(min, max)) %>% 
-  mutate(range = max - min) %>% 
-  select(trait, range)
-
+S2_MET_pheno_fw %>%
+  mutate(program = as.factor(program)) %>%
+  group_by(trait) %>% 
+  summarize_at(vars(h), funs(min, max)) %>% 
+  mutate(range = max - min)
 
 ```
 
-
-
-### Normal FW Regression
 
 Plot the FW regression (regular version)
 
 This is typical FW regression (i.e. using the phenotypic means)
 
+```{r plot.fw.dist}
+
+# Plot histograms of the regression coefficients and MSEs
+g_pheno_fw_dens <- S2_MET_pheno_fw %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap(trait ~ stability_term, ncol = 2, scales = "free") +
+  xlab("Estimate") +
+  labs(title = "Stability Measures") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+# Just plot linear stability
+g_pheno_fw_dens_b <- S2_MET_pheno_fw %>%
+  filter(stability_term == "b") %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap( ~ trait, ncol = 1) +
+  xlab("Estimate") +
+  labs(title = "Linear Stability") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+# Just plot non-linear stability
+g_pheno_fw_dens_delta <- S2_MET_pheno_fw %>%
+  filter(stability_term == "delta") %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap( ~ trait, ncol = 1, scales = "free") +
+  xlab("Estimate") +
+  labs(title = "Non-Linear Stability") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+# Convert to grobs
+grob_list <- list(b = g_pheno_fw_dens_b, delta = g_pheno_fw_dens_delta) %>%
+  map(ggplotGrob)
+# Cowplot
+g_fw_dist <- cowplot::plot_grid(plotlist = grob_list)
+
+save_file <- file.path(fig_dir, "stability_estimate_distriubtions.jpg")
+ggsave(filename = save_file, plot = g_fw_dist, height = 5.6, width = 5, dpi = 500)
+
+```
+
+
+Plot the stability estimates as lines against g_i vs h_j
+
 ```{r plot.fw}
 
-
-# Plot both the TP and VP
-g_pheno_fw_all <- S2_MET_pheno_fw_comb %>%
+# Plot the normal FW analysis plot (genotype mean against environmental effects)
+g_pheno_fw_b <- S2_MET_pheno_fw %>%
   filter(stability_term == "b") %>%
   ggplot(aes(x = h, y = value, col = program, group = line_name)) + 
   geom_point() + 
   geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
-  facet_wrap(trait ~ population, ncol = 2, scales = "free") +
-  ylab("Genotypic Mean") +
+  facet_wrap(~ trait, ncol = 1, scales = "free") +
+  scale_color_discrete(drop = FALSE, guide = guide_legend(title = "Program", ncol = 1)) +
+  ylab("Genotype Mean") +
   xlab("Environmental Effect") +
-  labs(
-    title = "Finlay-Wilkinson Regression"
-  ) +
+  labs(title = "Linear Phenotypic Stability") +
   # scale_color_brewer(palette = "Set2") +
   theme_bw() +
-  theme(legend.background = element_rect(fill = "grey85", color = NA))
+  theme(legend.position = "right",
+        legend.background = element_rect(fill = "grey85", color = NA))
 
-# Plot just the TP
-g_pheno_fw_tp <- S2_MET_pheno_fw_comb %>%
-  filter(stability_term == "b", population == "pop_tp") %>%
-  ggplot(aes(x = h, y = value, col = program, group = line_name)) + 
-  geom_point() + 
-  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
-  facet_wrap(~ trait, ncol = 2, scales = "free") +
-  scale_color_discrete(drop = FALSE) +
-  ylab("Genotypic Mean") +
-  xlab("Environmental Effect") +
-  labs(
-    title = "Finlay-Wilkinson Regression"
-  ) +
-  # scale_color_brewer(palette = "Set2") +
-  theme_bw() +
-  theme(
-    legend.position = c(0.75, 0.25),
-    legend.background = element_rect(fill = "grey85", color = NA)
-  )
-
-save_file <- file.path(fig_dir, "pheno_fw_all.jpg")
-ggsave(filename = save_file, plot = g_pheno_fw_all, width = 8, height = 6)
-
-save_file <- file.path(fig_dir, "pheno_fw_tp.jpg")
-ggsave(filename = save_file, plot = g_pheno_fw_tp, width = 8, height = 6)
+save_file <- file.path(fig_dir, "pheno_fw_b.jpg")
+ggsave(filename = save_file, plot = g_pheno_fw_b, width = 5, height = 8)
 
 
 ## Subset genotypes to highlight different responses
-pheno_fw_example <- S2_MET_pheno_fw_comb %>%
-  filter(stability_term == "b", population == "pop_tp") %>% 
+pheno_fw_example <- S2_MET_pheno_fw %>%
+  filter(stability_term == "b") %>%
   select(trait, line_name, g, estimate) %>% 
   distinct() %>% 
   group_by(trait) %>% 
   filter(estimate == min(estimate) | estimate == max(estimate) | abs(1 - estimate) == min(abs(1 - estimate)))
 
-g_pheno_fw_tp_example <- S2_MET_pheno_fw_comb %>%
-  filter(stability_term == "b", population == "pop_tp") %>% 
+g_pheno_fw_b_example <- S2_MET_pheno_fw %>%
+  filter(stability_term == "b") %>% 
   select(trait, environment, line_name, value, h) %>% 
   ggplot(aes(x = h, y = value)) + 
   geom_point() + 
   geom_abline(data = pheno_fw_example, aes(intercept = g, slope = estimate, col = line_name), lwd = 1) + 
-  scale_color_discrete(guide = guide_legend(title = "Line Name", ncol = 2)) +
-  facet_wrap(~ trait, ncol = 2, scales = "free") +
+  scale_color_discrete(guide = guide_legend(title = "Line Name", ncol = 1)) +
+  facet_wrap(~ trait, ncol = 1, scales = "free") +
   ylab("Genotype Mean") +
   xlab("Environment Effect") +
-  labs(title = "Range of Environemntal Effects and Example Line Responses") +
+  labs(title = "Example Genotype Responses") +
   theme_bw() +
-  theme(legend.position = c(0.75, 0.25),
-        legend.background = element_rect(fill = "grey85", color = NA) )
+  theme(legend.position = "right",
+        legend.background = element_rect(fill = "grey85", color = NA),
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 10))
 
-save_file <- file.path(fig_dir, "pheno_fw_tp_example.jpg")
-ggsave(filename = save_file, plot = g_pheno_fw_tp_example, width = 8, height = 6)
-
-
-
-```
+save_file <- file.path(fig_dir, "pheno_fw_b_example.jpg")
+ggsave(filename = save_file, plot = g_pheno_fw_b_example, width = 5, height = 8)
 
 
-Plot a histogram of FW stability coefficients
-
-```{r plot.b}
-
-# Plot distrubutions of the stability coefficients
-
-g_stability_dist_all <- S2_MET_pheno_fw_comb %>% 
-  filter(population == "pop_all") %>%
-  select(trait, line_name, program, stability_term, estimate, population) %>%
-  distinct() %>% 
-  ggplot(aes(x = estimate, y = program, fill = program)) +
-  geom_density_ridges() +
-  facet_wrap(trait ~ stability_term, scales = "free_x", ncol = 2) +
-  ylab("") +
-  xlab("Sensitivity Coefficient") +
-  scale_fill_discrete(drop = FALSE) +
-  theme_bw() +
-  theme(axis.text.y = element_blank()) +
-  labs(title = "Distribution of Sensitivity Coefficients by Breeding Program",
-       caption = "The program 'BA' contains one line.")
-
-## Plot just the TP
-g_stability_dist_tp <- S2_MET_pheno_fw_comb %>% 
-  filter(population == "pop_tp") %>%
-  select(trait, line_name, program, stability_term, estimate, population) %>%
-  distinct() %>% 
-  ggplot(aes(x = estimate, y = program, fill = program)) +
-  geom_density_ridges() + facet_wrap(trait ~ stability_term, scales = "free_x", ncol = 2) +
-  ylab("") +
-  xlab("Sensitivity Coefficient") +
-  scale_fill_discrete(drop = FALSE) +
-  theme_bw() +
-  theme(axis.text.y = element_blank()) +
-  labs(title = "Distribution of Sensitivity Coefficients by Breeding Program",
-       caption = "The program 'BA' contains one line.")
-
-## Plot the slope and MSE measures separately to standardize the scale
-g_stability_b_dist_tp <- S2_MET_pheno_fw_comb %>% 
-  filter(population == "pop_tp", stability_term == "b") %>%
-  select(trait, line_name, program, stability_term, estimate, population) %>%
-  distinct() %>% 
-  ggplot(aes(x = estimate, y = program, fill = program)) +
-  geom_density_ridges() + facet_wrap(~ trait, ncol = 1) +
-  ylab("") +
-  xlab("Sensitivity Coefficient") +
-  scale_fill_discrete(drop = FALSE) +
-  theme_bw() +
-  theme(axis.text.y = element_blank()) +
-  labs(title = "Distribution of Sensitivity Coefficients by Breeding Program",
-       caption = "The program 'BA' contains one line.")
-
-
-
-save_file <- file.path(fig_dir, "pheno_fw_dist_all.jpg")
-ggsave(filename = save_file, plot = g_stability_dist_all, width = 6, height = 8)
-
-save_file <- file.path(fig_dir, "pheno_fw_dist_tp.jpg")
-ggsave(filename = save_file, plot = g_stability_dist_tp, width = 6, height = 8)
-
-save_file <- file.path(fig_dir, "pheno_fw_dist_b_tp.jpg")
-ggsave(filename = save_file, plot = g_stability_b_dist_tp, width = 6, height = 8)
 
 ```
 
@@ -254,204 +204,435 @@ Plot the relationship between the genotypic effect and the sensitivity
 
 ```{r plot.corr}
 
-g_stability_and_mean <- S2_MET_pheno_fw_comb %>% 
-  select(trait, line_name, g, stability_term, estimate, program, population) %>% 
+# Calculate the correlation between genotype mean and the stability estimate
+stability_mean_corr <- S2_MET_pheno_fw %>%
+  select(trait, line_name, g, stability_term, estimate, program) %>% 
   distinct() %>%
-  filter(stability_term == "b") %>%
-  group_by(trait, population) %>% 
+  # filter(stability_term == "b") %>%
+  group_by(trait, stability_term) %>% 
   mutate(corr = cor(g, estimate, use = "complete.obs"),
-         corr = str_c("r = ", round(corr, 3))) %>%
+         corr = str_c("r = ", round(corr, 3)))
+
+# Create a list of plot additions
+g_add <- list(geom_point(),
+              geom_smooth(method = "lm", se = FALSE, col = "black"),
+              geom_text(aes(x = Inf, y = -Inf, label = corr, vjust = -1, hjust = 1.2), col = "black"),
+              scale_color_discrete(name = "Program"),
+              ylab("Estimate"),
+              xlab("Genotype Mean"),
+              theme_bw(),
+              theme(legend.background = element_rect(fill = "grey85", color = NA)))
+
+# Plot the linear and non-linear stability together
+g_stability_and_mean <- stability_mean_corr %>%
   ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, col = "black") +
-  geom_text(aes(x = Inf, y = -Inf, label = corr, vjust = -1, hjust = 1), col = "black") +
-  facet_wrap(trait ~ population, scales = "free_x", ncol = 2) +
-  ylab("Sensitivity Coefficient") +
-  xlab("Genotype Mean") +
-  theme_bw() +
-  theme(legend.background = element_rect(fill = "grey85", color = NA)) +
-  labs(title = "Relationship Between Genotype Mean and Sensitivity" )
+  facet_wrap(trait ~ stability_term, scales = "free", ncol = 2) +
+  labs(title = "Relationship Between Genotype Mean and Sensitivity") +
+  g_add
 
 save_file <- file.path(fig_dir, "pheno_fw_stability_mean.jpg")
 ggsave(filename = save_file, plot = g_stability_and_mean, width = 6, height = 8)
 
 
-# Plot just for TP
-g_stability_and_mean_Tp <- S2_MET_pheno_fw_comb %>% 
-  filter(population == "pop_tp") %>%
-  select(trait, line_name, g, stability_term, estimate, program, population) %>% 
-  distinct() %>%
+# Plot just the linear stability
+g_linear_stability_and_mean <- stability_mean_corr %>%
   filter(stability_term == "b") %>%
-  group_by(trait, population) %>% 
-  mutate(corr = cor(g, estimate, use = "complete.obs"),
-         corr = str_c("r = ", round(corr, 3))) %>%
   ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
-  geom_point() +
-  geom_smooth(method = "lm", se = FALSE, col = "black") +
-  geom_text(aes(x = Inf, y = -Inf, label = corr, vjust = -1, hjust = 1), col = "black") +
-  facet_wrap(~ trait, scales = "free_x", ncol = 2) +
-  ylab("Sensitivity Coefficient") +
-  xlab("Genotype Mean") +
-  labs(title = "Relationship Between Genotype Mean and Sensitivity" ) +
+  facet_wrap(~ trait, scales = "free_x", ncol = 1) +
+  labs(title = "Genotype Mean and Linear Stability" ) +
+  theme(legend.position = "right") +
+  g_add
+  
+save_file <- file.path(fig_dir, "pheno_fw_linear_stability_mean.jpg")
+ggsave(filename = save_file, plot = g_linear_stability_and_mean, width = 5, height = 8)
+
+# Plot just the non-linear stability
+g_nonlinear_stability_and_mean <- stability_mean_corr %>%
+  filter(stability_term == "delta") %>%
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
+  facet_wrap(~ trait, scales = "free", ncol = 1) +
+  labs(title = "Genotype Mean and Non-Linear Stability" ) +
+  theme(legend.position = "right") +
+  g_add
+  
+save_file <- file.path(fig_dir, "pheno_fw_nonlinear_stability_mean.jpg")
+ggsave(filename = save_file, plot = g_nonlinear_stability_and_mean, width = 5, height = 8)
+
+
+
+```
+
+
+
+<!-- Plot stability across ECs -->
+
+<!-- ```{r plot.fw.ec} -->
+
+<!-- # Load fw data -->
+<!-- load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData")) -->
+
+<!-- # Combine the populations into one df -->
+<!-- S2_MET_ec_oneyear_fw_comb <- S2_MET_ec_oneyear_fw %>% -->
+<!--   list(., names(.)) %>% -->
+<!--   pmap_df(~mutate(.x, population = .y)) -->
+
+<!-- S2_MET_ec_multiyear_fw_Comb <- S2_MET_ec_multiyear_fw %>% -->
+<!--   list(., names(.)) %>% -->
+<!--   pmap_df(~mutate(.x, population = .y)) -->
+
+<!-- ## Plot the value of each genotype in each environment over the environmental -->
+<!-- ## gradient based on ECs -->
+<!-- g_ec_oneyear_fw_tp <- S2_MET_ec_oneyear_fw_comb %>% -->
+<!--   filter(stability_term == "b", population == "pop_tp") %>% -->
+<!--   ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + -->
+<!--   geom_point() + -->
+<!--   geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) + -->
+<!--   facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") + -->
+<!--   theme_bw() -->
+
+<!-- ## Iterate through the pages and save the graphs -->
+<!-- for (i in seq(n_pages(g_ec_oneyear_fw_tp))) { -->
+<!--   save_file <- file.path(fig_dir, str_c("oneyear_ec_fw_tp", i, ".jpg")) -->
+<!--   g <- g_ec_oneyear_fw_tp + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free") -->
+<!--   ggsave(filename = save_file, plot = g, width = 9, height = 7) -->
+<!-- } -->
+
+
+<!-- # Plot using all data -->
+<!-- g_ec_oneyear_fw_all <- S2_MET_ec_oneyear_fw_comb %>% -->
+<!--   filter(stability_term == "b", population == "pop_all") %>% -->
+<!--   ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + -->
+<!--   geom_point() + -->
+<!--   geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) + -->
+<!--   facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") + -->
+<!--   theme_bw() -->
+
+<!-- ## Iterate through the pages and save the graphs -->
+<!-- for (i in seq(n_pages(g_ec_oneyear_fw_all))) { -->
+<!--   save_file <- file.path(fig_dir, str_c("oneyear_ec_fw_all", i, ".jpg")) -->
+<!--   g <- g_ec_oneyear_fw_all + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free") -->
+<!--   ggsave(filename = save_file, plot = g, width = 9, height = 7) -->
+<!-- } -->
+
+
+
+
+
+<!-- ## Multi-year ECs -->
+<!-- g_ec_multiyear_fw_tp <- S2_MET_ec_multiyear_fw_Comb %>% -->
+<!--   filter(stability_term == "b", population == "pop_tp") %>% -->
+<!--   ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + -->
+<!--   geom_point() + -->
+<!--   geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) + -->
+<!--   facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") + -->
+<!--   theme_bw() -->
+
+<!-- ## Iterate through the pages and save the graphs -->
+<!-- for (i in seq(n_pages(g_ec_multiyear_fw_tp))) { -->
+<!--   save_file <- file.path(fig_dir, str_c("multiyear_ec_fw_tp", i, ".jpg")) -->
+<!--   g <- g_ec_multiyear_fw_tp + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free") -->
+<!--   ggsave(filename = save_file, plot = g, width = 9, height = 7) -->
+<!-- } -->
+
+
+<!-- # Plot using all data -->
+<!-- g_ec_multiyear_fw_all <- S2_MET_ec_multiyear_fw_Comb %>% -->
+<!--   filter(stability_term == "b", population == "pop_all") %>% -->
+<!--   ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + -->
+<!--   geom_point() + -->
+<!--   geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) + -->
+<!--   facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") + -->
+<!--   theme_bw() -->
+
+<!-- ## Iterate through the pages and save the graphs -->
+<!-- for (i in seq(n_pages(g_ec_multiyear_fw_all))) { -->
+<!--   save_file <- file.path(fig_dir, str_c("multiyear_ec_fw_all", i, ".jpg")) -->
+<!--   g <- g_ec_multiyear_fw_all + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free") -->
+<!--   ggsave(filename = save_file, plot = g, width = 9, height = 7) -->
+<!-- } -->
+
+
+
+<!-- ``` -->
+
+
+### Marker Effect Stability
+
+Visualize the correlation across environments of marker effects
+
+```{r mar.eff.cor}
+
+# First set up two-way table of marker effects and environments
+S2_MET_marker_eff_table <- S2_MET_marker_eff_pheno_fw %>% 
+  select(., trait, marker, environment, mar_effect) %>% 
+  distinct() %>% 
+  spread(environment, mar_effect)
+
+# Calculate the pairwise correlation of marker effects between environments
+S2_MET_marker_eff_corr <- S2_MET_marker_eff_table %>%
+  group_by(., trait) %>% 
+  do({
+    df <- .
+    select(df, -trait, -marker) %>% 
+      cor() %>% 
+      as.data.frame() %>% 
+      rownames_to_column("environment1") %>% 
+      gather(environment2, corr, -environment1) })
+
+# Find the minimum and maximum correlation
+S2_MET_marker_eff_corr %>% 
+  filter(., environment1 != environment2) %>% 
+  summarize_at(vars(corr), funs(min, max, mean), na.rm = T)
+
+# Plot
+S2_MET_marker_eff_corr %>% 
+  ggplot(aes(x = environment1, y = environment2, fill = corr)) + 
+  geom_tile() +
+  facet_grid(. ~ trait) +
+  scale_fill_gradient2() +
   theme_bw() +
-  theme(legend.background = element_rect(fill = "grey85", color = NA),
-        legend.position = c(0.75, 0.25))
-  
+  theme(axis.text = element_text(size = 6),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title = element_blank() )
 
-save_file <- file.path(fig_dir, "pheno_fw_stability_mean_tp.jpg")
-ggsave(filename = save_file, plot = g_stability_and_mean_Tp, width = 6, height = 6)
+
+```
+
+
+Plot the distribution of linear and non-linear stability estimates for markers
+
+```{r mar.stab.dist}
+
+# Get the distinct observations of the stability measures
+S2_MET_marker_eff_pheno_fw_uniq <- S2_MET_marker_eff_pheno_fw %>% 
+  select(trait, marker:pos, b_std_error, df, stability_term, estimate) %>% 
+  distinct()
+
+# Plot histograms of the regression coefficients and MSEs
+g_mar_fw_dens <- S2_MET_marker_eff_pheno_fw_uniq %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap(trait ~ stability_term, ncol = 2, scales = "free") +
+  xlab("Estimate") +
+  labs(title = "Marker Effect Stability Measures") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+save_file <- file.path(fig_dir, "marker_stability_estimate_distriubtions.jpg")
+ggsave(filename = save_file, plot = g_mar_fw_dens, height = 6, width = 5)
+
+```
+
+
+
+Plot a genomic map of marker effect stability
+
+
+Determine outlier markers using a 2.5% empirical threshold
+
+```{r mar.stability.b}
+
+# What should be the significance level
+alpha <- 0.05
+
+# For each trait, calculate empirical thresholds for significance
+S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
+  filter(stability_term == "b") %>% 
+  group_by(trait) %>% 
+  # mutate(estimate = scale(estimate)) %>%
+  mutate(lower_perc = quantile(estimate, alpha / 2), 
+         upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
+  ungroup()
+
+# Plot the linear stability over genomic distance
+g_mar_eff_fw_b <- S2_MET_marker_eff_pheno_fw_sig %>% 
+  ggplot(aes(x = pos / 1000000, y = estimate)) + 
+  geom_abline(slope = 0, intercept = 0) +
+  # Threshold lines
+  geom_hline(aes(yintercept = lower_perc), lty = 2) +
+  geom_hline(aes(yintercept = upper_perc), lty = 2) +
+  geom_point() + 
+  facet_grid(trait ~ chrom, space = "free_x", scales = "free", switch = "x") +
+  scale_color_gradient2() +
+  ylab("Stability Coefficient") +
+  xlab("Position (Mbp)") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing.x = unit(x = 0, units = "in")) +
+  labs(title = "Marker Linear Stability/Sensitivity")
+
+# Save
+save_file <- file.path(fig_dir, "marker_linear_stability.jpg")
+ggsave(filename = save_file, plot = g_mar_eff_fw_b, height = 7, width = 9)
+
+
+## Plot non-linear stability
+# For each trait, calculate empirical thresholds for significance
+S2_MET_marker_eff_pheno_fw_delta_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
+  filter(stability_term == "delta") %>% 
+  group_by(trait) %>% 
+  # mutate(estimate = scale(estimate)) %>%
+  mutate(upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
+  ungroup()
+
+g_mar_eff_fw_delta <- S2_MET_marker_eff_pheno_fw_delta_sig %>% 
+  ggplot(aes(x = pos / 1000000, y = estimate)) + 
+  geom_hline(aes(yintercept = upper_perc), lty = 2) +
+  geom_point() + 
+  facet_grid(trait ~ chrom, space = "free_x", scales = "free", switch = "x") +
+  ylab("Stability Coefficient") +
+  xlab("Position (Mbp)") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing.x = unit(x = 0, units = "in"))  +
+  labs(title = "Marker Non-Linear Stability/Sensitivity")
+
+save_file <- file.path(fig_dir, "marker_nonlinear_stability.jpg")
+ggsave(filename = save_file, plot = g_mar_eff_fw_delta, height = 7, width = 9)
 
 
 
 ```
 
 
-### Environmental Covariate Sensitivity
+
+Use the slope estimates and standard errors to perform some hypothesis testing
+
+```{r t.test.stability}
+
+## What happens if we test the marker slopes via a t-test?
+mar_fw_linear_adj <- S2_MET_marker_eff_pheno_fw_uniq  %>%
+  filter(stability_term == "b") %>%
+  group_by(trait) %>%
+  mutate(t_stat = estimate / b_std_error,
+         p_not_zero = 2 * pt(abs(t_stat), df, lower.tail = FALSE),
+         p_gt_zero = pt(t_stat, df, lower.tail = FALSE),
+         p_lt_zero = 1 - p_gt_zero) %>%
+  # Correct for multiple testing
+  mutate_at(vars(starts_with("p_")), funs(qval = qvalue(.)$qvalue)) %>%
+  mutate_at(vars(contains("qval")), funs(neg_log = -log10(.)))
+
+# Combine the stability vs sensitivity p-values
+# gtlt = greater than / less than
+mar_fw_linear_adj_gtlt <- mar_fw_linear_adj %>%
+  mutate(., p_lt_zero_qval_neg_log = -1 * p_lt_zero_qval_neg_log) %>%
+  select(trait:pos, p_gt_zero_qval_neg_log, p_lt_zero_qval_neg_log) %>%
+  gather(test_type, neg_log_p, -trait:-pos) %>%
+  mutate(neg_log10_fdr05 = if_else(test_type == "p_gt_zero_qval_neg_log", -log10(0.05), log10(0.05)),
+         neg_log10_fdr10 = if_else(test_type == "p_gt_zero_qval_neg_log", -log10(0.10), log10(0.10)))
+
+# Plots for both gt and lt
+g_mar_fw_negpos_plots <- mar_fw_linear_adj_gtlt %>%
+  mutate(., chrom = as.factor(chrom)) %>%
+  ggplot(aes(x = pos / 1000000, y = neg_log_p, group = chrom, col = chrom)) +
+  geom_point(aes(shape = test_type)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(guide = FALSE,
+                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  scale_shape_manual(values = c(16,1), labels = c("Sensitivity", "Stability"), name = "Test") +
+  scale_linetype_discrete(guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Test for Marker Linear Stability") +
+  theme_bw() +
+  theme(panel.spacing.x = unit(x = 0, units = "in"),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
 
-Plot stability across ECs
-
-```{r plot.fw.ec}
-
-# Load fw data
-load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
-
-# Combine the populations into one df
-S2_MET_ec_oneyear_fw_comb <- S2_MET_ec_oneyear_fw %>% 
-  list(., names(.)) %>% 
-  pmap_df(~mutate(.x, population = .y))
-
-S2_MET_ec_multiyear_fw_Comb <- S2_MET_ec_multiyear_fw %>% 
-  list(., names(.)) %>% 
-  pmap_df(~mutate(.x, population = .y))
-
-## Plot the value of each genotype in each environment over the environmental
-## gradient based on ECs
-g_ec_oneyear_fw_tp <- S2_MET_ec_oneyear_fw_comb %>% 
-  filter(stability_term == "b", population == "pop_tp") %>%
-  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
-  geom_point() + 
-  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
-  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
-  theme_bw()
-
-## Iterate through the pages and save the graphs
-for (i in seq(n_pages(g_ec_oneyear_fw_tp))) {
-  save_file <- file.path(fig_dir, str_c("oneyear_ec_fw_tp", i, ".jpg"))
-  g <- g_ec_oneyear_fw_tp + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
-  ggsave(filename = save_file, plot = g, width = 9, height = 7)
-}
+save_file <- file.path(fig_dir, "marker_linear_stability_gtle_hyptest.jpg")
+ggsave(filename = save_file, plot = g_mar_fw_negpos_plots, height = 7, width = 9)
 
 
-# Plot using all data
-g_ec_oneyear_fw_all <- S2_MET_ec_oneyear_fw_comb %>% 
-  filter(stability_term == "b", population == "pop_all") %>%
-  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
-  geom_point() + 
-  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
-  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
-  theme_bw()
+## Plot just the test of the slope being different from zero
+mar_fw_linear_adj_nz <- mar_fw_linear_adj %>%
+  mutate(., neg_log10_fdr05 = -log10(0.05), neg_log10_fdr10 = -log10(0.10))
 
-## Iterate through the pages and save the graphs
-for (i in seq(n_pages(g_ec_oneyear_fw_all))) {
-  save_file <- file.path(fig_dir, str_c("oneyear_ec_fw_all", i, ".jpg"))
-  g <- g_ec_oneyear_fw_all + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
-  ggsave(filename = save_file, plot = g, width = 9, height = 7)
-}
+g_mar_fw_nz_plots <- mar_fw_linear_adj_nz %>%
+  mutate(., chrom = as.factor(chrom)) %>%
+  ggplot(aes(x = pos / 1000000, y = p_not_zero_qval_neg_log)) +
+  geom_point() +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_color_manual(guide = FALSE,
+                     values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
+  scale_linetype_discrete(guide = FALSE) +
+  ylab("-log(p)") +
+  xlab("Position (Mbp)") +
+  # labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
+  #      caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+  theme_bw() +
+  theme(
+    panel.spacing.x = unit(x = 0, units = "in"),
+    panel.border = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
 
-
-
-
-
-## Multi-year ECs
-g_ec_multiyear_fw_tp <- S2_MET_ec_multiyear_fw_Comb %>% 
-  filter(stability_term == "b", population == "pop_tp") %>%
-  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
-  geom_point() + 
-  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
-  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
-  theme_bw()
-
-## Iterate through the pages and save the graphs
-for (i in seq(n_pages(g_ec_multiyear_fw_tp))) {
-  save_file <- file.path(fig_dir, str_c("multiyear_ec_fw_tp", i, ".jpg"))
-  g <- g_ec_multiyear_fw_tp + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
-  ggsave(filename = save_file, plot = g, width = 9, height = 7)
-}
-
-
-# Plot using all data
-g_ec_multiyear_fw_all <- S2_MET_ec_multiyear_fw_Comb %>% 
-  filter(stability_term == "b", population == "pop_all") %>%
-  ggplot(aes(x = h_ec, y = value, col = program, group = line_name)) + 
-  geom_point() + 
-  geom_abline(aes(slope = estimate, intercept = g, col = program), alpha = 0.15) +
-  facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = 1, scales = "free") +
-  theme_bw()
-
-## Iterate through the pages and save the graphs
-for (i in seq(n_pages(g_ec_multiyear_fw_all))) {
-  save_file <- file.path(fig_dir, str_c("multiyear_ec_fw_all", i, ".jpg"))
-  g <- g_ec_multiyear_fw_all + facet_grid_paginate(trait ~ variable, nrow = 3, ncol = 5, page = i, scales = "free")
-  ggsave(filename = save_file, plot = g, width = 9, height = 7)
-}
-
+save_file <- file.path(fig_dir, "marker_linear_stability_nz_hyptest.jpg")
+ggsave(filename = save_file, plot = g_mar_fw_nz_plots, height = 7, width = 9)
 
 
 ```
 
+Filter outliers and determine windows
+
+We will continue only with the TP data and for the slope of the regression curve. We define stable marker outliers as those below the lower threshold and sensitive markers as those above the upper threshold
+
+
+
+```{r mar.fw.outlier}
+# Determine the number of stable or sensitive markers for each trait
+mar_eff_fw_b_tp <- S2_MET_marker_eff_pheno_fw_sig$pop_tp %>% 
+  select(trait, marker:cM_pos, estimate:upper_perc) %>% 
+  mutate(outlier = case_when(estimate >= upper_perc ~ "sensitive", 
+                             estimate <= lower_perc ~ "stable", 
+                             TRUE ~ "not_outlier")) %>%
+  distinct()
+
+# Filter the outliers
+mar_stability_outliers <- mar_eff_fw_b_tp %>%
+  filter(outlier != "not_outlier")
+
+# Summarize
+mar_stability_outliers %>% 
+  group_by(trait, chrom, outlier) %>% 
+  summarize(n_outliers = n())
 
 
 
 
+## For each trait, chromosome, and outlier type, create different windows from each
+## outlier SNP to cluster other outlier SNPS
 
+# Vector of window sizes (in bp)
+wind_size_list <- c(50000, 100000, 500000, 1000000, 50000000)
 
-
-Fit a regression model to find significant environmental covariates. The model will use the environmental effect (calculated from BLUEs) as the response, such that:
-
-$$
-h_j = \beta_0 + x_1\beta_1 + x_2\beta_2 + ... + x_p\beta_p
-$$
-
-where $h_j$ is the effect of the *j*th environment, $\beta_0$ is the intercept, and $1, 2, ..., p$ signify the specific environment covariate
-
-```{r stepwise.lm.ec}
-
-# Filter out the 'monthly' variables
-one_year_env_df_filt <- one_year_env_df %>%
-  filter(!str_detect(variable, "^month"))
-
-multi_year_env_df_filt <- multi_year_env_df %>%
-  filter(!str_detect(variable, "^month"))
-
-S2_MET_BLUEs_one_year <- S2_MET_BLUEs_fw %>% 
-  distinct(environment, trait, h) %>%
-  left_join(., one_year_env_df_filt) %>%
-  spread(variable, value) %>%
-  select(-environment) %>%
-  group_by(trait) %>%
-  nest()
-
-# Fit the full model
-S2_MET_BLUEs_one_year_fit <- S2_MET_BLUEs_one_year %>%
-  group_by(trait) %>%
-  do(fit = {
-    df <- unnest(., data)
-    lm(h ~ ., data = select(df, -trait)) })
-
-# Stepwise regression
-S2_MET_BLUEs_one_year_step <- S2_MET_BLUEs_one_year_fit %>% 
-  ungroup() %>% 
-  mutate(step_fit = map(fit, step, direction = "backward", trace = 0)) %>%
-  mutate(terms_to_keep = map(step_fit, terms), 
-         terms_to_keep = map(terms_to_keep, attr, "term.labels"))
-
-# Extract the usable terms
-S2_MET_BLUEs_one_year_terms <- S2_MET_BLUEs_one_year_step %>% 
-  unnest(terms_to_keep)
-
-  
-
+mar_stability_outliers_window <- mar_stability_outliers %>% 
+  split(list(.$trait, .$chrom, .$outlier)) %>% 
+  .[map_dbl(., nrow) > 0] %>%
+  list(., map(., function(df) {
+    # Iterate over window sizes
+    groups <- wind_size_list %>% 
+      map(function(wind_size) {
+        # Create an IRanges object
+        df_iranges <- IRanges(start = df$pos - wind_size, end = df$pos + wind_size)
+        
+        # Reduce and find unique groups
+        df_iranges %>% 
+          reduce() %>% 
+          findOverlaps(query = ., subject = df_iranges) %>% 
+          queryHits() %>%
+          str_c("chr", df$chrom, "_", .) })
+    
+    # Return a data.frame
+    groups %>% 
+      set_names(str_c("window_", wind_size_list)) %>% 
+      as_data_frame() })) %>%
+  pmap_df(~bind_cols(.x, .y))
 
 
 ```

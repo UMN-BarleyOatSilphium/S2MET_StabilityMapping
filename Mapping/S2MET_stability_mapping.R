@@ -49,7 +49,7 @@ load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # Load the genotypic data
 # load(file.path(geno_dir, "S2_genos_mat.RData"))
 # load(file.path(geno_dir, "S2_genos_hmp.RData"))
-load(file.path(geno_dir, "S2TP_multi_genos.RData"))
+load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
 # Load environmental data
 load(file.path(env_var_dir, "environmental_data_compiled.RData"))
 

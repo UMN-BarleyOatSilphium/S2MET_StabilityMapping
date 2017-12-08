@@ -39,7 +39,8 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   ungroup()
 
 # Filter the genotype matrix for the TP only
-M <- s2_imputed_mat[tp_geno,]
+# M <- s2_imputed_mat[tp_geno,]
+M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
 ```
 
@@ -308,8 +309,6 @@ The G and K models were fitted to scan for assocations.
 Load the data, adjust p-values, and plot
 
 ```{r stability.gwas}
-
-
 # Load the data
 # load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
 load(file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData"))
@@ -320,19 +319,16 @@ gwas_pheno_fw1 <- gwas_pheno_fw %>%
   map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
            filter(term == "main_effect"))
 
-## Adjust the p-values
-gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
+# Summarize the q_values
+gwas_pheno_fw_qout <- gwas_pheno_fw1 %>%
   group_by(., trait, model) %>% 
-  mutate(p_adj = p.adjust(p_value, method = "fdr"),
-         q_value = qvalue(p = p_value)$qvalue,
-         neg_log10_fdr05 = -log10(0.05),
-         neg_log10_fdr10 = -log10(0.10)) %>%
-  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
-
+  summarize(q_out = list(qvalue(p_value)))
 
 ## Quality control
+# Inspect the qvalue results
+
 ## QQ plot
-qq_gwas_pheno_fw_adj <- gwas_pheno_fw_adj %>% 
+qq_gwas_pheno_fw <- gwas_pheno_fw1 %>% 
   arrange(., trait, model, p_value) %>% 
   mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
          neg_log10_p_exp = -log10(p_exp))
@@ -349,6 +345,21 @@ g_qq <- qq_gwas_pheno_fw_adj %>%
 # save_file <- file.path(fig_dir, "gwas_pheno_fw_qq.jpg")
 save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_qq, width = 5, height = 7)
+
+
+
+
+
+## Adjust the p-values
+gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
+  group_by(., trait, model) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
+
 
 
 # Manhattan plot - use pagination by trait
@@ -688,7 +699,6 @@ First apply some filters to extract the significant SNPs
 # Load the marker effect stability results
 load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
 
-
 # Filter the main effect QTL and stability QTL for significant/suggestive markers
 gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
   ungroup() %>% 
@@ -699,31 +709,42 @@ gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
   filter(interest != "no_association") %>%
   select(marker:trait, interest)
 
-gwas_fw_interest_assoc <- gwas_pheno_fw_adj$pop_tp %>%
+gwas_fw_interest_assoc <- gwas_pheno_fw_adj %>%
   ungroup() %>% 
   separate(trait, c("trait", "stability_term"), sep = "_") %>%
-  filter(model == "G", stability_term == "b") %>% 
+  filter(model == "G") %>% 
   mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
                               q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
                               TRUE ~ "no_association")) %>%
   filter(interest != "no_association") %>%
-  select(marker:trait, interest)
+  select(marker:stability_term, q_value, local_fdr, interest)
 
 ## Establish an outlier cutoff for marker effect stability
 # What should be the significance level
-alpha <- 0.01
+alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
-marker_eff_pheno_fw_interest <- S2_MET_marker_eff_pheno_fw$pop_tp %>%
+marker_eff_pheno_fw_b_interest <- S2_MET_marker_eff_pheno_fw %>%
   filter(stability_term == "b") %>%
   group_by(trait) %>%
-  mutate(estimate = scale(estimate),
-         lower_perc = quantile(estimate, alpha / 2),
+  mutate(lower_perc = quantile(estimate, alpha / 2),
          upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
   ungroup() %>%
   mutate(test = case_when(estimate <= lower_perc ~ "stable",
                           estimate >= upper_perc ~ "sensitive",
                           TRUE ~ "not_significant")) %>%
+  select(marker, chrom, pos, trait, test) %>%
+  distinct() %>%
+  mutate(interest = "significant") %>%
+  filter(test != "not_significant")
+
+# Do the same for non-linear stability
+marker_eff_pheno_fw_delta_interest <- S2_MET_marker_eff_pheno_fw %>%
+  filter(stability_term == "delta") %>%
+  group_by(trait) %>%
+  mutate(upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
+  ungroup() %>%
+  mutate(test = if_else(estimate >= upper_perc, "sensitive", "not_significant")) %>%
   select(marker, chrom, pos, trait, test) %>%
   distinct() %>%
   mutate(interest = "significant") %>%

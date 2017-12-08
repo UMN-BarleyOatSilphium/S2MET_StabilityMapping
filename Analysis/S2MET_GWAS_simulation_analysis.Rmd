@@ -61,14 +61,14 @@ sim_result_df1 <- sim_result_df %>%
 ## Summarize the marker association results
 mar_assoc_result <- sim_result_df1 %>% 
   filter(datatype == "marker_association") %>% 
-  complete(n_qtl, h2, n_pop, iter, model, sig_level, term, true_false, neg_pos, fill = list(n = 0)) %>%
-  select(-datatype, -core, -n_discovered)
+  complete(n_pop, iter, model, sig_level, term, true_false, neg_pos, fill = list(n = 0)) %>%
+  select(n_qtl, h2, n_pop:neg_pos, n)
 
 ## Summarize qtl discovery results
 qtl_disc_result <- sim_result_df1 %>% 
   filter(datatype == "qtl_discovery") %>%
-  complete(n_qtl, h2, n_pop, iter, model, sig_level, term, fill = list(n = 0, n_discovered = 0)) %>%
-  select(-datatype, -core) %>%
+  complete(n_pop, iter, model, sig_level, term, fill = list(n = 0, n_discovered = 0)) %>%
+  select(n_qtl, h2, n_pop:neg_pos, n, n_discovered) %>%
   # Edit the significance level factors
   mutate(sig_level = str_replace(sig_level, "_sig", ""))
   
@@ -91,7 +91,7 @@ sig_mar_summ <- mar_assoc_result %>%
 false_pos_summ <- mar_assoc_result %>% 
   filter(neg_pos == "positive", true_false == "false") %>% 
   group_by(n_qtl, h2, n_pop, model, sig_level, term) %>% 
-  summarize_at(vars(n), funs(mean, sd, na.rm = TRUE) %>%
+  summarize_at(vars(n), funs(mean, sd), na.rm = TRUE) %>%
   ungroup()
 
 ## False discovery rate (i.e. ratio of false positives to total positives)
@@ -164,7 +164,7 @@ ggsave(filename = save_file, plot = g_sig_mar_qxe, width = 6, height = 6)
 
 
 ## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
-exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.8) | (n_qtl == 100 & h2 == 0.5) ))
 
 g_sig_mar <- sig_mar_summ %>% 
   filter(eval(exp)) %>%
@@ -253,7 +253,7 @@ ggsave(filename = save_file, plot = g_fdr_qxe, width = 6, height = 6)
 
 
 ## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
-exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.8) | (n_qtl == 100 & h2 == 0.5) ))
 
 g_fdr <- power_fdr_summ %>% 
   filter(eval(exp)) %>%
@@ -315,7 +315,7 @@ ggsave(filename = save_file, plot = g_power_qxe, width = 6, height = 6)
 
 
 ## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
-exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.8) | (n_qtl == 100 & h2 == 0.5) ))
 
 g_power <- power_fdr_summ %>% 
   filter(eval(exp)) %>%
@@ -380,7 +380,7 @@ ggsave(filename = save_file, plot = g_disc_qxe, width = 6, height = 6)
 
 
 ## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
-exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.8) | (n_qtl == 100 & h2 == 0.5) ))
 
 g_disc <- qtl_disc_summ %>% 
   filter(eval(exp)) %>%
@@ -448,7 +448,7 @@ ggsave(filename = save_file, plot = g_disc_fdr_qxe, width = 6, height = 6)
 
 
 ## Reduce to the fdr = 0.05 level and the pairs (h2 = 0.8 & n_qtl = 30 and h2 = 0.5 & n_qtl = 100)
-exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.5) | (n_qtl == 100 & h2 == 0.8) ))
+exp <- expression((sig_level == "fdr0.05") & ( (n_qtl == 30 & h2 == 0.8) | (n_qtl == 100 & h2 == 0.5) ))
 
 g_disc_fdr <- qtl_disc_fdr_summ %>% 
   filter(eval(exp)) %>%
