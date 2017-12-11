@@ -192,6 +192,54 @@ where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect inci
 I use population parameters previously determined [P3D; @Kang2010] to speed up the models without reducing detection power significantly. I also the `gwas()` function in my `pbr` package. Models included K and G [@Bernardo2013b; @Chen2016].
 
 
+Load the results and adjust the p-values
+
+```{r load.and.adj}
+
+## Main effect QTL
+load(file.path(result_dir, "S2MET_gwas_genotype_mean.RData"))
+
+# Convert to DF and filter for main effect assocations
+gwas_geno_mean <- gwas_main %>% 
+  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
+  filter(term == "main_effect")
+
+## Adjust the p-values
+gwas_geno_mean_adj <- gwas_geno_mean %>%
+  group_by(., trait, model) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
+  ungroup()
+
+
+# Load the data
+# load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
+load(file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData"))
+
+# Add the model name to the df
+gwas_pheno_fw1 <- gwas_pheno_fw %>% 
+  map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
+           filter(term == "main_effect"))
+
+## Adjust the p-values
+gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
+  group_by(., trait, model) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
+
+
+```
+
+
+
 #### Main Effect QTL
 
 This model was used to detect associations between loci and the genotypic mean of each trait.
@@ -199,25 +247,6 @@ This model was used to detect associations between loci and the genotypic mean o
 Load the data and plot results
 
 ```{r main.effect.qtl}
-
-# Load the data
-load(file.path(result_dir, "S2MET_gwas_genotype_mean.RData"))
-
-# Convert to DF and filter for main effect assocations
-gwas_geno_mean1 <- gwas_tp_main %>% 
-  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
-  filter(term == "main_effect")
-
-## Adjust the p-values
-gwas_geno_mean_adj <- gwas_geno_mean1 %>%
-  group_by(model, trait) %>% 
-  mutate(p_adj = p.adjust(p_value, method = "fdr"),
-         q_value = qvalue(p = p_value)$qvalue,
-         neg_log10_fdr05 = -log10(0.05),
-         neg_log10_fdr10 = -log10(0.10)) %>%
-  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
-
-
 
 ## Quality control
 ## QQ plot
@@ -235,59 +264,63 @@ g_qq <- qq_gwas_geno_mean_adj %>%
   labs(title = "QQ Plot") +
   theme_bw()
 
-save_file <- file.path(fig_dir, "gwas_genotype_mean_qq.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_qq.jpg")
 ggsave(filename = save_file, plot = g_qq, width = 5, height = 7)
 
+
+## Common plot layers for the manhattan plots
+g_add <- list(geom_point(),
+              geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")),
+              geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+              scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7)),
+                                 guide = FALSE),
+              ylab("-log(q)"),
+              xlab("Position"),
+              labs(title = "Genomwide Assocation Analysis for Genotype Mean"),
+              theme_bw(),
+              theme(panel.spacing.x = unit(x = 0, units = "in"),
+                    panel.border = element_blank(),
+                    axis.text.x = element_text(angle = 45, hjust = 1),
+                    legend.position = "bottom"))
 
 ## Manhattan plot
 g_man <- gwas_geno_mean_adj %>%
   mutate(chrom = as.factor(chrom)) %>% 
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
   facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
-  ylab("-log(q)") +
-  xlab("Position") +
-  labs(title = "Assocation Analysis", subtitle = "TP + VP") +
-  theme_bw() +
-  theme(
-    panel.spacing.x = unit(x = 0, units = "in"),
-    panel.border = element_blank()
-  )
+  g_add
 
-save_file <- file.path(fig_dir, "gwas_genotype_mean_man.jpg")
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan.jpg")
 ggsave(filename = save_file, plot = g_man, width = 9, height = 12)
 
 
-## Only consider the G model
-g_man <- gwas_geno_mean_adj %>%
+## Only consider the G models
+g_man_Gmodels <- gwas_geno_mean_adj %>%
+  filter(model %in% c("G", "QG")) %>%
+  mutate(chrom = as.factor(chrom)) %>%
+  # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+  facet_grid(trait + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  g_add
+
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan_Gmodels.jpg")
+ggsave(filename = save_file, plot = g_man_Gmodels, width = 9, height = 10)
+
+
+## Just the G model
+g_man_Gmodel <- gwas_geno_mean_adj %>%
   filter(model == "G") %>%
   mutate(chrom = as.factor(chrom)) %>%
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
   facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  scale_color_manual(guide = FALSE, 
-                     values = set_names(rep(umn_palette("Secondary_Tier2")[c(3,8)], length.out = 7), seq(1, 7))) +
-  scale_linetype_discrete(guide = FALSE) +
-  ylab("-log(q)") +
-  xlab("Position (Mbp)") +
-  labs(title = "Genomewide Assocation Analysis for Train Mean",
-       caption = "G model. n = 175 lines used for association analysis.\nThe bold line indicates the genomewide FDR threshold at 5%; the dashed line at 10%.") +
-  theme_bw() +
-  theme(
-    panel.spacing.x = unit(x = 0, units = "in"),
-    panel.border = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
+  g_add +
+  labs(subtitle = "G Model Only")
 
-save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_man_final.jpg")
-ggsave(filename = save_file, plot = g_man, width = 9, height = 7, dpi = 1000)
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan_Gmodel.jpg")
+ggsave(filename = save_file, plot = g_man_Gmodel, width = 9, height = 8)
+
 
 
 ```
@@ -309,20 +342,6 @@ The G and K models were fitted to scan for assocations.
 Load the data, adjust p-values, and plot
 
 ```{r stability.gwas}
-# Load the data
-# load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
-load(file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData"))
-
-
-# Add the model name to the df
-gwas_pheno_fw1 <- gwas_pheno_fw %>% 
-  map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
-           filter(term == "main_effect"))
-
-# Summarize the q_values
-gwas_pheno_fw_qout <- gwas_pheno_fw1 %>%
-  group_by(., trait, model) %>% 
-  summarize(q_out = list(qvalue(p_value)))
 
 ## Quality control
 # Inspect the qvalue results
@@ -345,20 +364,6 @@ g_qq <- qq_gwas_pheno_fw_adj %>%
 # save_file <- file.path(fig_dir, "gwas_pheno_fw_qq.jpg")
 save_file <- file.path(fig_dir, "gwas_pheno_fw_qq_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_qq, width = 5, height = 7)
-
-
-
-
-
-## Adjust the p-values
-gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
-  group_by(., trait, model) %>% 
-  mutate(p_adj = p.adjust(p_value, method = "fdr"),
-         q_value = qvalue(p = p_value)$qvalue,
-         local_fdr = qvalue(p = p_value)$lfdr,
-         neg_log10_fdr05 = -log10(0.05),
-         neg_log10_fdr10 = -log10(0.10)) %>%
-  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
 
 
 
@@ -455,7 +460,7 @@ ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 9, dpi = 10
 
 
 
-######
+###
 # ### Archived code for testing the TP and TP + VP
 # 
 # # Tranpose the list
@@ -631,20 +636,22 @@ gwas_geno_mean_use <- gwas_geno_mean_adj %>%
   filter(model == "G")  %>%
   select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10)
 
-gwas_pheno_fw_use <- gwas_pheno_fw_adj$pop_tp %>%
+gwas_pheno_fw_use <- gwas_pheno_fw_adj %>%
   ungroup() %>%
   filter(model == "G") %>%
   separate(trait, into = c("trait", "stability"), sep = "_") %>%
-  mutate(stability = if_else(stability == "b", "Type II", "Type III")) %>% 
-  filter(stability == "Type II") %>%
-  select(marker:trait, contains("neg_log10_fdr"), Stability = q_value_neg_log10)
+  mutate(stability = if_else(stability == "b", "linear", "non-linear")) %>% 
+  select(marker:trait, contains("neg_log10_fdr"), stability, Stability = q_value_neg_log10)
 
 # Extract the palette for use in the manhattan plot
+library(neyhart)
 palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)]
 odd_chrom <- seq(1, 7, by = 2)
 
-gwas_use <- full_join(gwas_geno_mean_use, gwas_pheno_fw_use) %>% 
-  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10) %>% 
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(stability == "linear") %>%
+  full_join(gwas_geno_mean_use, .) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
   mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
   mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
                            !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
@@ -665,22 +672,59 @@ g_mean_fw_man <- gwas_use %>%
   facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
   scale_linetype_discrete(guide = FALSE) +
   scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
-                     guide = guide_legend(title = "Test")) +
+                     guide = FALSE) +
   ylab("-log(q)") +
   xlab("Position (Mbp)") +
-  labs(title = "Genomewide Assocation Analyses",
-       caption = "G model. n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
+  labs(title = "Genomewide Assocation Analyses") +
   theme_bw() +
-  theme(
-    panel.spacing.x = unit(x = 0, units = "in"),
-    # panel.border = element_rect(color = "grey75"),
-    panel.border = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.text.y = element_blank()
-  )
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 1, units = "cm"),
+        # panel.border = element_rect(color = "grey75"),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank())
   
-save_file <- file.path(fig_dir, "gwas_mean_and_pheno_fw.jpg")
-ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 7, dpi = 1000)
+save_file <- file.path(fig_dir, "gwas_pheno_mean_and_linear_stability.jpg")
+ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 8)
+
+
+## Plot non-linear stability
+
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(stability == "non-linear") %>%
+  full_join(gwas_geno_mean_use, .) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+## Plot
+g_mean_fw_man <- gwas_use %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
+  geom_hline(yintercept = 0)+
+  geom_point(aes(col = color)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_linetype_discrete(guide = FALSE) +
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
+                     guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analyses") +
+  theme_bw() +
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 1, units = "cm"),
+        # panel.border = element_rect(color = "grey75"),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank())
+
+save_file <- file.path(fig_dir, "gwas_pheno_mean_and_nonlinear_stability.jpg")
+ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 8)
 
 
 ```
@@ -696,9 +740,6 @@ First apply some filters to extract the significant SNPs
 
 ```{r sig.overlap}
 
-# Load the marker effect stability results
-load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
-
 # Filter the main effect QTL and stability QTL for significant/suggestive markers
 gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
   ungroup() %>% 
@@ -707,7 +748,7 @@ gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
                               q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
                               TRUE ~ "no_association")) %>%
   filter(interest != "no_association") %>%
-  select(marker:trait, interest)
+  select(marker:trait, q_value, local_fdr, interest)
 
 gwas_fw_interest_assoc <- gwas_pheno_fw_adj %>%
   ungroup() %>% 
@@ -720,7 +761,7 @@ gwas_fw_interest_assoc <- gwas_pheno_fw_adj %>%
   select(marker:stability_term, q_value, local_fdr, interest)
 
 ## Establish an outlier cutoff for marker effect stability
-# What should be the significance level
+# What should be the significance level?
 alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
@@ -749,6 +790,12 @@ marker_eff_pheno_fw_delta_interest <- S2_MET_marker_eff_pheno_fw %>%
   distinct() %>%
   mutate(interest = "significant") %>%
   filter(test != "not_significant")
+
+# Combine
+marker_eff_pheno_fw_interest <- bind_rows(
+  mutate(marker_eff_pheno_fw_b_interest, stability_term = "b"),
+  mutate(marker_eff_pheno_fw_delta_interest, stability_term = "delta")
+)
 
 
 # ## What happens if we test the marker slopes via a t-test?
@@ -797,8 +844,12 @@ sig_loci_df <- list(list(gwas_mean_interest_assoc, gwas_fw_interest_assoc),
   bind_rows(., marker_eff_pheno_fw_interest) %>%
   # Rename some tests
   mutate(test = case_when(test == "stable" ~ "marker_stability",
-                          test == "sensitive" ~ "marker_sensitivity",
-                          TRUE ~ test))
+                          test == "sensitive" ~ "marker_plasticity",
+                          TRUE ~ test),
+         stability_term = case_when(stability_term == "b" ~ "linear",
+                                    stability_term == "delta" ~ "non-linear",
+                                    TRUE ~ "main_effect")) %>%
+  unite(assoc_test, stability_term, test, sep = "_")
 
 # save
 save_file <- file.path(result_dir, "S2MET_genomewide_test_sig_loci.RData")
@@ -806,7 +857,7 @@ save("sig_loci_df", file = save_file)
 
 ## How many significant or suggestive hits did we get per trait, per test?
 sig_loci_df %>% 
-  group_by(trait, test, interest) %>% 
+  group_by(trait, assoc_test, interest) %>% 
   summarize(n = n()) %>% 
   spread(interest, n) %>% 
   mutate(suggestive = ifelse(is.na(significant), suggestive, significant + suggestive))
@@ -815,12 +866,12 @@ sig_loci_df %>%
 # LD threshold for grouping markers
 LD_threshold <- 0.90
 # Window size for genomic region
-wind_size <- 100000
+wind_size <- 20000
 
 # For each significant locus, find its LD with the next closest significant locus
 sig_loci_df_groups <- sig_loci_df %>% 
   filter(interest == "significant") %>% 
-  group_by(trait, test, chrom) %>%
+  group_by(trait, assoc_test, chrom) %>%
   do({
     # Grab the data
     df <- .
@@ -934,12 +985,11 @@ sig_loci_df_intervals <- sig_loci_df_groups %>%
   mutate(interval_start = min(start), interval_end = max(end)) %>%
   ungroup() %>%
   # Assign a y axis value to each test
-  mutate(test = factor(test, levels = c("mean", "stability", "marker_stability", "marker_sensitivity")),
-         y_level = as.numeric(test))
+  mutate(y_level = as.numeric(as.factor(assoc_test)))
 
 # How many intervals per chromosome, per trait, per test
 sig_loci_df_intervals %>% 
-  group_by(trait, test, chrom) %>% 
+  group_by(trait, assoc_test, chrom) %>% 
   summarize(n_interval = n_distinct(group)) %>% 
   mutate(total_interval = sum(n_interval))
 
@@ -956,7 +1006,7 @@ sig_loci_df_intervals %>%
 g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
   geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
   geom_segment(data = sig_loci_df_intervals, 
-               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = test),
+               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = assoc_test),
                lwd = 2.5, lineend = "round") +
   ylab("") +
   xlab("Position (Mbp)") +

@@ -34,6 +34,7 @@ pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos
 env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
 
 
+  
 # Other directories
 fig_dir <- file.path(proj_dir, "Figures/")
 map_dir <- file.path(proj_dir, "Mapping")
@@ -122,7 +123,6 @@ var_comp_list <- vector("list", length(trts)) %>%
 
 # Iterate over the traits
 for (tr in trts) {
-  
   # Extract the data to use
   pheno_df <- S2_MET_BLUEs_use %>%
     filter(trait == tr) %>%
