@@ -76,9 +76,10 @@ $$
 
 #### Summary
 
-What is the range in environmental effects per trait?
+Ranges and variances
 
 ```{r env.range}
+# What is the range of environmental effects per trait?
 
 # Combine df and mark the population
 S2_MET_pheno_fw %>%
@@ -87,7 +88,21 @@ S2_MET_pheno_fw %>%
   summarize_at(vars(h), funs(min, max)) %>% 
   mutate(range = max - min)
 
+
+# What is the quartile coefficient of dispersion for each measure of stability?
+qcd <- function(x) {
+  quants <- quantile(x = x, probs = c(0.50, 0.75))
+  as.numeric(diff(quants) / sum(quants))
+}
+
+S2_MET_pheno_fw %>% 
+  select(trait, line_name, stability_term, estimate) %>% 
+  group_by(trait, stability_term) %>%
+  summarize(qcd = qcd(estimate))
+
+
 ```
+
 
 
 Plot the FW regression (regular version)
@@ -261,6 +276,58 @@ ggsave(filename = save_file, plot = g_nonlinear_stability_and_mean, width = 5, h
 
 
 ```
+
+
+What is the repeatability of the estimates of linear and non-linear stability?
+
+Use a jackknife resampling procedure to estimate the variation around these estimates
+
+```{r stab.jackknife}
+# Extract the BLUEs to model
+phenos_tomodel <- S2_MET_pheno_fw %>%
+  select(trait, line_name, environment, value, h) %>% 
+  distinct()
+
+# Group by trait
+stability_repeatability <- phenos_tomodel %>% 
+  group_by(trait) %>% 
+  do({
+    # Extract data
+    df <- . 
+    
+    # Vector of environment 
+    envs <- unique(df$environment)
+    
+    # Iterate over environments, remove data from that environment, and fit the FW regression
+    fw_fits <- envs %>%
+      map(~filter(df, environment != .) %>%
+           group_by(line_name) %>% 
+           do(fit = lm(value ~ h, .)) %>% 
+           ungroup() %>% 
+           mutate(b = map_dbl(fit, ~coef(.)[2]), 
+                  delta = map_dbl(fit, ~mean(resid(.)^2))) )
+    
+    # Iterate over line names and test environments
+    fw_coef <- list(fw_fits, envs) %>% 
+      pmap_df(~mutate(.x, test_env = .y))
+    
+    # ANOVA of coefficients
+    fw_coef_rep_fit <- fw_coef %>% 
+      gather(coef, estimate, -line_name, -fit, -test_env) %>% 
+      group_by(coef) %>% 
+      do(fit = lm(estimate ~ line_name, .))
+    
+    fw_coef_rep %>% 
+      ungroup() %>% 
+      mutate(anova = map(fit, ~tidy(anova(.)))) %>% 
+      unnest(anova) %>% 
+      group_by(coef) %>% 
+      summarize(repeatability = meansq[1] / sum(meansq)) })
+
+
+
+```
+
 
 
 

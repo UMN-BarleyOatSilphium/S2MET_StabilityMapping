@@ -20,12 +20,16 @@ library(rrBLUP)
 library(GGally)
 library(IRanges)
 library(qvalue)
+library(purrrlyr)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
 # Load the marker effect FW results
 load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
+# Load the stability results
+load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+
 
 tp_geno <- tp_geno_multi
 
@@ -93,14 +97,95 @@ where $g_i \sim N(0, \mathbf{K}\sigma^2_g)$, $(g_st)_{ij} \sim N(0, \mathbf{K_s}
 
 ```{r prop.gxe1}
 
+# Load the results
+load(file.path(result_dir, "S2MET_pheno_mar_fw_varcomp_GrainYield.RData"))
 
+var_comp_list$GrainYield %>% 
+  bind_rows() %>%
+  by_row(sum, .collate = "cols", .to = "tot_var") %>%
+  mutate_at(vars(-tot_var), funs(prop = . / tot_var)) %>%
+  select(gt_s_prop, gt_ns_prop) %>%
+  gather(term, prop) %>%
+  ggplot(aes(x = prop, fill = term)) +
+  geom_density(alpha = 0.75) +
+  theme_bw()
 
 ```
 
 
 Determine the proportion of genetic variance of phenotypic stability ($V_G$) that is explained by sensitive/stable markers
 
+<!-- This may not work because there are no replications -->
 
+<!-- ```{r prop.g.fw} -->
+
+<!-- # Number of model fittings -->
+<!-- n_iter <- 10 -->
+
+
+<!-- ## Calculate relationship matrices -->
+<!-- # Extract the traits -->
+<!-- trts <- unique(S2_MET_marker_eff_pheno_fw_sig$trait) -->
+<!-- # Create a results list -->
+<!-- var_comp_list <- vector("list", length(trts)) %>% -->
+<!--   set_names(trts) -->
+
+<!-- # Iterate over the traits -->
+<!-- for (tr in trts) { -->
+
+<!--   # Extract the data to use -->
+<!--   pheno_df <- S2_MET_pheno_fw %>%  -->
+<!--     filter(trait == tr, stability_term == "b") %>% -->
+<!--     select(line_name, estimate, b_std_error) %>%  -->
+<!--     distinct() %>% -->
+<!--     droplevels() -->
+
+<!--   # Extract the significant markers -->
+<!--   sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>%  -->
+<!--     filter(trait == tr, significance != "not_significant") -->
+<!--   # Extract non-sig markers -->
+<!--   non_sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>%  -->
+<!--     filter(trait == tr, significance == "not_significant") -->
+
+<!--   ## Subset marker relationship matrices -->
+<!--   sig_mar <- pull(sig_mar_df, marker) -->
+<!--   M_s <- M[,sig_mar] -->
+<!--   K_s <- A.mat(X = M_s, min.MAF = 0, max.missing = 1) -->
+
+<!--   non_sig_mar <- pull(non_sig_mar_df, marker) -->
+<!--   # Sample markers to construct Ks -->
+<!--   non_sig_mar_sample <- replicate(n = n_iter, {sort(sample(non_sig_mar, size = length(sig_mar)))}, simplify = FALSE) -->
+<!--   M_ns_list <- map(non_sig_mar_sample, ~M[,.]) -->
+<!--   K_ns_list <- map(M_ns_list, ~A.mat(X = ., min.MAF = 0, max.missing = 1)) -->
+
+<!--   ## Model frame/matrices -->
+<!--   mf <- model.frame(estimate ~ line_name + b_std_error, pheno_df) -->
+
+<!--   y <- model.response(mf) -->
+
+<!--   # Weights -->
+<!--   R <- solve(diag(mf$b_std_error^2)) -->
+
+<!--   X <- model.matrix(~ 1, mf) -->
+
+<!--   # Random effect of genotypic main effect -->
+<!--   Z_g <- model.matrix(~ -1 + line_name, mf) %>% -->
+<!--     `colnames<-`(., colnames(K_s)) -->
+
+<!--   # Iterate over the list of K_ns matrices -->
+<!--   var_comp_out <- K_ns_list %>% -->
+<!--     map_df(~sommer::mmer(Y = y, X = X, Z = list(g_s = list(Z = Z_g, K = K_s), g_ns = list(Z = Z_g, K = .)), -->
+<!--                          R = list(units = R), silent = T) %>% .$var.comp %>% map_df(unname)) -->
+
+<!--   # Add the output to the list -->
+<!--   var_comp_list[[tr]] <- parallel_out -->
+
+<!-- } # Close the trait for loop -->
+
+
+
+
+<!-- ``` -->
 
 
 
