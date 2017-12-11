@@ -108,7 +108,7 @@ S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
 n_iter <- 100
 # Detect cores
 n_cores <- detectCores()
-
+n_cores <- 8
 
 
 ## Calculate relationship matrices
@@ -117,20 +117,24 @@ K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 # Extract the traits
 trts <- unique(S2_MET_marker_eff_pheno_fw_sig$trait)
-# Create a results list
-var_comp_list <- vector("list", length(trts)) %>%
-  set_names(trts)
 
 # One trait
 trts <- "GrainYield"
 
+# Create a results list
+var_comp_out <- vector("list", length(trts)) %>%
+  set_names(trts)
+
+
 # Iterate over the traits
 for (tr in trts) {
+  
   # Extract the data to use
   pheno_df <- S2_MET_BLUEs_use %>%
     filter(trait == tr) %>%
     # filter(environment %in% sample(unique(.$environment), 5)) %>%
-    droplevels()
+    droplevels() %>%
+    mutate_at(vars(line_name, environment), as.factor)
   
   # Extract the significant markers
   sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>% 
@@ -163,13 +167,16 @@ for (tr in trts) {
   Z_e <- model.matrix(~ -1 + environment, mf)
   
   # Random effect of genotypic main effect
-  Z_g <- model.matrix(~ -1 + line_name, mf)
+  Z_g <- model.matrix(~ -1 + line_name, mf) %>%
+    `colnames<-`(value = str_replace(colnames(.), "line_name", ""))
   
   # Random effect of GxE
-  Z_gt <- model.matrix(~ -1 + gt, mf, drop.unused.levels = T)
+  Z_gt <- model.matrix(~ -1 + gt, mf, drop.unused.levels = T)  %>%
+    `colnames<-`(value = str_replace(colnames(.), "gt", ""))
   
   ## K_s used in the model
-  K_s_use <- sommer::hadamard.prod(x = (Z_g %*% K_s %*% t(Z_g)), y = tcrossprod(Z_e))
+  K_s_use <- sommer::hadamard.prod(x = (Z_g %*% K_s %*% t(Z_g)), y = tcrossprod(Z_e)) %>%
+    `dimnames<-`(value = list(colnames(Z_gt), colnames(Z_gt)))
   
   ## Split the list of K_ns by core
   K_ns_list_core <- split(x = K_ns_list, f = cut(x = seq(n_iter), breaks = n_cores)) %>%
@@ -182,22 +189,29 @@ for (tr in trts) {
     # Calculate the K matrices that will be used
     K_ns_core_use <- vector("list", length(K_ns_core))
     
+    # Empty list of variance component estimates
+    var_comp_list <- vector("list", length(K_ns_core_use))
+    
+    # Iterate over the list of K matrices, calculate the K used in the model,
+    # then fit the model and extract variance components
     for (i in seq_along(K_ns_core_use)) {
-      K_ns_core_use[[i]] <- sommer::hadamard.prod(x = (Z_g %*% K_ns_core[[i]] %*% t(Z_g)), y = tcrossprod(Z_e))
+      K_ns_use <- sommer::hadamard.prod(x = (Z_g %*% K_ns_core[[i]] %*% t(Z_g)), y = tcrossprod(Z_e)) %>%
+        `dimnames<-`(value = list(colnames(Z_gt), colnames(Z_gt)))
+      
+      # Fit the model
+      fit <- sommer::mmer(Y = y, X = X, Z = list(g = list(Z = Z_g, K = K), gt_s = list(Z = Z_gt, K = K_s_use),
+                                                 gt_ns = list(Z = Z_gt, K = K_ns_use)))
+      
+      # Extract variance components and return to the list
+      var_comp_list[[i]] <- map_df(fit$var.comp, unname)
     }
-    
-    
-    # Map over the list
-    var_comp_out <- K_ns_core_use %>%
-      map_df(~sommer::mmer(Y = y, X = X, Z = list(g = list(Z = Z_g, K = K), gt_s = list(Z = Z_gt, K = K_s_use),
-                                               gt_ns = list(Z = Z_gt, K = .))) %>% .$var.comp %>% map_df(unname))
-    
-    return(var_comp_out)
+
+    return(bind_rows(var_comp_list))
     
   }, mc.cores = n_cores)
   
   # Add the output to the list
-  var_comp_list[[tr]] <- parallel_out
+  var_comp_out[[tr]] <- parallel_out
   
 } # Close the trait for loop
 
