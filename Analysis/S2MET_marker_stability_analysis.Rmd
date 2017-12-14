@@ -18,7 +18,7 @@ library(stringr)
 library(readxl)
 library(rrBLUP)
 library(GGally)
-library(IRanges)
+library(GenomicRanges)
 library(qvalue)
 library(purrrlyr)
 
@@ -30,7 +30,6 @@ load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
 # Load the stability results
 load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
 
-
 tp_geno <- tp_geno_multi
 
 # Filter the BLUEs to use
@@ -40,9 +39,15 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
-
+# Quartile coefficient of dispersion statistics
+qcd <- function(x) {
+  quants <- quantile(x = x, probs = c(0.50, 0.75))
+  as.numeric(diff(quants) / sum(quants))
+}
 
 ```
+
+
 
 
 ## Results
@@ -82,6 +87,34 @@ mar_stab_table %>%
   select(-n) %>% 
   spread(significance, prop)
 
+
+# Plot the distributions of marker effect stabilities and show the empirical threholds
+S2_MET_marker_eff_pheno_fw_sig %>% 
+  ggplot(aes(x = estimate, fill = "red")) + 
+  geom_density() + 
+  geom_vline(aes(xintercept = upper_perc)) +
+  geom_vline(aes(xintercept = lower_perc)) + 
+  facet_grid(trait ~ .) + 
+  scale_fill_discrete(guide = FALSE) + 
+  theme_bw()
+
+# Calculate quartile coefficients of dispersion
+S2_MET_marker_eff_pheno_fw_uniq %>% 
+  mutate(stability_term = if_else(stability_term == "b", "linear", "non-linear")) %>%
+  group_by(trait, stability_term) %>% 
+  summarize(qcd = qcd(estimate)) %>%
+  ggplot(aes(x = trait, y = qcd, shape = stability_term)) +
+  geom_point(size = 3) +
+  theme_bw()
+
+# Boxplots
+S2_MET_marker_eff_pheno_fw_uniq %>% 
+  mutate(stability_term = if_else(stability_term == "b", "linear", "non-linear")) %>% 
+  ggplot(aes(x = trait, y = estimate)) + 
+  geom_boxplot() +
+  facet_wrap(~ stability_term, scales = "free_y")
+
+
 ```
 
 
@@ -100,10 +133,17 @@ where $g_i \sim N(0, \mathbf{K}\sigma^2_g)$, $(g_st)_{ij} \sim N(0, \mathbf{K_s}
 # Load the results
 load(file.path(result_dir, "S2MET_pheno_mar_fw_varcomp_GrainYield.RData"))
 
-var_comp_list$GrainYield %>% 
+var_comp_prop <- var_comp_out$GrainYield %>% 
   bind_rows() %>%
   by_row(sum, .collate = "cols", .to = "tot_var") %>%
-  mutate_at(vars(-tot_var), funs(prop = . / tot_var)) %>%
+  mutate_at(vars(-tot_var), funs(prop = . / tot_var))
+  
+# Test if the observations come from the same distribution
+var_comp_prop %>% 
+  summarize(ks_test = ks.test(x = gt_s_prop, gt_ns_prop)$p.value)
+  
+# Plot density plots for each type of marker
+var_comp_prop %>%
   select(gt_s_prop, gt_ns_prop) %>%
   gather(term, prop) %>%
   ggplot(aes(x = prop, fill = term)) +

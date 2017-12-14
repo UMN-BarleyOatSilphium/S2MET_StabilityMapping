@@ -95,9 +95,11 @@ load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
 
 ## Format the FW results as a phenotype data.frame
 ## Filter the lines that only have genotype data
+## Log-transform the `delta` stability estimates
 pheno_fw_use <- S2_MET_pheno_fw %>%
   select(line_name, trait, stability_term, estimate) %>%
   distinct() %>%
+  mutate(estimate = if_else(stability_term == "delta", log(estimate), estimate)) %>%
   filter(line_name %in% tp_geno) %>%
   unite("trait_term", trait, stability_term, sep = "_") %>% 
   spread(trait_term, estimate)
@@ -126,8 +128,14 @@ n_cores <- detectCores()
 models <- c("K", "G", "QK", "QG")
 
 ## GWAS for pheno FW
-gwas_pheno_fw <- models %>%
-  map(., ~gwas(pheno = pheno_fw_use, geno = genos_use, model = ., n.PC = 2, P3D = TRUE, n.core = n_cores))
+gwas_pheno_fw <- vector("list", length(models)) %>%
+  set_names(models)
+
+for (model in models) {
+  gwas_pheno_fw[[model]] <- gwas(pheno = pheno_fw_use, geno = genos_use, model = model, 
+                                 n.PC = 2, P3D = TRUE, n.core = n_cores)
+  
+}
 
 
 # save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")

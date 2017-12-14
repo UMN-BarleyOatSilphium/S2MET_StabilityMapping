@@ -22,6 +22,7 @@ library(FW)
 library(ggridges)
 library(ggforce)
 library(pbr)
+library(qvalue)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
@@ -111,8 +112,18 @@ This is typical FW regression (i.e. using the phenotypic means)
 
 ```{r plot.fw.dist}
 
+# Extract the unique stability coefficients
+S2_MET_pheno_fw_uniq <- S2_MET_pheno_fw %>%
+  select(trait, line_name, g, stability_term, estimate, program) %>% 
+  distinct() 
+
+## Log transform the non-linear stability estimates
+S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
+  group_by(trait) %>% 
+  mutate(estimate = if_else(stability_term == "b", estimate, log(estimate)))
+
 # Plot histograms of the regression coefficients and MSEs
-g_pheno_fw_dens <- S2_MET_pheno_fw %>%
+g_pheno_fw_dens <- S2_MET_pheno_fw_uniq_trans %>%
   ggplot(aes(x = estimate)) + 
   geom_density(aes(fill = "blue")) + 
   facet_wrap(trait ~ stability_term, ncol = 2, scales = "free") +
@@ -123,7 +134,7 @@ g_pheno_fw_dens <- S2_MET_pheno_fw %>%
   theme(axis.title.y = element_blank())
 
 # Just plot linear stability
-g_pheno_fw_dens_b <- S2_MET_pheno_fw %>%
+g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq_trans %>%
   filter(stability_term == "b") %>%
   ggplot(aes(x = estimate)) + 
   geom_density(aes(fill = "blue")) + 
@@ -135,7 +146,7 @@ g_pheno_fw_dens_b <- S2_MET_pheno_fw %>%
   theme(axis.title.y = element_blank())
 
 # Just plot non-linear stability
-g_pheno_fw_dens_delta <- S2_MET_pheno_fw %>%
+g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq_trans %>%
   filter(stability_term == "delta") %>%
   ggplot(aes(x = estimate)) + 
   geom_density(aes(fill = "blue")) + 
@@ -220,10 +231,7 @@ Plot the relationship between the genotypic effect and the sensitivity
 ```{r plot.corr}
 
 # Calculate the correlation between genotype mean and the stability estimate
-stability_mean_corr <- S2_MET_pheno_fw %>%
-  select(trait, line_name, g, stability_term, estimate, program) %>% 
-  distinct() %>%
-  # filter(stability_term == "b") %>%
+stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
   group_by(trait, stability_term) %>% 
   mutate(corr = cor(g, estimate, use = "complete.obs"),
          corr = str_c("r = ", round(corr, 3)))
@@ -472,7 +480,10 @@ Plot the distribution of linear and non-linear stability estimates for markers
 
 # Get the distinct observations of the stability measures
 S2_MET_marker_eff_pheno_fw_uniq <- S2_MET_marker_eff_pheno_fw %>% 
-  select(trait, marker:pos, b_std_error, df, stability_term, estimate) %>% 
+  group_by(trait, marker) %>% 
+  mutate(mean_marker_effect = mean(mar_effect)) %>% 
+  ungroup() %>%
+  select(trait, marker:pos, b_std_error, df, stability_term, estimate, mean_marker_effect) %>% 
   distinct()
 
 # Plot histograms of the regression coefficients and MSEs
@@ -488,6 +499,19 @@ g_mar_fw_dens <- S2_MET_marker_eff_pheno_fw_uniq %>%
 
 save_file <- file.path(fig_dir, "marker_stability_estimate_distriubtions.jpg")
 ggsave(filename = save_file, plot = g_mar_fw_dens, height = 6, width = 5)
+
+
+# Calculate the mean effect per marker and plot that against the regression coefficient
+g_mar_eff_stab <- S2_MET_marker_eff_pheno_fw_uniq %>% 
+  filter(stability_term == "b") %>% 
+  ggplot(aes(x = mean_marker_effect, y = estimate)) + 
+  geom_point() + 
+  facet_grid(~ trait, scales = "free_x") +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "marker_mean_effect_and_stability.jpg")
+ggsave(filename = save_file, plot = g_mar_eff_stab, height = 5, width = 7)
+
 
 ```
 
@@ -566,6 +590,8 @@ ggsave(filename = save_file, plot = g_mar_eff_fw_delta, height = 7, width = 9)
 
 Use the slope estimates and standard errors to perform some hypothesis testing
 
+For the slope estimate, use a t-test to determine if the slope coefficient is significantly greater than 0 (i.e. plastic) or signficantly less than 0 (i.e. stable)
+
 ```{r t.test.stability}
 
 ## What happens if we test the marker slopes via a t-test?
@@ -577,26 +603,42 @@ mar_fw_linear_adj <- S2_MET_marker_eff_pheno_fw_uniq  %>%
          p_gt_zero = pt(t_stat, df, lower.tail = FALSE),
          p_lt_zero = 1 - p_gt_zero) %>%
   # Correct for multiple testing
-  mutate_at(vars(starts_with("p_")), funs(qval = qvalue(.)$qvalue)) %>%
+  mutate_at(vars(starts_with("p_")), funs(qval = qvalue(.)$qvalue, local_fdr = qvalue(.)$lfdr)) %>%
   mutate_at(vars(contains("qval")), funs(neg_log = -log10(.)))
 
 # Combine the stability vs sensitivity p-values
 # gtlt = greater than / less than
 mar_fw_linear_adj_gtlt <- mar_fw_linear_adj %>%
-  mutate(., p_lt_zero_qval_neg_log = -1 * p_lt_zero_qval_neg_log) %>%
-  select(trait:pos, p_gt_zero_qval_neg_log, p_lt_zero_qval_neg_log) %>%
-  gather(test_type, neg_log_p, -trait:-pos) %>%
-  mutate(neg_log10_fdr05 = if_else(test_type == "p_gt_zero_qval_neg_log", -log10(0.05), log10(0.05)),
-         neg_log10_fdr10 = if_else(test_type == "p_gt_zero_qval_neg_log", -log10(0.10), log10(0.10)))
+  # mutate(., p_lt_zero_qval_neg_log = -1 * p_lt_zero_qval_neg_log) %>%
+  select(trait:pos, p_gt_zero_qval_neg_log, p_lt_zero_qval_neg_log, p_gt_zero_local_fdr, p_lt_zero_local_fdr) %>% 
+  # Two sets of gather to tidy the dat
+  gather(test_type, neg_log_q, p_gt_zero_qval_neg_log, p_lt_zero_qval_neg_log) %>% 
+  gather(fdr_test, local_fdr, p_gt_zero_local_fdr, p_lt_zero_local_fdr) %>%
+  filter((fdr_test == "p_gt_zero_local_fdr" & test_type == "p_gt_zero_qval_neg_log") |
+         (fdr_test == "p_lt_zero_local_fdr" & test_type == "p_lt_zero_qval_neg_log")) %>%
+  select(-fdr_test) %>%
+  mutate(test_type = ifelse(test_type == "p_gt_zero_qval_neg_log", "plastic", "stable"),
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10))
+
+# Filter out q-values for significance, then take the top q-value for each chromosome
+top_qs <- mar_fw_linear_adj_gtlt %>%
+  filter(neg_log_q >= neg_log10_fdr05) %>% 
+  group_by(trait, test_type, chrom) %>% 
+  top_n(1, neg_log_q) %>%
+  mutate(local_fdr = str_c("fdr: ", round(local_fdr, 3)))
 
 # Plots for both gt and lt
 g_mar_fw_negpos_plots <- mar_fw_linear_adj_gtlt %>%
+  # filter(trait == "HeadingDate") %>%
   mutate(., chrom = as.factor(chrom)) %>%
-  ggplot(aes(x = pos / 1000000, y = neg_log_p, group = chrom, col = chrom)) +
-  geom_point(aes(shape = test_type)) +
+  ggplot(aes(x = pos / 1000000, y = neg_log_q)) +
+  geom_point(aes(group = chrom, col = chrom)) + 
+  # geom_text(data = top_qs, aes(x = pos / 1000000, y = neg_log_q, label = local_fdr), 
+  #           size = 1.5, nudge_x = -150, check_overlap = T) +
   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  facet_grid(trait + test_type ~ chrom, switch = "x", scales = "free", space = "free_x") +
   scale_color_manual(guide = FALSE,
                      values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7))) +
   scale_shape_manual(values = c(16,1), labels = c("Sensitivity", "Stability"), name = "Test") +
@@ -605,13 +647,14 @@ g_mar_fw_negpos_plots <- mar_fw_linear_adj_gtlt %>%
   xlab("Position (Mbp)") +
   labs(title = "Genomewide Test for Marker Linear Stability") +
   theme_bw() +
-  theme(panel.spacing.x = unit(x = 0, units = "in"),
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 0.5, units = "cm"),
         panel.border = element_blank(),
         axis.text.x = element_text(angle = 45, hjust = 1))
 
 
 save_file <- file.path(fig_dir, "marker_linear_stability_gtle_hyptest.jpg")
-ggsave(filename = save_file, plot = g_mar_fw_negpos_plots, height = 7, width = 9)
+ggsave(filename = save_file, plot = g_mar_fw_negpos_plots, height = 9, width = 9)
 
 
 ## Plot just the test of the slope being different from zero
@@ -633,15 +676,24 @@ g_mar_fw_nz_plots <- mar_fw_linear_adj_nz %>%
   # labs(title = "Genomewide Assocation Analysis for Phenotypic Stability",
   #      caption = "n = 183 lines used to calculate stability coefficients and n = 175 lines used\nfor association analysis. The bold line indicates the genomewide FDR threshold at 5%;\nthe dashed line at 10%.") +
   theme_bw() +
-  theme(
-    panel.spacing.x = unit(x = 0, units = "in"),
-    panel.border = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 0.5, units = "cm"),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 
 save_file <- file.path(fig_dir, "marker_linear_stability_nz_hyptest.jpg")
 ggsave(filename = save_file, plot = g_mar_fw_nz_plots, height = 7, width = 9)
 
+
+
+## Perform a significance test for non-linear stability
+
+
+
+
+# Save the adjusted p-value results from the marker effect stability analysis
+save_file <- file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData")
+save("S2_MET_marker_eff_pheno_fw", "mar_fw_linear_adj_gtlt", file = save_file)
 
 ```
 

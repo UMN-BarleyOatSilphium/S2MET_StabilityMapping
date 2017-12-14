@@ -24,6 +24,7 @@ library(broom)
 library(GenomicRanges)
 library(qvalue)
 library(ggforce)
+library(hierGWAS)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
@@ -43,6 +44,42 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
 ```
+
+## Methods
+
+Convert the markers into a GRanges object, then align with the gene annotations
+
+```{r marker.annotation}
+
+# Load the genome annotation
+ann_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation"
+load(file.path(ann_dir, "barley_genomic_ranges.RData"))
+
+
+# Convert to GRanges object
+snp_info <- S2TP_imputed_multi_genos_hmp %>% 
+  select(rs:cM_pos) %>%
+  separate(alleles, c("ref", "alt"), "/") %>%
+  mutate(chrom = str_c("chr", chrom, "H"))
+  
+
+snp_info_grange <- GRanges(seqnames = snp_info$chrom,
+                           ranges = IRanges(snp_info$pos, snp_info$pos),
+                           ref = snp_info$ref, alt = snp_info$alt, 
+                           cM_pos = snp_info$cM_pos, rs = snp_info$rs)
+
+## Align the markers to the barley granges information
+snp_info_grange_overlap <- barley_grange_list %>% 
+  as.list() %>% 
+  map(~ mergeByOverlaps(query = snp_info_grange, subject = .))
+
+## Save
+save_file <- file.path(result_dir, "snp_genome_annotation.RData")
+save("snp_info_grange_overlap", file = save_file)
+
+```
+
+
 
 
 ## Results
@@ -235,6 +272,12 @@ gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
          neg_log10_fdr10 = -log10(0.10)) %>%
   mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
 
+# Load the marker effect stability test results
+load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
+
+# Load the genome annotation intersections
+load(file.path(result_dir, "snp_genome_annotation.RData"))
+
 
 ```
 
@@ -347,13 +390,13 @@ Load the data, adjust p-values, and plot
 # Inspect the qvalue results
 
 ## QQ plot
-qq_gwas_pheno_fw <- gwas_pheno_fw1 %>% 
+qq_gwas_pheno_fw <- gwas_pheno_fw_adj %>% 
   arrange(., trait, model, p_value) %>% 
   mutate(p_exp = punif(q = seq(0, 1, length.out = n())), 
          neg_log10_p_exp = -log10(p_exp))
 
 # Plot
-g_qq <- qq_gwas_pheno_fw_adj %>%
+g_qq <- qq_gwas_pheno_fw %>%
   ggplot(aes(x = neg_log10_p_exp, y = p_value_neg_log10, col = model)) + 
   geom_point() + 
   geom_abline(slope = 1, intercept = 0) + 
@@ -400,7 +443,7 @@ g_man_tp_G <- gwas_pheno_fw_adj %>%
   filter(model %in% c("G", "QG")) %>%
   separate(trait, into = c("trait", "stability"), sep = "_") %>%
   mutate(chrom = as.factor(chrom),
-         stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+         stability = if_else(stability == "b", "Linear", "Non-Linear")) %>% 
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) +
   geom_point() + 
@@ -432,7 +475,7 @@ g_man_Gonly <- gwas_pheno_fw_adj %>%
   filter(model == "G") %>%
   separate(trait, into = c("trait", "stability"), sep = "_") %>%
   mutate(chrom = as.factor(chrom),
-         stability = if_else(stability == "b", "Type II", "Type III")) %>% 
+         stability = if_else(stability == "b", "Linear", "Non-Linear")) %>% 
   # filter(stability == "Type II") %>%
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
   geom_point() + 
@@ -457,6 +500,541 @@ g_man_Gonly <- gwas_pheno_fw_adj %>%
 # save_file <- file.path(fig_dir, "gwas_pheno_fw_man_Gonly.jpg")
 save_file <- file.path(fig_dir, "gwas_pheno_fw_man_Gonly_multi_geno.jpg")
 ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 9, dpi = 1000)
+
+```
+
+
+Combine the mean and stability manhattan plots into a single graph
+
+
+```{r plot.mean.and.stability}
+
+# Combine mean and stability into a single df.
+# Convert the stability -log10(q) values into their opposites (i.e. *-1)
+gwas_geno_mean_use <- gwas_geno_mean_adj %>%
+  ungroup() %>%
+  filter(model == "G")  %>%
+  select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10)
+
+gwas_pheno_fw_use <- gwas_pheno_fw_adj %>%
+  ungroup() %>%
+  filter(model == "G") %>%
+  separate(trait, into = c("trait", "stability"), sep = "_") %>%
+  mutate(stability = if_else(stability == "b", "linear", "non-linear")) %>% 
+  select(marker:trait, contains("neg_log10_fdr"), stability, Stability = q_value_neg_log10)
+
+# Extract the palette for use in the manhattan plot
+library(neyhart)
+palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)]
+odd_chrom <- seq(1, 7, by = 2)
+
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(stability == "linear") %>%
+  full_join(gwas_geno_mean_use, .) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+# color vector for ggplot
+color_value <- set_names(palette_use, unique(gwas_use$color))
+
+## Plot
+g_mean_fw_man <- gwas_use %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
+  geom_hline(yintercept = 0)+
+  geom_point(aes(col = color)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_linetype_discrete(guide = FALSE) +
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
+                     guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analyses") +
+  theme_bw() +
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 1, units = "cm"),
+        # panel.border = element_rect(color = "grey75"),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank())
+  
+save_file <- file.path(fig_dir, "gwas_pheno_mean_and_linear_stability.jpg")
+ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 8)
+
+
+## Plot non-linear stability
+
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(stability == "non-linear") %>%
+  full_join(gwas_geno_mean_use, .) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+## Plot
+g_mean_fw_man <- gwas_use %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
+  geom_hline(yintercept = 0)+
+  geom_point(aes(col = color)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  scale_linetype_discrete(guide = FALSE) +
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
+                     guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analyses") +
+  theme_bw() +
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 1, units = "cm"),
+        # panel.border = element_rect(color = "grey75"),
+        panel.border = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank())
+
+save_file <- file.path(fig_dir, "gwas_pheno_mean_and_nonlinear_stability.jpg")
+ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 8)
+
+
+```
+
+
+
+
+
+
+#### Intervals around significant associations
+
+First apply some filters to extract the significant SNPs 
+
+```{r sig.overlap}
+
+# Filter the main effect QTL and stability QTL for significant/suggestive markers
+gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
+  ungroup() %>% 
+  filter(model == "G") %>% 
+  mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
+                              q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
+                              TRUE ~ "no_association"),
+         test_type = "mean") %>%
+  filter(interest != "no_association") %>%
+  select(marker:trait, test_type, estimate, q_value, local_fdr, interest) %>%
+  unnest(estimate)
+
+gwas_fw_interest_assoc <- gwas_pheno_fw_adj %>%
+  ungroup() %>% 
+  separate(trait, c("trait", "stability_term"), sep = "_") %>%
+  filter(model == "G") %>% 
+  mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
+                              q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
+                              TRUE ~ "no_association"),
+         test_type = if_else(stability_term == "b", "linear_stability", "nonlinear_stability")) %>%
+  filter(interest != "no_association") %>%
+  select(marker:trait, test_type, estimate, q_value, local_fdr, interest) %>%
+  unnest(estimate)
+
+# Identify markers of interest for marker effect stability
+mar_fw_linear_gtlt_interest <- mar_fw_linear_adj_gtlt %>% 
+  ungroup() %>% 
+  mutate(interest = case_when(neg_log_q >= neg_log10_fdr05 ~ "significant",
+                              neg_log_q >= neg_log10_fdr10 ~ "suggestive",
+                              TRUE ~ "no_association"),
+         q_value = 10^-(neg_log_q),
+         test_type = str_c(test_type, "_marker")) %>%
+  filter(interest != "no_association") %>%
+  select(marker, chrom, pos, trait, test_type, q_value, local_fdr, interest)
+
+# Merge all dfs
+sig_genomic_regions <- bind_rows(
+  gwas_mean_interest_assoc,
+  gwas_fw_interest_assoc,
+  mar_fw_linear_gtlt_interest
+)
+
+
+# save
+save_file <- file.path(result_dir, "S2MET_genomewide_test_sig_loci.RData")
+save("sig_genomic_regions", file = save_file)
+
+
+```
+
+
+
+
+Now build intervals from each significant SNP for future overlap testing
+
+```{r find.overlaps}
+
+## How many significant or suggestive hits did we get per trait, per test?
+n_sig_mar <- sig_genomic_regions %>% 
+  group_by(trait, test_type, interest) %>% 
+  summarize(n = n()) %>% 
+  spread(interest, n) %>% 
+  mutate(suggestive = ifelse(is.na(significant), suggestive, significant + suggestive))
+
+# Plot
+g_sig_mar <- n_sig_mar %>% 
+  gather(interest, n, -trait:-test_type) %>% 
+  ggplot(aes(x = test_type, y = n, fill = interest)) + 
+  geom_col() + 
+  facet_grid(trait ~. , scales = "free_y") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        axis.title.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
+
+save_file <- file.path(fig_dir, "number_significant_markers.jpg")
+ggsave(filename = save_file, plot = g_sig_mar, height = 6, width = 4)
+
+```
+
+
+Establish criteria for clustering signficant SNPs as marking the same region.
+
+Use an LD and distance threshold to create a distance matrix, then hierarchicaly cluster
+
+```{r}
+
+# LD threshold for grouping markers
+LD_threshold <- 0.90
+# Distance threshold for the clustering algorithm
+bp_distance <- 1000000
+
+# Window size for genomic region
+wind_size <- 500000
+
+
+# For each significant locus, find its LD with the next closest significant locus
+sig_genomic_groups <- sig_genomic_regions %>% 
+  filter(interest == "significant") %>%
+  group_by(trait, test_type, chrom) %>%
+  do({
+    # Grab the data
+    df <- .
+
+    # If n_marker == 1, skip
+    if (nrow(df) == 1) {
+      new_grps <- 1
+
+    } else {
+
+      # Subset the genotype matrix and calculate LD
+      LD <- cor(M[,df$marker])^2
+      
+      # Use a moving window approach to cluster SNPs based on LD
+      ## Start with the first group, then try to add the next group
+      ## If markers in the next group are not added, keep the groups
+      ## If markers are added, use this larger group to try to grab the next markers
+      
+      # Create a distance matrix that combines the distance between markers and weighs them by the pairwise LD
+      LD_dist <- as.dist(1 - LD)
+      bp_dist <- dist(df$pos)
+      
+      clust_dist <- LD_dist * bp_dist
+      
+      # Assign new groups based on the clustering
+      new_grps <- hclust(clust_dist) %>% 
+        cutree(h = (1 - LD_threshold) * bp_distance)
+      
+      # If a group is repeated, cluster all SNPs in between those groups
+      new_grps1 <- new_grps
+      for (grp in unique(new_grps)) {
+        
+        # If the group is in the new vetor, proceed
+        if (grp %in% new_grps1) {
+          which_grp <- which(new_grps == grp)
+          new_grps1[seq(from = min(which_grp), to = max(which_grp))] <- grp
+          
+        }
+      }
+      
+    }
+      
+    # Add the groups tp the df
+    df %>% 
+      mutate(new_groups = new_grps1)
+    
+  })
+
+
+    # Add +/- wind size to each position and assign preliminary groups based on overlap
+    df1 <- df %>% 
+      mutate(start = pos - wind_size, end = pos + wind_size,
+             prelim_group = IRanges(start = start, end = end) %>% 
+               findOverlaps(IRanges::reduce(.), .) %>% queryHits() ) %>%
+      as.data.frame()
+    
+
+
+
+# ## Do the same for suggestive regions
+# sug_loci_df_groups <- sig_loci_df %>% 
+#   group_by(trait, test, chrom) %>%
+#   do({
+#     # Grab the data
+#     df <- .
+#     
+#     # Add +/- 250 kbp to each position and assign preliminary groups based on overlap
+#     df1 <- df %>% 
+#       mutate(start = pos - 250000, end = pos + 250000,
+#              prelim_group = IRanges(start = start, end = end) %>% 
+#                findOverlaps(reduce(.), .) %>% queryHits() ) %>%
+#       as.data.frame()
+#     
+#     # If n_marker == 1, skip
+#     if (nrow(df1) == 1) {
+#       new_grps <- 1
+#       
+#     } else {
+#     
+#       # Subset the genotype matrix and calculate LD
+#       LD <- cor(M[,df1$marker])^2
+#       # Extract the 'adjacent' LD
+#       adj_LD <- diag(LD[,-1])
+#       
+#       # Vector of new groups
+#       new_grps <- numeric(nrow(df1))
+#       new_grps[df1$prelim_group == 1] <- 1
+#       
+#       # Iterate over preliminary groups in the df
+#       for (grp in seq(2, max(df1$prelim_group))) {
+#         # Extract the markers in that group plus the markers in previous group
+#         grp_mar <- subset(df1, prelim_group == grp, marker, drop = TRUE)
+#         prev_mar <- subset(df1, prelim_group == grp - 1, marker, drop = TRUE)
+#         
+#         # Are any markers in the previous group in high LD?
+#         any_LD <- colSums(LD[grp_mar, prev_mar, drop = FALSE] >= LD_threshold)
+#         # If any are, merge the groups
+#         if (any(any_LD > 0)) {
+#           # Change the grp number of those groups matching the previous group
+#           # to the new group number
+#           new_grps[new_grps == grp - 1] <- grp
+#           
+#         }
+#         # Add the current grp
+#         new_grps[df1$prelim_group == grp] <- grp
+#       }
+#       
+#     }
+# 
+#       # Add groups to the markers
+#       df1 %>% 
+#         mutate(group = str_c("group", new_grps)) })
+
+
+
+
+
+## Condense groups into intervals
+sig_loci_df_intervals <- sig_loci_df_groups %>%
+  dplyr::rename(group = prelim_group) %>%
+  group_by(trait, assoc_test, chrom, group) %>% 
+  mutate(interval_start = min(start), interval_end = max(end)) %>%
+  ungroup() %>%
+  # Assign a y axis value to each test
+  mutate(y_level = as.numeric(as.factor(assoc_test)))
+
+# How many intervals per chromosome, per trait, per test
+n_intervals <- sig_loci_df_intervals %>% 
+  group_by(trait, assoc_test, chrom) %>% 
+  summarize(n_interval = n_distinct(group)) %>% 
+  mutate(total_interval = sum(n_interval))
+
+# Plot the number of intervals
+n_intervals %>% 
+  ungroup() %>% 
+  complete(trait, assoc_test) %>% 
+  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
+  geom_col(position = "dodge") + 
+  scale_fill_discrete(drop = FALSE)
+
+g_n_interval <- n_intervals %>% 
+  ungroup() %>% 
+  complete(trait, assoc_test) %>% 
+  filter(assoc_test %in% c("main_effect_mean", "linear_stability", "non-linear_stability")) %>%
+  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
+  geom_col(position = "dodge") + 
+  scale_fill_discrete(drop = FALSE) +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "number_significant_intervals.jpg")
+ggsave(filename = save_file, plot = g_n_interval)
+
+# sug_loci_df_intervals <- sug_loci_df_groups %>% 
+#   group_by(group, add = T) %>% 
+#   mutate(interval_start = min(start), interval_end = max(end)) %>%
+#   ungroup() %>%
+#   # Assign a y axis value to each test
+#   mutate(test = factor(test, levels = c("mean", "stability", "stable", "sensitive")),
+#          y_level = as.numeric(test))
+
+## Plot the windows
+g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
+  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
+  geom_segment(data = sig_loci_df_intervals, 
+               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = assoc_test),
+               lwd = 2.5, lineend = "round") +
+  ylab("") +
+  xlab("Position (Mbp)") +
+  ylim(c(0, 10)) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing.x = unit(0, "in"),
+        panel.border = element_rect(color = "grey75"))
+
+save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
+ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
+
+
+# # Plot for suggestive windows
+# g_sug_windows <- ggplot(data = snp_info, aes(x = pos)) + 
+#   geom_segment(aes(x = min(pos), xend = max(pos), y = 0, yend = 0), lwd = 1.5) +
+#   geom_segment(data = sug_loci_df_intervals, 
+#                aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = test),
+#                lwd = 2.5, lineend = "round") +
+#   ylim(c(0, 10)) +
+#   facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+#   theme_bw() +
+#   theme(axis.text.y = element_blank(),
+#         panel.spacing.x = unit(0, "in"),
+#         panel.border = element_rect(color = "grey75"))
+# 
+# save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
+# ggsave(filename = save_file, plot = g_windows, height = 7, width = 9)
+
+
+```
+
+Window overlap
+
+First find the overlap between mean and stability and quantify
+
+Then find the overlap between stability and marker effect stability
+
+```{r window.overlap}
+
+# Convert the mean and stability intervals into GRanges
+sig_intervals <- sig_loci_df_intervals %>% 
+  droplevels() %>% 
+  mutate(seqnames = str_c("chr", .$chrom, "H")) %>%
+  distinct(trait, assoc_test, interval_start, interval_end, seqnames) %>%
+  group_by(assoc_test, trait) %>% 
+  do(range = GRanges(seqnames = .$seqnames, ranges = IRanges(start = .$interval_start, end = .$interval_end))) %>%
+  select(trait, names(.)) %>%
+  spread(assoc_test, range)
+
+
+
+# Write a function that takes two lists of Ranges and finds the overlaps
+# and number of overlaps
+find_overlaps <- function(q, s) {
+  # If null, return NA
+  if (is.null(q) | is.null(s)) {
+    data_frame(hits = list(NA), query_hits = list(NA), subject_hits = list(NA),
+               query_length = as.integer(NA), subject_length = as.integer(NA),
+               query_hits_n = as.integer(NA), subject_hits_n = as.integer(NA))
+               
+    
+  } else {
+    # Find overlaps
+    hits <- suppressWarnings(findOverlaps(query = q, subject = s))
+    # Data frame of query and subject hits, lengths, number
+    data_frame(hits = list(hits)) %>% 
+      mutate(query_hits = map(hits, ~q[queryHits(.),]), 
+             subject_hits = map(hits, ~s[subjectHits(.),]),
+             query_length = length(q), subject_length = length(s)) %>% 
+      mutate_at(vars(contains("_hits")), funs(n = map_dbl(., length)))
+  }
+}
+
+
+
+# For each trait, find the overlaps between mean and stability
+interval_overlaps <- sig_intervals %>% 
+  mutate(mean_linear_stability_overlap = list(main_effect_mean, linear_stability) %>% pmap(find_overlaps),
+         mean_nonlinear_stability_overlap = list(main_effect_mean, `non-linear_stability`) %>% pmap(find_overlaps),
+         linear_stability_mar_linear_stability_overlap = list(linear_stability, linear_marker_stability) %>% pmap(find_overlaps),
+         linear_stability_mar_linear_plasticity_overlap = list(linear_stability, linear_marker_plasticity) %>% pmap(find_overlaps),
+         nonlinear_stability_mar_nonlinear_stability_overlap = list(`non-linear_stability`, `non-linear_marker_plasticity`) %>% pmap(find_overlaps) )
+    
+# Extract the data.frame results
+interval_overlaps_df <- interval_overlaps %>% 
+  select(trait, contains("overlap")) %>% 
+  gather(overlap, data, -trait) %>% 
+  unnest() %>% 
+  # Calculate proportions
+  mutate(prop_query_hits = query_hits_n / query_length,
+         prop_subject_hits = subject_hits_n / subject_length)
+
+interval_overlaps_df %>% select(trait, overlap, query_hits_n:prop_subject_hits)
+
+```
+
+
+Gene models in the intervals
+
+For the main effect and stability intervals, find gene annotations
+
+```{r gene.ann}
+
+# Load a venn diagram package
+library(Vennerable)
+
+# Load the gene annotation data
+load("C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation/barley_genomic_ranges.RData")
+
+# OVerlap the intervals and merge
+sig_intervals_annotation <- sig_intervals %>% 
+  gather(test, range, -trait) %>%
+  filter(!map_lgl(range, is.null)) %>%
+  mutate(overlap = map(range, ~mergeByOverlaps(query = ., subject = barley_grange_list$genes)))
+
+# Save the cross-overlaps and the overlaps with the gene models
+save_file <- file.path(result_dir, "genomewide_analysis_interval_overlaps.RData")
+save("interval_overlaps_df", "sig_intervals_annotation", file = save_file)
+
+  
+# For each trait and test, extact a list if unique gene IDs
+sig_intervals_gene_ids <- sig_intervals_annotation %>% 
+  mutate(gene_ids = map(overlap, ~unique(.$gene_id)))
+
+# Create set lists for Venn diagrams
+sig_intervals_venn <- sig_intervals_gene_ids %>% 
+  group_by(trait) %>% 
+  do(gene_venn = set_names(.$gene_ids, .$test) %>% Venn)
+
+
+# Plot a venn diagram of the gene ID overlaps between mean, stability, and marker stability
+sig_intervals_venn$gene_venn %>% map(~plot(., doWeights = FALSE, type = if_else(NumberOfSets(.) < 4, "circles", "ellipses")))
+
+
+```
+
+
+
+
+
+
+## Appendix
+
+### Archive
+
+```{r}
+
 
 
 
@@ -621,533 +1199,9 @@ ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 9, dpi = 10
 # ggsave(filename = save_file, plot = g_man_tp_typeii, width = 9, height = 7, dpi = 1000)
 
 
-```
-
-
-Combine the mean and stability manhattan plots into a single graph
-
-
-```{r plot.mean.and.stability}
-
-# Combine mean and stability into a single df.
-# Convert the stability -log10(q) values into their opposites (i.e. *-1)
-gwas_geno_mean_use <- gwas_geno_mean_adj %>%
-  ungroup() %>%
-  filter(model == "G")  %>%
-  select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10)
-
-gwas_pheno_fw_use <- gwas_pheno_fw_adj %>%
-  ungroup() %>%
-  filter(model == "G") %>%
-  separate(trait, into = c("trait", "stability"), sep = "_") %>%
-  mutate(stability = if_else(stability == "b", "linear", "non-linear")) %>% 
-  select(marker:trait, contains("neg_log10_fdr"), stability, Stability = q_value_neg_log10)
-
-# Extract the palette for use in the manhattan plot
-library(neyhart)
-palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)]
-odd_chrom <- seq(1, 7, by = 2)
-
-gwas_use <-  gwas_pheno_fw_use %>%
-  filter(stability == "linear") %>%
-  full_join(gwas_geno_mean_use, .) %>% 
-  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
-  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
-  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
-                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
-                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
-                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
-         chrom = as.factor(chrom))
-
-# color vector for ggplot
-color_value <- set_names(palette_use, unique(gwas_use$color))
-
-## Plot
-g_mean_fw_man <- gwas_use %>%
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
-  geom_hline(yintercept = 0)+
-  geom_point(aes(col = color)) +
-  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  scale_linetype_discrete(guide = FALSE) +
-  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
-                     guide = FALSE) +
-  ylab("-log(q)") +
-  xlab("Position (Mbp)") +
-  labs(title = "Genomewide Assocation Analyses") +
-  theme_bw() +
-  theme(panel.spacing.x = unit(x = 0, units = "cm"),
-        panel.spacing.y = unit(x = 1, units = "cm"),
-        # panel.border = element_rect(color = "grey75"),
-        panel.border = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.text.y = element_blank())
-  
-save_file <- file.path(fig_dir, "gwas_pheno_mean_and_linear_stability.jpg")
-ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 8)
-
-
-## Plot non-linear stability
-
-gwas_use <-  gwas_pheno_fw_use %>%
-  filter(stability == "non-linear") %>%
-  full_join(gwas_geno_mean_use, .) %>% 
-  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
-  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
-  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
-                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
-                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
-                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
-         chrom = as.factor(chrom))
-
-## Plot
-g_mean_fw_man <- gwas_use %>%
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
-  geom_hline(yintercept = 0)+
-  geom_point(aes(col = color)) +
-  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
-  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  scale_linetype_discrete(guide = FALSE) +
-  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
-                     guide = FALSE) +
-  ylab("-log(q)") +
-  xlab("Position (Mbp)") +
-  labs(title = "Genomewide Assocation Analyses") +
-  theme_bw() +
-  theme(panel.spacing.x = unit(x = 0, units = "cm"),
-        panel.spacing.y = unit(x = 1, units = "cm"),
-        # panel.border = element_rect(color = "grey75"),
-        panel.border = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.text.y = element_blank())
-
-save_file <- file.path(fig_dir, "gwas_pheno_mean_and_nonlinear_stability.jpg")
-ggsave(filename = save_file, plot = g_mean_fw_man, width = 9, height = 8)
 
 
 ```
-
-
-
-
-
-
-#### Intervals around significant associations
-
-First apply some filters to extract the significant SNPs 
-
-```{r sig.overlap}
-
-# Filter the main effect QTL and stability QTL for significant/suggestive markers
-gwas_mean_interest_assoc <- gwas_geno_mean_adj %>%
-  ungroup() %>% 
-  filter(model == "G") %>% 
-  mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
-                              q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
-                              TRUE ~ "no_association")) %>%
-  filter(interest != "no_association") %>%
-  select(marker:trait, q_value, local_fdr, interest)
-
-gwas_fw_interest_assoc <- gwas_pheno_fw_adj %>%
-  ungroup() %>% 
-  separate(trait, c("trait", "stability_term"), sep = "_") %>%
-  filter(model == "G") %>% 
-  mutate(interest = case_when(q_value_neg_log10 >= neg_log10_fdr05 ~ "significant", 
-                              q_value_neg_log10 >= neg_log10_fdr10 ~ "suggestive", 
-                              TRUE ~ "no_association")) %>%
-  filter(interest != "no_association") %>%
-  select(marker:stability_term, q_value, local_fdr, interest)
-
-## Establish an outlier cutoff for marker effect stability
-# What should be the significance level?
-alpha <- 0.05
-
-# For each trait, calculate empirical thresholds for significance
-marker_eff_pheno_fw_b_interest <- S2_MET_marker_eff_pheno_fw %>%
-  filter(stability_term == "b") %>%
-  group_by(trait) %>%
-  mutate(lower_perc = quantile(estimate, alpha / 2),
-         upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
-  ungroup() %>%
-  mutate(test = case_when(estimate <= lower_perc ~ "stable",
-                          estimate >= upper_perc ~ "sensitive",
-                          TRUE ~ "not_significant")) %>%
-  select(marker, chrom, pos, trait, test) %>%
-  distinct() %>%
-  mutate(interest = "significant") %>%
-  filter(test != "not_significant")
-
-# Do the same for non-linear stability
-marker_eff_pheno_fw_delta_interest <- S2_MET_marker_eff_pheno_fw %>%
-  filter(stability_term == "delta") %>%
-  group_by(trait) %>%
-  mutate(upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
-  ungroup() %>%
-  mutate(test = if_else(estimate >= upper_perc, "sensitive", "not_significant")) %>%
-  select(marker, chrom, pos, trait, test) %>%
-  distinct() %>%
-  mutate(interest = "significant") %>%
-  filter(test != "not_significant")
-
-# Combine
-marker_eff_pheno_fw_interest <- bind_rows(
-  mutate(marker_eff_pheno_fw_b_interest, stability_term = "b"),
-  mutate(marker_eff_pheno_fw_delta_interest, stability_term = "delta")
-)
-
-
-# ## What happens if we test the marker slopes via a t-test?
-# gwas_markeff_pheno_fw_adj <- S2_MET_marker_eff_pheno_fw$pop_tp  %>%
-#   filter(stability_term == "b") %>%
-#   select(trait, marker:cM_pos, b_std_error:estimate) %>% 
-#   distinct() %>%
-#   group_by(trait) %>% 
-#   mutate(t_stat = estimate / b_std_error, 
-#          p_not_zero = 2 * pt(abs(t_stat), df, lower.tail = FALSE), 
-#          p_gt_zero = pt(t_stat, df, lower.tail = FALSE), 
-#          p_lt_zero = 1 - p_gt_zero) %>%
-#   # Correct for multiple testing
-#   mutate_at(vars(starts_with("p_")), funs(qvalue = qvalue(p = .)$qvalue)) %>%
-#   mutate_at(vars(contains("qvalue")), funs(neg_log = -log10(.))) %>%
-#   mutate(neg_log10_fdr05 = -log10(0.05),
-#          neg_log10_fdr10 = -log10(0.10))
-# 
-# # Test plot
-# gwas_markeff_pheno_fw_adj %>% 
-#   ggplot(aes(x = pos)) + 
-#   geom_point(aes(y = p_gt_zero_qvalue_neg_log)) + 
-#   geom_point(aes(y = -p_lt_zero_qvalue_neg_log)) + 
-#   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) + 
-#   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
-#   geom_hline(aes(yintercept = -neg_log10_fdr05, lty = "FDR 05%")) + 
-#   geom_hline(aes(yintercept = -neg_log10_fdr10, lty = "FDR 10%")) +
-#   facet_grid(trait ~ chrom)
-
-
-```
-
-
-
-
-
-
-Now build intervals from each significant SNP for future overlap testing
-
-```{r find.overlaps}
-
-# Group the three dfs together
-sig_loci_df <- list(list(gwas_mean_interest_assoc, gwas_fw_interest_assoc), 
-                    c("mean", "stability")) %>% 
-  pmap_df(~mutate(.x, test = .y)) %>%
-  bind_rows(., marker_eff_pheno_fw_interest) %>%
-  # Rename some tests
-  mutate(test = case_when(test == "stable" ~ "marker_stability",
-                          test == "sensitive" ~ "marker_plasticity",
-                          TRUE ~ test),
-         stability_term = case_when(stability_term == "b" ~ "linear",
-                                    stability_term == "delta" ~ "non-linear",
-                                    TRUE ~ "main_effect")) %>%
-  unite(assoc_test, stability_term, test, sep = "_")
-
-# save
-save_file <- file.path(result_dir, "S2MET_genomewide_test_sig_loci.RData")
-save("sig_loci_df", file = save_file)
-
-## How many significant or suggestive hits did we get per trait, per test?
-sig_loci_df %>% 
-  group_by(trait, assoc_test, interest) %>% 
-  summarize(n = n()) %>% 
-  spread(interest, n) %>% 
-  mutate(suggestive = ifelse(is.na(significant), suggestive, significant + suggestive))
-
-
-# LD threshold for grouping markers
-LD_threshold <- 0.90
-# Window size for genomic region
-wind_size <- 20000
-
-# For each significant locus, find its LD with the next closest significant locus
-sig_loci_df_groups <- sig_loci_df %>% 
-  filter(interest == "significant") %>% 
-  group_by(trait, assoc_test, chrom) %>%
-  do({
-    # Grab the data
-    df <- .
-    
-    # Add +/- wind size to each position and assign preliminary groups based on overlap
-    df1 <- df %>% 
-      mutate(start = pos - wind_size, end = pos + wind_size,
-             prelim_group = IRanges(start = start, end = end) %>% 
-               findOverlaps(IRanges::reduce(.), .) %>% queryHits() ) %>%
-      as.data.frame()
-    
-    # If n_marker == 1, skip
-    if (nrow(df1) == 1) {
-      new_grps <- 1
-      
-    } else {
-    
-      # Subset the genotype matrix and calculate LD
-      LD <- cor(M[,df1$marker])^2
-      # Extract the 'adjacent' LD
-      adj_LD <- diag(LD[,-1])
-      
-      # Vector of new groups
-      new_grps <- numeric(nrow(df1))
-      new_grps[df1$prelim_group == 1] <- 1
-      
-      # Iterate over preliminary groups in the df
-      for (grp in unique(df1$prelim_group)) {
-        # Skip if 1
-        if (grp == 1) next
-        
-        # Extract the markers in that group plus the markers in previous group
-        grp_mar <- subset(df1, prelim_group == grp, marker, drop = TRUE)
-        prev_mar <- subset(df1, prelim_group == grp - 1, marker, drop = TRUE)
-        
-        # Are any markers in the previous group in high LD?
-        any_LD <- colSums(LD[grp_mar, prev_mar, drop = FALSE] >= LD_threshold)
-        # If any are, merge the groups
-        if (any(any_LD > 0)) {
-          # Change the grp number of those groups matching the previous group
-          # to the new group number
-          new_grps[new_grps == grp - 1] <- grp
-          
-        }
-        # Add the current grp
-        new_grps[df1$prelim_group == grp] <- grp
-      }
-      
-    }
-
-      # Add groups to the markers
-      df1 %>% mutate(group = str_c("group", new_grps)) })
-
-# ## Do the same for suggestive regions
-# sug_loci_df_groups <- sig_loci_df %>% 
-#   group_by(trait, test, chrom) %>%
-#   do({
-#     # Grab the data
-#     df <- .
-#     
-#     # Add +/- 250 kbp to each position and assign preliminary groups based on overlap
-#     df1 <- df %>% 
-#       mutate(start = pos - 250000, end = pos + 250000,
-#              prelim_group = IRanges(start = start, end = end) %>% 
-#                findOverlaps(reduce(.), .) %>% queryHits() ) %>%
-#       as.data.frame()
-#     
-#     # If n_marker == 1, skip
-#     if (nrow(df1) == 1) {
-#       new_grps <- 1
-#       
-#     } else {
-#     
-#       # Subset the genotype matrix and calculate LD
-#       LD <- cor(M[,df1$marker])^2
-#       # Extract the 'adjacent' LD
-#       adj_LD <- diag(LD[,-1])
-#       
-#       # Vector of new groups
-#       new_grps <- numeric(nrow(df1))
-#       new_grps[df1$prelim_group == 1] <- 1
-#       
-#       # Iterate over preliminary groups in the df
-#       for (grp in seq(2, max(df1$prelim_group))) {
-#         # Extract the markers in that group plus the markers in previous group
-#         grp_mar <- subset(df1, prelim_group == grp, marker, drop = TRUE)
-#         prev_mar <- subset(df1, prelim_group == grp - 1, marker, drop = TRUE)
-#         
-#         # Are any markers in the previous group in high LD?
-#         any_LD <- colSums(LD[grp_mar, prev_mar, drop = FALSE] >= LD_threshold)
-#         # If any are, merge the groups
-#         if (any(any_LD > 0)) {
-#           # Change the grp number of those groups matching the previous group
-#           # to the new group number
-#           new_grps[new_grps == grp - 1] <- grp
-#           
-#         }
-#         # Add the current grp
-#         new_grps[df1$prelim_group == grp] <- grp
-#       }
-#       
-#     }
-# 
-#       # Add groups to the markers
-#       df1 %>% 
-#         mutate(group = str_c("group", new_grps)) })
-
-## Condense groups into intervals
-sig_loci_df_intervals <- sig_loci_df_groups %>% 
-  group_by(group, add = T) %>% 
-  mutate(interval_start = min(start), interval_end = max(end)) %>%
-  ungroup() %>%
-  # Assign a y axis value to each test
-  mutate(y_level = as.numeric(as.factor(assoc_test)))
-
-# How many intervals per chromosome, per trait, per test
-sig_loci_df_intervals %>% 
-  group_by(trait, assoc_test, chrom) %>% 
-  summarize(n_interval = n_distinct(group)) %>% 
-  mutate(total_interval = sum(n_interval))
-
-
-# sug_loci_df_intervals <- sug_loci_df_groups %>% 
-#   group_by(group, add = T) %>% 
-#   mutate(interval_start = min(start), interval_end = max(end)) %>%
-#   ungroup() %>%
-#   # Assign a y axis value to each test
-#   mutate(test = factor(test, levels = c("mean", "stability", "stable", "sensitive")),
-#          y_level = as.numeric(test))
-
-## Plot the windows
-g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
-  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
-  geom_segment(data = sig_loci_df_intervals, 
-               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = assoc_test),
-               lwd = 2.5, lineend = "round") +
-  ylab("") +
-  xlab("Position (Mbp)") +
-  ylim(c(0, 10)) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
-  theme_bw() +
-  theme(axis.text.y = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.spacing.x = unit(0, "in"),
-        panel.border = element_rect(color = "grey75"))
-
-save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
-ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
-
-
-# # Plot for suggestive windows
-# g_sug_windows <- ggplot(data = snp_info, aes(x = pos)) + 
-#   geom_segment(aes(x = min(pos), xend = max(pos), y = 0, yend = 0), lwd = 1.5) +
-#   geom_segment(data = sug_loci_df_intervals, 
-#                aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = test),
-#                lwd = 2.5, lineend = "round") +
-#   ylim(c(0, 10)) +
-#   facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
-#   theme_bw() +
-#   theme(axis.text.y = element_blank(),
-#         panel.spacing.x = unit(0, "in"),
-#         panel.border = element_rect(color = "grey75"))
-# 
-# save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
-# ggsave(filename = save_file, plot = g_windows, height = 7, width = 9)
-
-
-```
-
-Window overlap
-
-First find the overlap between mean and stability and quantify
-
-Then find the overlap between stability and marker effect stability
-
-```{r window.overlap}
-
-# Convert the mean and stability intervals into GRanges
-sig_intervals <- sig_loci_df_intervals %>% 
-  droplevels() %>% 
-  mutate(seqnames = str_c("chr", .$chrom, "H")) %>%
-  distinct(trait, test, interval_start, interval_end, seqnames) %>%
-  group_by(test, trait) %>% 
-  do(range = GRanges(seqnames = .$seqnames, ranges = IRanges(start = .$interval_start, end = .$interval_end))) %>%
-  select(trait, names(.)) %>%
-  spread(test, range)
-
-
-
-# Write a function that takes two lists of Ranges and finds the overlaps
-# and number of overlaps
-find_overlaps <- function(q, s) {
-  # If null, return NA
-  if (is.null(q) | is.null(s)) {
-    data_frame(hits = list(NA), query_hits = list(NA), subject_hits = list(NA),
-               query_length = as.integer(NA), subject_length = as.integer(NA),
-               query_hits_n = as.integer(NA), subject_hits_n = as.integer(NA))
-               
-    
-  } else {
-    # Find overlaps
-    hits <- suppressWarnings(findOverlaps(query = q, subject = s))
-    # Data frame of query and subject hits, lengths, number
-    data_frame(hits = list(hits)) %>% 
-      mutate(query_hits = map(hits, ~q[queryHits(.),]), 
-             subject_hits = map(hits, ~s[subjectHits(.),]),
-             query_length = length(q), subject_length = length(s)) %>% 
-      mutate_at(vars(contains("_hits")), funs(n = map_dbl(., length)))
-  }
-}
-
-
-
-# For each trait, find the overlaps between mean and stability
-interval_overlaps <- sig_intervals %>% 
-  mutate(mean_stability_overlap = list(mean, stability) %>% pmap(find_overlaps),
-         stability_mar_stability_overlap = list(stability, marker_stability) %>% pmap(find_overlaps),
-         stability_mar_sensitivity_overlap = list(stability, marker_sensitivity) %>% pmap(find_overlaps),
-         mar_stability_mar_sensitivity_overlap = list(marker_stability, marker_sensitivity) %>% pmap(find_overlaps) )
-    
-# Extract the data.frame results
-interval_overlaps_df <- interval_overlaps %>% 
-  select(trait, contains("overlap")) %>% 
-  gather(overlap, data, -trait) %>% 
-  unnest() %>% 
-  # Calculate proportions
-  mutate(prop_query_hits = query_hits_n / query_length,
-         prop_subject_hits = subject_hits_n / subject_length)
-
-interval_overlaps_df %>% select(trait, overlap, query_hits_n:prop_subject_hits)
-
-```
-
-
-Gene models in the intervals
-
-For the main effect and stability intervals, find gene annotations
-
-```{r gene.ann}
-
-# Load a venn diagram package
-library(Vennerable)
-
-# Load the gene annotation data
-load("C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation/barley_genomic_ranges.RData")
-
-# OVerlap the intervals and merge
-sig_intervals_annotation <- sig_intervals %>% 
-  gather(test, range, -trait) %>%
-  filter(!map_lgl(range, is.null)) %>%
-  mutate(overlap = map(range, ~mergeByOverlaps(query = ., subject = barley_grange_list$genes)))
-
-# Save the cross-overlaps and the overlaps with the gene models
-save_file <- file.path(result_dir, "genomewide_analysis_interval_overlaps.RData")
-save("interval_overlaps_df", "sig_intervals_annotation", file = save_file)
-
-  
-# For each trait and test, extact a list if unique gene IDs
-sig_intervals_gene_ids <- sig_intervals_annotation %>% 
-  mutate(gene_ids = map(overlap, ~unique(.$gene_id)))
-
-# Create set lists for Venn diagrams
-sig_intervals_venn <- sig_intervals_gene_ids %>% 
-  group_by(trait) %>% 
-  do(gene_venn = set_names(.$gene_ids, .$test) %>% Venn)
-
-
-# Plot a venn diagram of the gene ID overlaps between mean, stability, and marker stability
-sig_intervals_venn$gene_venn %>% map(~plot(., doWeights = FALSE, type = if_else(NumberOfSets(.) < 4, "circles", "ellipses")))
-
-
-```
-
-
-
-
 
 
 
