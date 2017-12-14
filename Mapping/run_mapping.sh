@@ -9,7 +9,9 @@
 # Change the working directory
 cd /panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/Mapping
 
-module load R/3.4.0
+#module load R/3.4.0
+module load R/3.2.0_intel_mkl
+
 
 # Clustering and prediction
 Rscript S2MET_mapping.R

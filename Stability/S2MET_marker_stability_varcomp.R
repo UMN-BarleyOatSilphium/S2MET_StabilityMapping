@@ -108,7 +108,7 @@ S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
 n_iter <- 100
 # Detect cores
 n_cores <- detectCores()
-n_cores <- 8
+#n_cores <- 4
 
 
 ## Calculate relationship matrices
@@ -119,7 +119,7 @@ K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 trts <- unique(S2_MET_marker_eff_pheno_fw_sig$trait)
 
 # One trait
-trts <- "GrainYield"
+trts <- "HeadingDate"
 
 # Create a results list
 var_comp_out <- vector("list", length(trts)) %>%
@@ -211,10 +211,23 @@ for (tr in trts) {
   }, mc.cores = n_cores)
   
   # Add the output to the list
-  var_comp_out[[tr]] <- parallel_out
+  var_comp_out[[tr]] <- bind_rows(parallel_out)
   
 } # Close the trait for loop
 
-# Save the data
+
+# Save the results
+## Determine if a file is already there
+# Save the results
+## Determine if a file is already there
 save_file <- file.path(result_dir, "S2MET_pheno_mar_fw_varcomp.RData")
-save("var_comp_list", file = save_file)
+present <- file.exists(save_file)
+
+# Use while loop to edit the file until it does not exist
+i = 1
+while(present) {
+  save_file <- file.path(result_dir, str_c("S2MET_pheno_mar_fw_varcomp.RData", i, ".RData"))
+  present <- file.exists(save_file)
+}
+
+save("var_comp_out", file = save_file)
