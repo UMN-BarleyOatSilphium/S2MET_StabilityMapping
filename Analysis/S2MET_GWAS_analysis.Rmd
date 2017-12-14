@@ -24,7 +24,7 @@ library(broom)
 library(GenomicRanges)
 library(qvalue)
 library(ggforce)
-library(hierGWAS)
+# library(hierGWAS)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
@@ -35,15 +35,18 @@ load(file.path(geno_dir, "S2_genos_hmp.RData"))
 
 # Filter environments for those in which the TP was observed
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  group_by(trait, environment) %>%
-  filter(sum(line_name %in% tp) > 1) %>%
-  ungroup()
+  filter(line_name %in% tp_geno)
 
 # Filter the genotype matrix for the TP only
 # M <- s2_imputed_mat[tp_geno,]
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
 ```
+
+
+
+
+
 
 ## Methods
 
@@ -114,6 +117,9 @@ A_prcomp_df <- A_prcomp_df_list %>%
   pmap(~mutate(.x, population = .y)) %>% 
   bind_rows()
 
+A_prcomp_df <- A_prcomp_df %>%
+  filter(population == "TP")
+
 
 # # Plot
 # (g_pop_str <- A_prcomp_df %>%
@@ -175,8 +181,11 @@ trait_BLUEs <- S2_MET_BLUEs_use %>%
       mutate_at(vars(line_name, environment), as.factor)
     
     # Fit the model
+    # fit <- lmer(value ~ -1 + line_name + environment + (1|line_name:environment), data = df_use,
+    #             weights = wts, control = lmer_control)
+    
     fit <- lmer(value ~ -1 + line_name + environment + (1|line_name:environment), data = df_use,
-                weights = wts, control = lmer_control)
+                control = lmer_control)
     
     # Extract BLUEs and return
     tidy(fit) %>% 
@@ -184,15 +193,21 @@ trait_BLUEs <- S2_MET_BLUEs_use %>%
       mutate(term = str_replace(term, "line_name", "")) %>% 
       select(line_name = term, value = estimate) })
 
+## Correlation among the BLUEs
+trait_BLUEs %>% 
+  spread(trait, value) %>% 
+  .[,-1] %>% 
+  cor()
+
 # Combine the trait and PCs, duplicating the BLUEs to make summarizing smoother
 trait_pop_str <- A_prcomp_df %>% 
-  select(line_name:parent, population, PC1:PC3) %>% 
-  gather(PC, eigenvalue, -line_name:-population) %>% 
+  select(line_name:parent, PC1:PC3) %>% 
+  gather(PC, eigenvalue, PC1:PC3) %>% 
   left_join(., trait_BLUEs, by = "line_name")
 
 # Correlate trait BLUEs with eigenvectors
 trait_pop_str_summ <- trait_pop_str %>% 
-  group_by(population, PC, trait) %>% 
+  group_by(PC, trait) %>% 
   summarize(trait_str_cor = cor(eigenvalue, value))
 
 
@@ -201,7 +216,7 @@ trait_pop_str_summ <- trait_pop_str %>%
   ggplot(aes(x = eigenvalue, y = value)) +
   geom_smooth(method = "lm", se = FALSE) +
   geom_point(aes(col = program)) +
-  facet_grid(trait + population ~ PC, scales = "free") +
+  facet_grid(trait ~ PC, scales = "free") +
   ylab("Genotypic Value") +
   xlab("Eigenvalue") +
   labs(
@@ -726,7 +741,7 @@ sig_genomic_groups <- sig_genomic_regions %>%
 
     # If n_marker == 1, skip
     if (nrow(df) == 1) {
-      new_grps <- 1
+      new_grps1 <- 1
 
     } else {
 
@@ -752,7 +767,7 @@ sig_genomic_groups <- sig_genomic_regions %>%
       new_grps1 <- new_grps
       for (grp in unique(new_grps)) {
         
-        # If the group is in the new vetor, proceed
+        # If the group is in the new vector, proceed
         if (grp %in% new_grps1) {
           which_grp <- which(new_grps == grp)
           new_grps1[seq(from = min(which_grp), to = max(which_grp))] <- grp
@@ -768,14 +783,69 @@ sig_genomic_groups <- sig_genomic_regions %>%
     
   })
 
+## Assign regions, while storing the marker names and adding windows around the
+## range of positions
+sig_genomic_regions <- sig_genomic_groups %>% 
+  group_by(new_groups, add = T) %>% 
+  mutate_at(vars(pos), funs(min, max)) %>% 
+  group_by(test_type, min, max, add = T) %>%
+  nest(marker, .key = "marker") %>%
+  mutate(start = min - bp_distance,
+         end = max + bp_distance) %>%
+  select(trait:new_groups, start, end, marker)
 
-    # Add +/- wind size to each position and assign preliminary groups based on overlap
-    df1 <- df %>% 
-      mutate(start = pos - wind_size, end = pos + wind_size,
-             prelim_group = IRanges(start = start, end = end) %>% 
-               findOverlaps(IRanges::reduce(.), .) %>% queryHits() ) %>%
-      as.data.frame()
-    
+# How many regions per chromosome, per trait, per test
+n_regions <- sig_genomic_regions %>% 
+  group_by(trait, test_type, chrom) %>% 
+  summarize(n_interval = n_distinct(group)) %>% 
+  mutate(total_interval = sum(n_interval))
+
+# Plot the number of intervals
+n_intervals %>% 
+  ungroup() %>% 
+  complete(trait, assoc_test) %>% 
+  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
+  geom_col(position = "dodge") + 
+  scale_fill_discrete(drop = FALSE)
+
+g_n_interval <- n_intervals %>% 
+  ungroup() %>% 
+  complete(trait, assoc_test) %>% 
+  filter(assoc_test %in% c("main_effect_mean", "linear_stability", "non-linear_stability")) %>%
+  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
+  geom_col(position = "dodge") + 
+  scale_fill_discrete(drop = FALSE) +
+  theme_bw()
+
+save_file <- file.path(fig_dir, "number_significant_intervals.jpg")
+ggsave(filename = save_file, plot = g_n_interval)
+
+# sug_loci_df_intervals <- sug_loci_df_groups %>% 
+#   group_by(group, add = T) %>% 
+#   mutate(interval_start = min(start), interval_end = max(end)) %>%
+#   ungroup() %>%
+#   # Assign a y axis value to each test
+#   mutate(test = factor(test, levels = c("mean", "stability", "stable", "sensitive")),
+#          y_level = as.numeric(test))
+
+## Plot the windows
+g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
+  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
+  geom_segment(data = sig_loci_df_intervals, 
+               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = assoc_test),
+               lwd = 2.5, lineend = "round") +
+  ylab("") +
+  xlab("Position (Mbp)") +
+  ylim(c(0, 10)) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing.x = unit(0, "in"),
+        panel.border = element_rect(color = "grey75"))
+
+save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
+ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
 
 
 
@@ -835,69 +905,6 @@ sig_genomic_groups <- sig_genomic_regions %>%
 
 
 
-
-
-## Condense groups into intervals
-sig_loci_df_intervals <- sig_loci_df_groups %>%
-  dplyr::rename(group = prelim_group) %>%
-  group_by(trait, assoc_test, chrom, group) %>% 
-  mutate(interval_start = min(start), interval_end = max(end)) %>%
-  ungroup() %>%
-  # Assign a y axis value to each test
-  mutate(y_level = as.numeric(as.factor(assoc_test)))
-
-# How many intervals per chromosome, per trait, per test
-n_intervals <- sig_loci_df_intervals %>% 
-  group_by(trait, assoc_test, chrom) %>% 
-  summarize(n_interval = n_distinct(group)) %>% 
-  mutate(total_interval = sum(n_interval))
-
-# Plot the number of intervals
-n_intervals %>% 
-  ungroup() %>% 
-  complete(trait, assoc_test) %>% 
-  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
-  geom_col(position = "dodge") + 
-  scale_fill_discrete(drop = FALSE)
-
-g_n_interval <- n_intervals %>% 
-  ungroup() %>% 
-  complete(trait, assoc_test) %>% 
-  filter(assoc_test %in% c("main_effect_mean", "linear_stability", "non-linear_stability")) %>%
-  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
-  geom_col(position = "dodge") + 
-  scale_fill_discrete(drop = FALSE) +
-  theme_bw()
-
-save_file <- file.path(fig_dir, "number_significant_intervals.jpg")
-ggsave(filename = save_file, plot = g_n_interval)
-
-# sug_loci_df_intervals <- sug_loci_df_groups %>% 
-#   group_by(group, add = T) %>% 
-#   mutate(interval_start = min(start), interval_end = max(end)) %>%
-#   ungroup() %>%
-#   # Assign a y axis value to each test
-#   mutate(test = factor(test, levels = c("mean", "stability", "stable", "sensitive")),
-#          y_level = as.numeric(test))
-
-## Plot the windows
-g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
-  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
-  geom_segment(data = sig_loci_df_intervals, 
-               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = assoc_test),
-               lwd = 2.5, lineend = "round") +
-  ylab("") +
-  xlab("Position (Mbp)") +
-  ylim(c(0, 10)) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
-  theme_bw() +
-  theme(axis.text.y = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.spacing.x = unit(0, "in"),
-        panel.border = element_rect(color = "grey75"))
-
-save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
-ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
 
 
 # # Plot for suggestive windows

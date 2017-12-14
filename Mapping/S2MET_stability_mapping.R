@@ -12,7 +12,7 @@ packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl",
 
 # Set the directory of the R packages
 package_dir <- NULL
-# package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
+package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
@@ -20,10 +20,10 @@ invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir
 
 ## Directories
 proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping//"
-# proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
+proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/"
 
 alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
-# alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
+alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 
 # Geno, pheno, and enviro data
 geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
@@ -31,10 +31,10 @@ bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genoty
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
 env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
 
-# geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/GBS_Genos"
-# pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
-# env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
-# 
+geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/GBS_Genos"
+pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
+env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
+
 
 # Other directories
 fig_dir <- file.path(proj_dir, "Figures/")
@@ -124,44 +124,94 @@ ec_multiyear_fw_use <- S2_MET_ec_multiyear_fw %>%
 # Detect cores
 n_cores <- detectCores()
 
-# Models to use
-models <- c("K", "G", "QK", "QG")
+# # Models to use
+# models <- c("K", "G", "QK", "QG")
+# 
+# ## GWAS for pheno FW
+# gwas_pheno_fw <- vector("list", length(models)) %>%
+#   set_names(models)
+# 
+# for (model in models) {
+#   gwas_pheno_fw[[model]] <- gwas(pheno = pheno_fw_use, geno = genos_use, model = model, 
+#                                  n.PC = 2, P3D = TRUE, n.core = n_cores)
+#   
+# }
+# 
+# # save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
+# save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData")
+# save("gwas_pheno_fw", file = save_file)
 
-## GWAS for pheno FW
-gwas_pheno_fw <- vector("list", length(models)) %>%
-  set_names(models)
 
-for (model in models) {
-  gwas_pheno_fw[[model]] <- gwas(pheno = pheno_fw_use, geno = genos_use, model = model, 
-                                 n.PC = 2, P3D = TRUE, n.core = n_cores)
+
+# Number of permutations
+n_perm <- 100
+
+## Use permutation testing to estimate the sampling distribution
+pheno_fw <- S2_MET_pheno_fw %>%
+  select(line_name, trait, stability_term, estimate) %>%
+  distinct() %>%
+  mutate(estimate = if_else(stability_term == "delta", log(estimate), estimate)) %>%
+  filter(line_name %in% tp_geno) %>%
+  unite("trait_term", trait, stability_term, sep = "_")
+
+
+# Generate permutations by each trait-stability level
+pheno_fw_perms <- pheno_fw %>% 
+  split(.$trait_term) %>% 
+  map(~permute(data = ., n = n_perm, line_name)) %>%
+  map("perm") %>%
+  transpose() %>%
+  map(~map_df(., as_data_frame))
+
+
+# Re-format for use in the gwas function
+pheno_fw_use <- pheno_fw_perms %>%
+  map(~spread(., trait_term, estimate))
+
+
+## Parallel apply over the list of permutation data.frames
+# First split the list by cores
+pheno_fw_split <- split(pheno_fw_use, cut(x = seq_along(pheno_fw_use), breaks = n_cores))
+
+# Iterate over the list and parallelize
+pheno_fw_permute_out <- mclapply(X = pheno_fw_split, FUN = function(pheno_fw_perm_list) {
   
-}
+  # Map over the list of data.frames and run GWAS
+  gwas_out <- pheno_fw_perm_list %>%
+    map(~gwas(pheno = ., geno = genos_use, model = "G", n.PC = 0, P3D = TRUE, n.core = 1))
+  
+  # Extract scores and return a list
+  gwas_out %>% 
+    map("scores") %>% 
+    map(~filter(.term == "main_effect") %>% unnest(estimate))
+  
+}, mc.cores = n_cores)
 
 
-# save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData")
-save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData")
-save("gwas_pheno_fw", file = save_file)
+# Save the results
+save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_permutation.RData")
+save("pheno_fw_permute_out", file = save_file)
 
 
-### GWAS for stability across ECs
-# GWAS for single-year ECs
-gwas_singleyear_ec_fw <- models %>%
-  map(., ~gwas(pheno = ec_oneyear_fw_use, geno = genos_use, model = ., P3D = TRUE, n.core = n_cores))
-
-# GWAS for multi-year ECs
-gwas_multiyear_ec_fw <- models %>%
-  map(., ~gwas(pheno = ec_multiyear_fw_use, geno = genos_use, model = ., P3D = TRUE, n.core = n_cores))
-
-
-## Save
-save_file <- file.path(result_dir, "S2MET_fw_gwas_results.RData")
-save("gwas_singleyear_ec_fw", "gwas_multiyear_ec_fw", file = save_file)
-
-
-
-
-
-
+# ### GWAS for stability across ECs
+# # GWAS for single-year ECs
+# gwas_singleyear_ec_fw <- models %>%
+#   map(., ~gwas(pheno = ec_oneyear_fw_use, geno = genos_use, model = ., P3D = TRUE, n.core = n_cores))
+# 
+# # GWAS for multi-year ECs
+# gwas_multiyear_ec_fw <- models %>%
+#   map(., ~gwas(pheno = ec_multiyear_fw_use, geno = genos_use, model = ., P3D = TRUE, n.core = n_cores))
+# 
+# 
+# ## Save
+# save_file <- file.path(result_dir, "S2MET_fw_gwas_results.RData")
+# save("gwas_singleyear_ec_fw", "gwas_multiyear_ec_fw", file = save_file)
+# 
+# 
+# 
+# 
+# 
+# 
 # ### Archived code for testing the TP and the TP + VP
 # 
 # 
