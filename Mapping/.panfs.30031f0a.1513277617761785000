@@ -8,7 +8,7 @@
 
 # List of packages to load
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP", "EMMREML")
+              "parallel", "purrrlyr", "rrBLUP")
 
 #packages <- c(packages, "pbr")
 
@@ -180,7 +180,6 @@ pheno_fw_use <- pheno_fw_perms %>%
 ## Parallel apply over the list of permutation data.frames
 # First split the list by cores
 pheno_fw_split <- split(pheno_fw_use, cut(x = seq_along(pheno_fw_use), breaks = n_cores))
-
 
 # Iterate over the list and parallelize
 pheno_fw_permute_out <- mclapply(X = pheno_fw_split, FUN = function(pheno_fw_perm_list) {
