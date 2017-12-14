@@ -20,3 +20,13 @@ The following object is masked from 'package:tidyr':
 Warning message:
 In .doLoadActions(where, attach) :
   trying to execute load actions without 'methods' package
+Error in Z %*% K : non-conformable arguments
+Calls: %>% ... .Call -> .f -> gwas -> pmap -> .Call -> .f -> emmreml
+In addition: Warning messages:
+1: In gwas(pheno = phenos_use, geno = genos_use, fixed = ~environment,  :
+  The specified model is not one of 'Q', 'QK','QG', 'QGE', 'QKE', QKKE', or 'QGGE'. No PCs will be used as covariates.
+2: In gwas(pheno = phenos_use, geno = genos_use, fixed = ~environment,  :
+  The specified model is not one of 'Q', 'QK','QG', 'QGE', 'QKE', QKKE', or 'QGGE'. No PCs will be used as covariates.
+3: In gwas(pheno = phenos_use, geno = genos_use, fixed = ~environment,  :
+  The specified model is not one of 'Q', 'QK','QG', 'QGE', 'QKE', QKKE', or 'QGGE'. No PCs will be used as covariates.
+Execution halted
