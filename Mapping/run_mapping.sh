@@ -12,6 +12,8 @@ cd /panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/Mapping
 #module load R/3.4.0
 module load R/3.2.0_intel_mkl
 
+# Mapping of main effects and GxE
+#Rscript S2MET_mapping.R
 
-# Clustering and prediction
-Rscript S2MET_mapping.R
+# Mapping of stability
+Rscript S2MET_stability_mapping.R
