@@ -104,20 +104,20 @@ pheno_fw_use <- S2_MET_pheno_fw %>%
   unite("trait_term", trait, stability_term, sep = "_") %>% 
   spread(trait_term, estimate)
   
-
-ec_oneyear_fw_use <- S2_MET_ec_oneyear_fw %>% 
-  select(line_name, trait, variable, stability_term, estimate) %>% 
-     distinct() %>% 
-     filter(line_name %in% tp_geno) %>%
-     unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
-     spread(trait_variable_term, estimate)
-
-ec_multiyear_fw_use <- S2_MET_ec_multiyear_fw %>% 
-  select(line_name, trait, variable, stability_term, estimate) %>% 
-  distinct() %>%  
-  filter(line_name %in% tp_geno) %>%
-  unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
-  spread(trait_variable_term, estimate)
+# 
+# ec_oneyear_fw_use <- S2_MET_ec_oneyear_fw %>% 
+#   select(line_name, trait, variable, stability_term, estimate) %>% 
+#      distinct() %>% 
+#      filter(line_name %in% tp_geno) %>%
+#      unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
+#      spread(trait_variable_term, estimate)
+# 
+# ec_multiyear_fw_use <- S2_MET_ec_multiyear_fw %>% 
+#   select(line_name, trait, variable, stability_term, estimate) %>% 
+#   distinct() %>%  
+#   filter(line_name %in% tp_geno) %>%
+#   unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
+#   spread(trait_variable_term, estimate)
 
 
 ### GWAS
