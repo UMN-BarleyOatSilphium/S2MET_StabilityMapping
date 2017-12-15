@@ -152,7 +152,7 @@ n_cores <- detectCores()
 
 
 # Number of permutations
-n_perm <- 100
+n_perm <- 300
 
 ## Use permutation testing to estimate the sampling distribution
 pheno_fw <- S2_MET_pheno_fw %>%
@@ -192,13 +192,13 @@ pheno_fw_permute_out <- mclapply(X = pheno_fw_split, FUN = function(pheno_fw_per
   # Extract scores and return a list
   gwas_out %>% 
     map("scores") %>% 
-    map(~filter(.term == "main_effect") %>% unnest(estimate))
+    map(~filter(., term == "main_effect") %>% unnest(estimate))
   
 }, mc.cores = n_cores)
 
 
 # Save the results
-save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_permutation.RData")
+save_file <- file.path(result_dir, str_c("S2MET_pheno_fw_gwas_permutation", n_perm, ".RData")
 save("pheno_fw_permute_out", file = save_file)
 
 
