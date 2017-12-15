@@ -112,7 +112,6 @@ pheno_fw_use <- S2_MET_pheno_fw %>%
   unite("trait_term", trait, stability_term, sep = "_") %>% 
   spread(trait_term, estimate)
   
-<<<<<<< HEAD
 # 
 # ec_oneyear_fw_use <- S2_MET_ec_oneyear_fw %>% 
 #   select(line_name, trait, variable, stability_term, estimate) %>% 
@@ -127,7 +126,7 @@ pheno_fw_use <- S2_MET_pheno_fw %>%
 #   filter(line_name %in% tp_geno) %>%
 #   unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
 #   spread(trait_variable_term, estimate)
-=======
+
 
 #ec_oneyear_fw_use <- S2_MET_ec_oneyear_fw %>% 
 #  select(line_name, trait, variable, stability_term, estimate) %>% 
@@ -142,7 +141,6 @@ pheno_fw_use <- S2_MET_pheno_fw %>%
 #  filter(line_name %in% tp_geno) %>%
 #  unite(trait_variable_term, trait, variable, stability_term, sep = "_") %>% 
 #  spread(trait_variable_term, estimate)
->>>>>>> 14d64a1ab97fe7d414c34791962dc0457580353b
 
 
 ### GWAS
@@ -209,7 +207,7 @@ pheno_fw_permute_out <- mclapply(X = pheno_fw_split, FUN = function(pheno_fw_per
   # Extract scores and return a list
   gwas_out %>% 
     map("scores") %>% 
-    map(~filter(.term == "main_effect") %>% unnest(estimate))
+    map(~filter(., term == "main_effect") %>% unnest(estimate))
   
 }, mc.cores = n_cores)
 

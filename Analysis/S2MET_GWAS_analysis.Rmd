@@ -272,10 +272,14 @@ gwas_geno_mean_adj <- gwas_geno_mean %>%
 # load(file.path(result_dir, "S2MET_pheno_fw_gwas_results.RData"))
 load(file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData"))
 
+# Load the permutation results
+load(file.path(result_dir, "S2MET_pheno_fw_gwas_permutation.RData"))
+
 # Add the model name to the df
 gwas_pheno_fw1 <- gwas_pheno_fw %>% 
   map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
-           filter(term == "main_effect"))
+           filter(term == "main_effect")) %>%
+  as_data_frame()
 
 ## Adjust the p-values
 gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
@@ -286,6 +290,31 @@ gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
          neg_log10_fdr05 = -log10(0.05),
          neg_log10_fdr10 = -log10(0.10)) %>%
   mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
+
+
+# Reformat the permutation results
+gwas_pheno_fw_perm <- pheno_fw_permute_out %>% 
+  map_df(bind_rows) %>% 
+  as_data_frame()
+
+# Combine the realized GWAS results with the permutation results
+gwas_pheno_fw_perm_ci <- gwas_pheno_fw1 %>%
+  unnest(estimate) %>% 
+  filter(model == "G") %>% 
+  select(marker, chrom, pos, trait, term, realized_W = W_statistic, realized_estimate = estimate) %>%
+  full_join(., gwas_pheno_fw_perm)
+
+# Calculate the p-value by determining the probability of observing test statistics
+# that are greater than the observed test statistic under H_0 = TRUE
+gwas_pheno_fw_perm_pval <- gwas_pheno_fw_perm_ci %>% 
+  mutate(beta_contradictory = abs(estimate) >= abs(realized_estimate),
+         W_contradictory = abs(W_statistic) >= abs(realized_W)) %>% 
+  group_by(trait, marker) %>% 
+  mutate(p_value_beta = mean(beta_contradictory), 
+         p_value_W = mean(W_contradictory),
+         n_perm = n()) %>%
+  select(marker:trait, realized_estimate, p_value_beta, p_value_W, n_perm) %>%
+  distinct()
 
 # Load the marker effect stability test results
 load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
@@ -797,28 +826,28 @@ sig_genomic_regions <- sig_genomic_groups %>%
 # How many regions per chromosome, per trait, per test
 n_regions <- sig_genomic_regions %>% 
   group_by(trait, test_type, chrom) %>% 
-  summarize(n_interval = n_distinct(group)) %>% 
+  summarize(n_interval = n_distinct(new_groups)) %>% 
   mutate(total_interval = sum(n_interval))
 
 # Plot the number of intervals
-n_intervals %>% 
+n_regions %>% 
   ungroup() %>% 
-  complete(trait, assoc_test) %>% 
-  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
+  complete(trait, test_type) %>% 
+  ggplot(aes(x = trait, y = total_interval, group = test_type, fill = test_type)) + 
   geom_col(position = "dodge") + 
   scale_fill_discrete(drop = FALSE)
 
-g_n_interval <- n_intervals %>% 
+g_n_regions <- n_regions %>% 
   ungroup() %>% 
-  complete(trait, assoc_test) %>% 
-  filter(assoc_test %in% c("main_effect_mean", "linear_stability", "non-linear_stability")) %>%
-  ggplot(aes(x = trait, y = total_interval, group = assoc_test, fill = assoc_test)) + 
+  complete(trait, test_type) %>% 
+  # filter(test_typea %in% c("main_effect_mean", "linear_stability", "non-linear_stability")) %>%
+  ggplot(aes(x = trait, y = total_interval, group = test_type, fill = test_type)) + 
   geom_col(position = "dodge") + 
   scale_fill_discrete(drop = FALSE) +
   theme_bw()
 
 save_file <- file.path(fig_dir, "number_significant_intervals.jpg")
-ggsave(filename = save_file, plot = g_n_interval)
+ggsave(filename = save_file, plot = g_n_regions)
 
 # sug_loci_df_intervals <- sug_loci_df_groups %>% 
 #   group_by(group, add = T) %>% 
@@ -829,10 +858,10 @@ ggsave(filename = save_file, plot = g_n_interval)
 #          y_level = as.numeric(test))
 
 ## Plot the windows
-g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) + 
+g_sig_windows <- ggplot(data = S2TP_imputed_multi_genos_hmp, aes(x = pos / 1000000)) + 
   geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
-  geom_segment(data = sig_loci_df_intervals, 
-               aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = assoc_test),
+  geom_segment(data = mutate(sig_genomic_regions, y_level = as.numeric(as.factor(test_type))), 
+               aes(x = start, xend = end, y = y_level, yend = y_level, col = test_type),
                lwd = 2.5, lineend = "round") +
   ylab("") +
   xlab("Position (Mbp)") +
@@ -846,6 +875,30 @@ g_sig_windows <- ggplot(data = snp_info, aes(x = pos / 1000000)) +
 
 save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
 ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
+
+
+# Zoom in chromosome 5 for heading date
+g_sig_windows_HD <- S2TP_imputed_multi_genos_hmp %>%
+  filter(chrom == 5, between(pos, 550000000, 650000000)) %>%
+  ggplot(data = .) + 
+  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
+  geom_segment(data = mutate(sig_genomic_regions, y_level = as.numeric(as.factor(test_type))) %>%
+                 filter(trait == "HeadingDate", chrom == 5, between(start, 550000000, 650000000)), 
+               aes(x = start, xend = end, y = y_level, yend = y_level, col = test_type),
+               lwd = 2.5, lineend = "round") +
+  ylab("") +
+  xlab("Position (Mbp)") +
+  ylim(c(0, 6)) +
+  xlim(c(550000000, 650000000)) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+  theme_bw() +
+  theme(axis.text.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.spacing.x = unit(0, "in"),
+        panel.border = element_rect(color = "grey75"))
+
+save_file <- file.path(fig_dir, "significant_loci_windows_zoom_HeadingDate.jpg")
+ggsave(filename = save_file, plot = g_sig_windows_HD, height = 4, width = 6)
 
 
 
@@ -925,6 +978,13 @@ ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
 
 
 ```
+
+
+
+
+
+
+
 
 Window overlap
 
