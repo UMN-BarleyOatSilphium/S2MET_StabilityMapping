@@ -135,6 +135,8 @@ n_cores <- detectCores()
 # Vector of model types
 models <- c("K", "G", "KE", "GE")
 
+models <- "GE"
+
 
 ### GWAS of main effect and QxE
 # TP only
