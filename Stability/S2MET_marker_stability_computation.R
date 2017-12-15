@@ -7,9 +7,8 @@
 
 # List of packages to load
 # List of packages
-packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", 
-              "parallel", "purrrlyr", "rrBLUP", "ggplot2", "broom", "Matrix",
-              "EMMREML")
+packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
+              "parallel", "purrrlyr", "rrBLUP", "ggplot2", "broom", "Matrix")
 
 #packages <- c(packages, "FW")
 
@@ -183,61 +182,102 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 # save("S2_MET_marker_effect_env", "S2_MET_marker_eff_pheno_fw", file = save_file)
 
 
+n_perm <- 100
+
+# Perform permutation analysis by shuffling the values of traits in each environment
+phenos_mxe_perm <- S2_MET_BLUEs_use %>%
+  mutate(environment = as.character(environment)) %>%
+  split(.$trait) %>% 
+  map(~split(., .$environment) %>% 
+        map(~permute(data = ., n = n_perm, line_name)) %>% 
+        map("perm") %>%
+        transpose() %>%
+        map(., ~map_df(., as_data_frame)))
+
+
+# Map over the traits and permutation to calculate environment-specific marker
+# effects
+
+phenos_mxe_perm_eff <- phenos_mxe_perm %>%
+  map(., ~map(., function(iter) {
+    
+    group_by(iter, environment) %>%
+      do({
+        # Extract the data
+        df <- .
+        
+        mf <- model.frame(value ~ line_name, df)
+        y <- model.response(mf)
+        Zline <- model.matrix(~ -1 + line_name, mf)
+        # Subset the genotypes
+        M1 <- Zline %*% M
+        # Fit the mixed model
+        fit <- mixed.solve(y = y, Z = M1)
+        
+        fit$u %>% 
+          data.frame(marker = names(.), effect = ., beta = fit$beta, 
+                     row.names = NULL, stringsAsFactors = FALSE)
+        
+      }) }))
+
+
+# Save the data
+save_file <- file.path(result_dir, "S2MET_pheno_mar_eff_by_env_perm.RData")
+save("phenos_mxe_perm_eff", file = save_file)
 
 
 
-
-
-## Calculate marker effects x environment as in Lopez-Cruz 2015
-
-## Group by trait and estimate the base marker effect and enivornmnet-specific deviation
-mar_effect_by_env <- S2_MET_BLUEs_use %>%
-  group_by(trait) %>%
-  do({
-
-    # Convert the . to df
-    df <- .
-    # Create a model frame with lines and environments
-    mf <- model.frame(value ~ line_name + environment, data = df, drop.unused.levels = TRUE)
-    env_names <- levels(mf$environment)
-
-    # Response vector
-    y <- model.response(mf)
-
-    # Model matrix for the fixed effects
-    X <- model.matrix(~ -1 + environment, data = mf)
-
-    # Model matrix of the line_name incidence
-    Z_line <- model.matrix(~ -1 + line_name, mf)
-    # Model matrix of the marker random effects
-
-    ## First the main effect of each marker
-    Z0 <- Z_line %*% M
-    K0 <- Diagonal(ncol(Z0))
-
-    # Random deviation of each marker in each environment
-    Z1 <- mf %>%
-      split(.$environment) %>%
-      map(~ model.matrix(~ -1 + line_name, .)) %>%
-      map(~ . %*% M)
-    Z1 <- .bdiag(Z1)
-
-    K1 <- Diagonal(ncol(Z1))
-
-    fit <- EMMREML::emmremlMultiKernel(y = y, X = X, Zlist = list(Z0, Z1), Klist = list(K0, K1))
-
-    # Rename the random effect vector
-    fit$uhat %>%
-      setNames(c(mar_names, paste(rep(mar_names, length(env_names)),
-                                  rep(env_names, each = length(mar_names)), sep = ":"))) %>%
-      data.frame(marker = names(.), effect = ., row.names = NULL, stringsAsFactors = FALSE) %>%
-      separate(marker, c("marker", "environment"), sep = ":", fill = "right")
-
-  })
-
-## Save this
-save_file <- file.path(result_dir, "S2MET_marker_eff_by_env.RData")
-save("mar_effect_by_env", file = save_file)
+# ## Calculate marker effects x environment as in Lopez-Cruz 2015
+# 
+# ## Group by trait and estimate the base marker effect and enivornmnet-specific deviation
+# mar_effect_by_env <- S2_MET_BLUEs_use %>%
+#   group_by(trait) %>%
+#   do({
+# 
+#     # Convert the . to df
+#     df <- .
+#     # Create a model frame with lines and environments
+#     mf <- model.frame(value ~ line_name + environment, data = df, drop.unused.levels = TRUE)
+#     env_names <- levels(mf$environment)
+# 
+#     # Response vector
+#     y <- model.response(mf)
+# 
+#     # Model matrix for the fixed effects
+#     X <- model.matrix(~ environment, data = mf)
+# 
+#     # Model matrix of the line_name incidence
+#     Z_line <- sparse.model.matrix(~ -1 + line_name, mf)
+#     # Model matrix of the marker random effects
+# 
+#     ## First the main effect of each marker
+#     Z0 <- Z_line %*% M
+#     K0 <- Diagonal(ncol(Z0))
+# 
+#     # Random deviation of each marker in each environment
+#     Z1 <- mf %>%
+#       split(.$environment) %>%
+#       map(~ sparse.model.matrix(~ -1 + line_name, .)) %>%
+#       map(~ . %*% M)
+#     Z1 <- .bdiag(Z1)
+# 
+#     K1 <- Diagonal(ncol(Z1))
+# 
+#     # fit <- EMMREML::emmremlMultiKernel(y = y, X = X, Zlist = list(Z0, Z1), Klist = list(K0, K1))
+#     fit <- sommer::mmer(Y = y, X = X, Z = list(m = list(Z = Z0, K = K0), mxe = list(Z = Z1, K = K1)))
+# 
+#     # Rename the random effect vector
+#     fit$uhat %>%
+#       setNames(c(mar_names, paste(rep(mar_names, length(env_names)),
+#                                   rep(env_names, each = length(mar_names)), sep = ":"))) %>%
+#       data.frame(marker = names(.), effect = ., row.names = NULL, stringsAsFactors = FALSE) %>%
+#       separate(marker, c("marker", "environment"), sep = ":", fill = "right")
+# 
+#   })
+# 
+# ## Save this
+# save_file <- file.path(result_dir, "S2MET_marker_eff_by_env.RData")
+# save("mar_effect_by_env", file = save_file)
 
 
 

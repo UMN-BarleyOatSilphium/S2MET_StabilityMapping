@@ -148,58 +148,67 @@ gwas_main_qxe <- models %>%
 save_file <- file.path(result_dir, "S2MET_gwas_mean_qxe.RData")
 save("gwas_main_qxe", file = save_file)
 
-# 
-# # TP and VP
-# gwas_all_main <- map(gwas_models, ~gwas(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use, 
-#                                        fixed = ~ environment, model = ., impute.method = "pass",
-#                                        n.PC = 2, n.core = n_cores))
-# 
-# gwas_all_main <- set_names(gwas_all_main, gwas_models)
-# 
-# ## Save
-# save_file <- file.path(result_dir, "S2MET_gwas_all_model_comparison.RData")
-# save("gwas_all_main", file = save_file)
-# 
-# 
-# 
-# 
 
 # 
+# ## Function for making a matrix full rank
+# make_full <- function(X) {
+#   svd.X <- svd(X)
+#   r <- max(which(svd.X$d > 1e-08))
+#   X.full <- as.matrix(svd.X$u[, 1:r])
+#   # X.full <- X[,-ncol(X)]
+#   return(X.full)
+# }
 # 
 # 
-# ## GWAS of genotype main effect and QTLxE
-# gwas_qtlxe_out <- gwas_e(pheno = S2_MET_BLUEs_tomodel, geno = s2_imputed_genos_use,
-#                          impute.method = "pass", fixed = "environment", n.core = n_cores)
+# ### Test out new model that tests QxE using a LRT approach
+# pheno_use_test <- phenos_use %>% select(line_name, environment, GrainYield)
 # 
-# save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
-# save("gwas_qtlxe_out", file = save_file)
+# # Marker matrix
+# M <- genos_use %>% select(-chrom, -pos) %>% as.data.frame() %>% remove_rownames() %>% column_to_rownames("rs") %>% t()
 # 
-# ### GWAS of Genotypic main effect,  and stability across environmental means
-# gwas_fw_out <- GWAS(pheno = S2_MET_BLUEs_fw_tomodel, geno = s2_imputed_genos_use, 
-#                     n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores)
+# # First marker
+# snp <- M[,1, drop = FALSE]
 # 
 # 
-# ## GWAS of stability coefficients to ECs
+# # model.frame
+# mf <- model.frame(GrainYield ~ line_name + environment, data = pheno_use_test)
 # 
-# # Load results
-# load(file.path(result_dir, "S2MET_ec_fw_regression_results.RData"))
+# # y vector
+# y <- model.response(mf)
 # 
-# S2_MET_BLUEs_fw_one_year_tomodel <- S2_MET_BLUEs_one_year_fw %>% 
-#   filter(line_name %in% c(tp_geno, vp_geno)) %>% 
-#   select(line_name, trait, variable, stability_term, value = estimate) %>%
-#   distinct() %>% 
-#   unite("trait_coef", trait, variable, stability_term, sep = "_") %>% 
-#   spread(trait_coef, value) %>%
-#   as.data.frame()
+# # Incidence matrix of environments (for subsetting)
+# env_inc <- sparse.model.matrix(~ -1 + environment, mf)
+# # Vector of mu incidence matrix
+# mu <- model.matrix(~ 1, mf)
 # 
-# ### Run GWAS
-# gwas_fw_one_year_out <- GWAS(pheno = S2_MET_BLUEs_fw_one_year_tomodel, 
-#                              geno = s2_imputed_genos_use, n.PC = 0, min.MAF = 0, 
-#                              plot = FALSE, n.core = n_cores)
+# # Bind and make full
+# X <- cbind(mu, env_inc)
+# X_full <- make_full(X = X)
+# 
+# # Incidence matrix of random genotype effects
+# Z <- model.matrix(~ -1 + line_name, mf)
+# K1 <- A.mat(X = M, min.MAF = 0, max.missing = 1)
+# 
+# # Use the env matrix and the snp vector to make a incidence matrix of qxe random effects
+# W <- c(Z %*% snp) * env_inc
+# K2 <- Diagonal(ncol(W))
+# 
+# # Add snp main effect to model matrix
+# X_use <- cbind(X_full, (Z %*% snp))
+#   
+# # List of matrices
+# rand_list_full <- list(g = list(Z = Z, K = K1),
+#                   qxe = list(Z = W, K = K2))
+# 
+# # For reduced model
+# rand_list_red <- list(g = list(Z = Z, K = K1))
+# 
+# # Fit
+# fit_full <- sommer::mmer(Y = y, X = X_use, Z = rand_list_full)
+# 
+# fit_red <- sommer::mmer(Y = y, X = X_use, Z = rand_list_red)
+# 
+# # LRT
+# lr <- -2 * (fit_red$LL - fit_full$LL)
 # 
 # 
-# 
-# 
-# # Save
-# save_file <- file.path(result_dir, "S2MET_gwas_qtlxe_results.RData")
-# save("gwas_qtlxe_out", "gwas_fw_out", "gwas_fw_one_year_out", file = save_file)

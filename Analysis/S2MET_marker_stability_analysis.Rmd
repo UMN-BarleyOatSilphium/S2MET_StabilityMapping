@@ -16,6 +16,7 @@ Load packages and set directories
 library(tidyverse)
 library(stringr)
 library(readxl)
+library(modelr)
 library(rrBLUP)
 library(GGally)
 library(GenomicRanges)
@@ -151,6 +152,27 @@ var_comp_prop %>%
   theme_bw()
 
 ```
+
+
+Examine MxE by looking at the variance of marker effects in each environment
+
+
+```{r mxe}
+
+# Load the results
+load(file.path(result_dir, "S2MET_marker_eff_by_env.RData"))
+
+# Edit to column name
+mar_effect_by_env <- mar_effect_by_env %>% 
+  rename(environment = `envi ronment`)
+
+
+```
+
+
+
+
+
 
 
 Determine the proportion of genetic variance of phenotypic stability ($V_G$) that is explained by sensitive/stable markers
