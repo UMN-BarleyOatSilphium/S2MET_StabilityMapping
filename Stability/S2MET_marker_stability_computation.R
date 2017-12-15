@@ -181,7 +181,7 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 # save_file <- file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData")
 # save("S2_MET_marker_effect_env", "S2_MET_marker_eff_pheno_fw", file = save_file)
 
-
+n_cores <- detectCores()
 n_perm <- 100
 
 # Perform permutation analysis by shuffling the values of traits in each environment
@@ -198,10 +198,17 @@ phenos_mxe_perm <- S2_MET_BLUEs_use %>%
 # Map over the traits and permutation to calculate environment-specific marker
 # effects
 
-phenos_mxe_perm_eff <- phenos_mxe_perm %>%
-  map(., ~map(., function(iter) {
+# Split the iterations for parallelization
+phenos_mxe_perm_split <- phenos_mxe_perm %>% 
+  transpose() %>% 
+  map(bind_rows) %>%
+  split(., cut(seq_along(.), breaks = n_cores))
+
+phenos_mxe_perm_parallel_out <- mclapply(X = phenos_mxe_perm_split, function(core) {
+  
+  map(core, function(iter) {
     
-    group_by(iter, environment) %>%
+    out <- group_by(iter, trait, environment) %>%
       do({
         # Extract the data
         df <- .
@@ -218,12 +225,14 @@ phenos_mxe_perm_eff <- phenos_mxe_perm %>%
           data.frame(marker = names(.), effect = ., beta = fit$beta, 
                      row.names = NULL, stringsAsFactors = FALSE)
         
-      }) }))
-
+      }) })
+  
+  map(out, ungroup) }, mc.cores = n_cores)
+      
 
 # Save the data
 save_file <- file.path(result_dir, "S2MET_pheno_mar_eff_by_env_perm.RData")
-save("phenos_mxe_perm_eff", file = save_file)
+save("phenos_mxe_perm_parallel_out", file = save_file)
 
 
 
