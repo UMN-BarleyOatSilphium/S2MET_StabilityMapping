@@ -206,9 +206,9 @@ phenos_mxe_perm_split <- phenos_mxe_perm %>%
 
 phenos_mxe_perm_parallel_out <- mclapply(X = phenos_mxe_perm_split, function(core) {
   
-  map(core, function(iter) {
+  out <-map(core, function(iter) {
     
-    out <- group_by(iter, trait, environment) %>%
+    group_by(iter, trait, environment) %>%
       do({
         # Extract the data
         df <- .

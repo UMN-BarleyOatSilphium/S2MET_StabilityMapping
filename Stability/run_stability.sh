@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#PBS -l walltime=24:00:00,mem=24gb,nodes=1:ppn=1
+#PBS -l walltime=24:00:00,mem=24gb,nodes=1:ppn=16
 #PBS -N S2_MET_stability_computation
 #PBS -M neyha001@umn.edu
 #PBS -m abe
