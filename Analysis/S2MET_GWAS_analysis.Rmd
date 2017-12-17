@@ -41,6 +41,8 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 # M <- s2_imputed_mat[tp_geno,]
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
+alpha <- 0.05
+
 ```
 
 
@@ -294,23 +296,40 @@ gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
 
 # Reformat the permutation results
 gwas_pheno_fw_perm <- pheno_fw_permute_out %>% 
-  map_df(bind_rows) %>% 
-  as_data_frame()
+  unlist(recursive = FALSE) %>% 
+  map(as_data_frame)
+
+# Calculate an experiment-wise threhold for determining significance
+# For each of N permutations, find the maximum test statistic over all analyses
+gwas_pheno_fw_perm_exp_cutoff <- gwas_pheno_fw_perm %>% 
+  map(~group_by(., trait) %>% mutate(max_test_stat = max(W_statistic))) %>%
+  bind_rows() %>%
+  ungroup()
 
 # Combine the realized GWAS results with the permutation results
 gwas_pheno_fw_perm_ci <- gwas_pheno_fw1 %>%
-  unnest(estimate) %>% 
-  filter(model == "G") %>% 
+  unnest(estimate) %>%
+  filter(model == "G") %>%
   select(marker, chrom, pos, trait, term, realized_W = W_statistic, realized_estimate = estimate) %>%
-  full_join(., gwas_pheno_fw_perm)
+  full_join(., gwas_pheno_fw_perm_exp_cutoff)
+
+# Determine the 100(1 - alpha) cutoff across all permutations for a particular trait
+gwas_pheno_fw_perm_sig <- gwas_pheno_fw_perm_ci %>% 
+  group_by(trait) %>% 
+  mutate(test_stat_cutoff = quantile(max_test_stat, prob = (1 - alpha))) %>%
+  ungroup()
+
+# Plot
+
+
 
 # Calculate the p-value by determining the probability of observing test statistics
 # that are greater than the observed test statistic under H_0 = TRUE
-gwas_pheno_fw_perm_pval <- gwas_pheno_fw_perm_ci %>% 
+gwas_pheno_fw_perm_pval <- gwas_pheno_fw_perm_ci %>%
   mutate(beta_contradictory = abs(estimate) >= abs(realized_estimate),
-         W_contradictory = abs(W_statistic) >= abs(realized_W)) %>% 
-  group_by(trait, marker) %>% 
-  mutate(p_value_beta = mean(beta_contradictory), 
+         W_contradictory = abs(W_statistic) >= abs(realized_W)) %>%
+  group_by(trait, marker) %>%
+  mutate(p_value_beta = mean(beta_contradictory),
          p_value_W = mean(W_contradictory),
          n_perm = n()) %>%
   select(marker:trait, realized_estimate, p_value_beta, p_value_W, n_perm) %>%
