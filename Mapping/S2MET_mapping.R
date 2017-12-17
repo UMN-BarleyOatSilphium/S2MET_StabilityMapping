@@ -133,9 +133,8 @@ n_cores <- detectCores()
 ## Now run GWAS for the main effect and QxE using a subset of models
 
 # Vector of model types
-models <- c("K", "G", "KE", "GE")
-
-models <- "GE"
+#models <- c("K", "G", "KE", "GE")
+models <- c("G", "GE")
 
 
 ### GWAS of main effect and QxE
