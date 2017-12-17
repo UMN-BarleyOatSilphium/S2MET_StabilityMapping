@@ -159,12 +159,48 @@ Examine MxE by looking at the variance of marker effects in each environment
 
 ```{r mxe}
 
-# Load the results
-load(file.path(result_dir, "S2MET_marker_eff_by_env.RData"))
+## Use the marker effect FW regression output to examine the original variance of
+## marker effects across environments
+marker_effect_env_var <- S2_MET_marker_eff_pheno_fw %>% 
+  select(trait, marker:pos, environment, mar_effect) %>% 
+  distinct() %>%
+  group_by(trait, marker) %>%
+  mutate(mar_effect_var = var(mar_effect))
 
-# Edit to column name
-mar_effect_by_env <- mar_effect_by_env %>% 
-  rename(environment = `envi ronment`)
+# Plot
+g_mar_eff_var <- marker_effect_env_var %>% 
+  select(trait:pos, mar_effect_var) %>% 
+  distinct() %>% 
+  ggplot(aes(x = pos, y = mar_effect_var)) + 
+  geom_point() + 
+  facet_grid(trait ~ chrom, scales = "free", space = "free_x")
+
+## Use the permutation results to establish a 95% confidence interval
+load(file.path(result_dir, "S2MET_pheno_mar_eff_by_env_perm.RData"))
+
+# For each trait, interation, and marker, calculate the variance of marker effects
+# across environments
+marker_env_var_perm <- phenos_mxe_perm_parallel_out %>% 
+  unlist(recursive = FALSE, use.names = FALSE) %>%
+  map_df(~group_by(., trait, marker) %>%
+          summarize(mar_effect_var = var(effect)) %>%
+          ungroup() )
+
+# Calculate a confidence interval
+marker_env_var_perm_ci <- marker_env_var_perm %>% 
+  group_by(trait, marker) %>% 
+  summarize(ci_lower = quantile(mar_effect_var, probs = alpha / 2), 
+            ci_upper = quantile(mar_effect_var, probs = 1 - (alpha / 2))) %>%
+  ungroup()
+
+# Merge with the original results
+marker_effect_env_var_sig <- marker_effect_env_var %>% 
+  select(trait:pos, mar_effect_var) %>% 
+  distinct() %>% 
+  full_join(., marker_env_var_perm_ci)
+
+marker_effect_env_var_sig
+
 
 
 ```
