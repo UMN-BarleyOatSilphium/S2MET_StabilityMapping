@@ -256,7 +256,8 @@ load(file.path(result_dir, "S2MET_gwas_genotype_mean.RData"))
 # Convert to DF and filter for main effect assocations
 gwas_geno_mean <- gwas_main %>% 
   map_df(~mutate(.$scores, model = .$metadata$model)) %>%
-  filter(term == "main_effect")
+  filter(term == "main_effect") %>%
+  as_data_frame()
 
 ## Adjust the p-values
 gwas_geno_mean_adj <- gwas_geno_mean %>%
@@ -268,6 +269,27 @@ gwas_geno_mean_adj <- gwas_geno_mean %>%
          neg_log10_fdr10 = -log10(0.10)) %>%
   mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
   ungroup()
+
+## Main effect and QxE
+load(file.path(result_dir, "S2MET_gwas_mean_qxe.RData"))
+
+# Convert to DF
+gwas_qxe <- gwas_main_qxe %>% 
+  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
+  as_data_frame()
+
+## Adjust the p-values
+gwas_geno_qxe_adj <- gwas_qxe %>%
+  group_by(., trait, model, term) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
+  ungroup()
+
+
 
 
 # Load the data

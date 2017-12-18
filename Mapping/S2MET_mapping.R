@@ -17,8 +17,8 @@ package_dir <- NULL
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
 
 ## Source the function from github
-#source("https://raw.github.com/neyhartj/pbr/master/R/gwas.R")
-#source("https://raw.github.com/neyhartj/pbr/master/R/gwas_support.R")
+# source("https://raw.github.com/neyhartj/pbr/master/R/gwas.R")
+# source("https://raw.github.com/neyhartj/pbr/master/R/gwas_support.R")
 source("/panfs/roc/home/smithkp/neyha001/R/my_packages/pbr/R/gwas.R")
 source("/panfs/roc/home/smithkp/neyha001/R/my_packages/pbr/R/gwas_support.R")
 
