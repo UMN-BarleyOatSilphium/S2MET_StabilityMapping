@@ -1,0 +1,12 @@
+trait,coef,qtl_name,chrom,arm,start_pos,end_pos,start_pos_cM,end_pos_cM,population,reference
+HeadingDate,g,eam8,1H,L,,,225,225,,
+HeadingDate,g,eps2S,2H,L,,,175,175,,
+HeadingDate,g,Ppd-H1,2H,S,,,50,50,,
+HeadingDate,g,eps5HL,5H,L,,,275,275,,
+HeadingDate,g,eps7HS,7H,S,,,150,150,,
+HeadingDate,g,eps7HL,7H,L,,,390,390,,
+HeadingDate,g,Pph-H2,1H,L,,,220,220,,
+HeadingDate,b,Emebiri2006_QTL-2HS,2H,S,,,50,65,,Emebiri_2006
+HeadingDate,b,Emebiri2006_QTL-5HL,5H,L,,,235,289,,Emebiri_2006
+HeadingDate,g,eam10,3H,,,,,,,
+HeadingDate,g,eps3L,3H,L,,,,,,

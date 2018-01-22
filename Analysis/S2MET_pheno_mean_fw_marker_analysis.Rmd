@@ -1,0 +1,151 @@
+---
+title: "Trait Mean and Stability Marker Effects"
+date: "`r Sys.Date()`"
+output: 
+  html_notebook:
+    toc: true
+bibliography: C:/Users/Jeff/Documents/Literature/library.bib
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This notebook will explore the marker effect estimates for the trait mean and the stability.
+
+Load packages and data
+
+```{r intro}
+
+library(tidyverse)
+library(readxl)
+library(lme4)
+library(broom)
+library(ggridges)
+library(ggforce)
+library(pbr)
+
+# Project and other directories
+source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+load(file.path(result_dir, "S2MET_pheno_mean_fw_mar_effect.RData"))
+
+```
+
+## Methods
+
+See the script "S2MET_mean_stability_marker_effects.R" for code that calculates the marker effects for the trait mean and trait stability.
+
+## Results
+
+What is the correlation between the marker effects for trait mean and stability?
+
+```{r cor}
+
+# Reconfigure the data
+trait_mean_stab_mar_eff_reorder <- trait_mean_stab_mar_eff %>%
+  select(trait, marker, coef, effect) %>% 
+  spread(coef, effect) %>% 
+  gather(stability_term, effect, b, delta) 
+
+# Reconfigure the data
+trait_mean_stab_mar_eff_stand_reorder <- trait_mean_stab_mar_eff_stand %>%
+  select(trait, marker, coef, effect) %>% 
+  spread(coef, effect) %>% 
+  gather(stability_term, effect, b, delta) 
+
+trait_mean_stab_mar_eff %>% 
+  select(trait, marker, coef, effect) %>%
+  spread(coef, effect) %>% 
+  group_by(trait) %>% 
+  do(cor = cor(.[,-c(1:2)])) %>% 
+  pull(cor)
+
+# Plot the relationship
+trait_mean_stab_mar_eff_reorder %>% 
+  ggplot(aes(x = g, y = effect)) + 
+  geom_point() +
+  facet_wrap(stability_term ~ trait, scales = "free", nrow = 2) +
+  ylab("Marker Effect of Trait Stability") +
+  xlab("Marker Effect of Trait Mean")
+
+
+
+```
+
+Plot the marker effects for each trait mean or stability against the genomic position
+
+```{r plot.me}
+
+# Combine the marker effects with the SNP position information
+SNP_info_trait_mean_stab_mar_eff <- S2TP_imputed_multi_genos_hmp %>% 
+  select(marker = rs, chrom:pos) %>% 
+  left_join(., trait_mean_stab_mar_eff)
+
+# Plot each trait separately
+(g_mar_eff_sep <- SNP_info_trait_mean_stab_mar_eff %>%
+  # filter(trait == trait[1], coef == "g") %>%
+  ggplot(aes(x = pos, y = effect)) +
+  geom_point() +
+  facet_grid(trait + coef ~ chrom, scales = "free", space = "free_x", switch = "x"))
+  
+
+
+```
+
+Multiply the marker effects of the trait mean by the those of the trait stability and plot
+
+```{r multiple.me}
+SNP_info_trait_mean_stab_mar_eff_reorder <- trait_mean_stab_mar_eff_reorder %>% 
+  mutate(mar_effect_index = g * effect) %>%
+  left_join(select(S2TP_imputed_multi_genos_hmp, marker = rs, chrom:pos))
+
+SNP_info_trait_mean_stab_mar_eff_reorder <- trait_mean_stab_mar_eff_stand_reorder %>% 
+  mutate(mar_effect_index = g * effect) %>%
+  left_join(select(S2TP_imputed_multi_genos_hmp, marker = rs, chrom:pos))
+
+# Plot
+(g_composite_mar <- SNP_info_trait_mean_stab_mar_eff_reorder %>%
+  ggplot(aes(x = pos, y = mar_effect_index)) +
+  geom_point() +
+  facet_grid(trait + stability_term ~ chrom, scales = "free", space = "free_x", switch = "x") +
+  theme_bw())
+
+
+```
+
+
+
+
+
+
+What is the relationship between marker effect and minor allele frequency?
+
+There doesn't appear to be a relationship
+
+```{r MAF.me}
+# Calculate the minor allele frequency per marker
+marker_maf <- (colMeans(S2TP_imputed_multi_genos_mat + 1) / 2) %>% 
+  pmin(., 1 - .) %>% 
+  data.frame(marker = names(.), maf = ., row.names = NULL, stringsAsFactors = FALSE)
+
+# Merge with the data and plot
+SNP_info_trait_mean_stab_mar_eff %>% 
+  left_join(., marker_maf) %>% 
+  ggplot(aes(x = maf, y = effect)) +
+  geom_point() + 
+  facet_wrap(trait ~ coef, scales = "free_y")
+
+
+
+```
+
+
+
+## Discussion
+
+Some interpretation
+
+## References

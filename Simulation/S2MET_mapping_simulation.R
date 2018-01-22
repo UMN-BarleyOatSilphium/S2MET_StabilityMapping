@@ -197,6 +197,39 @@ sim_results <- param_df %>%
       geno_tomodel <- right_join(x = use_map, assoc_panel_geno, "marker") %>%
         as.data.frame()
       
+      
+      # ## Marker matrix
+      # M <- genotype(genome = genome1, pop = assoc_panel)
+      # # K Matrix
+      # K <- A.mat(M, min.MAF = 0, max.missing = 1)
+      # 
+      # # Model the fixed effects of environment and the random effect of genotype
+      # # y = mu + G + t + resid
+      # # GRAMMAR
+      # mf <- model.frame(pheno ~ line + env, pheno_tomodel)
+      # y <- model.response(mf)
+      # X <- model.matrix(~ env, mf)
+      # Z <- model.matrix(~ -1 + line, mf)
+      # 
+      # # Fit
+      # mixed_fit <- mixed.solve(y = y, Z = Z, K = K, X = X)
+      # # Calculate residuals
+      # y_hat <- X %*% mixed_fit$beta + Z %*% mixed_fit$u
+      # resid <- y - y_hat
+      #   
+      # # Now run single marker regression
+      # snp_fit_list <- apply(X = M, MARGIN = 2, FUN = function(snp) {
+      #   X1 <- Z %*% snp
+      #   snp_fit <- lm(y_hat ~ X1, data = mf)
+      #   # Output anova
+      #   subset(x = tidy(anova(snp_fit)), term != "Residuals", c(term, df, statistic, p.value))
+      # })
+      # 
+      # # Build df
+      # snp_fit_df <- snp_fit_list %>% list(., names(.)) %>% pmap_df(~mutate(.x, snp = .y))
+      # # 
+      
+      
       ### Association analysis
       gwas_main <- map(models, ~gwas(pheno = pheno_tomodel, geno = geno_tomodel, 
                                      fixed = ~ env, model = ., n.PC = 2, P3D = TRUE, 

@@ -1,0 +1,454 @@
+---
+title: "Association Mapping in the S2MET Project"
+date: "`r Sys.Date()`"
+output:
+  tufte::tufte_handout:
+    citation_package: natbib
+    latex_engine: xelatex
+bibliography: C:/Users/Jeff/Documents/Literature/library.bib
+csl: C:/Users/Jeff/Documents/Literature/Citation_Styles/genetics.csl
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+library(tufte)
+library(tidyverse)
+library(readxl)
+library(kableExtra)
+
+# invalidate cache when the tufte version changes
+knitr::opts_chunk$set(tidy = FALSE, cache.extra = packageVersion('tufte'), echo = FALSE,
+                      message = FALSE, warning = FALSE)
+options(htmltools.dir.version = FALSE)
+
+
+# Load data
+# Project and other directories
+source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+
+tp_geno <- tp_geno_multi
+
+load(file.path(geno_dir, "S2_genos_hmp.RData"))
+
+# Filter environments for those in which the TP was observed
+S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
+  filter(line_name %in% tp_geno)
+
+# Filter the genotype matrix for the TP only
+# M <- s2_imputed_mat[tp_geno,]
+M <- S2TP_imputed_multi_genos_mat[tp_geno,]
+
+load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+
+```
+
+# Introduction
+
+- Phenotypic stability may be useful for breeding widely adapted or locally adapted cultivars. It would be advantageous to explore the genetic architecture of this trait.
+
+- There are three proposed gene models to explain stability:
+    1. Pleiotropic / allele sensitivity (loci influence the mean differently in different environments)
+    2. Epistatic / regulatory (differential regulation of loci influencing the mean)
+    3. Overdominance (stability is a function of heterozygosity)
+
+- Recent research has looked at mapping QTL for phenotypic stability and genotype mean: 
+    - In large populations [@Kusmec2017]
+    - In barley [@Kraakman2004; @Lacaze2009]
+    
+## Objectives
+
+- Discover loci associated with the trait mean *per se* and trait stability
+- Examine genomic regions with highly stable or sensitive marker effects
+- Look for overlap between the above regions/loci and summarize annotated genes or GO terms
+
+
+# Methods
+
+## Phenotype Data
+
+- 3 traits in most environments
+- Only include the 183 training population lines
+
+```{r}
+# Table summarizing phenotypic data
+tab1 <- S2_MET_BLUEs_use %>% 
+  filter(trait != "TestWeight") %>%
+  group_by(trait) %>% 
+  summarize(n_geno = n_distinct(line_name), n_env = n_distinct(environment))
+
+knitr::kable(x = tab1, format = "latex", booktabs = T)
+
+
+```
+
+- Spatial adjustment and BLUEs calculated per trial
+
+
+
+## Genotypic Data
+
+`r ncol(M)` SNP markers from GBS genotyping and BOPA genotyping
+
+```{r}
+
+tab2 <- S2TP_imputed_multi_genos_hmp %>% 
+  select(rs, chrom) %>% 
+  mutate(type = if_else(str_detect(rs, "^S[0-9]"), "GBS", "BOPA")) %>% 
+  group_by(chrom, type) %>% 
+  summarize(n_marker = n()) %>% 
+  spread(type, n_marker) %>% 
+  mutate(total = BOPA + GBS)
+
+knitr::kable(x = tab2, format = "latex", booktabs = T)
+
+
+
+```
+
+
+
+## Stability
+
+- Calcuated the stability measures from @Finlay1963 and @Eberhart1966:
+    - $y_{ij} = \mu + g_i + (1 + b_i)h_j + \epsilon_{ij}$
+- Linear stability: $b_i$
+- Non-linear stability: $\delta^2_i = \frac{1}{n} \sum{(y_{ij} - \hat{y_{ij}})^2}$
+
+```{r fig.height=3.5, fig.cap="Distribution of stability measures"}
+# Extract the unique stability coefficients
+S2_MET_pheno_fw_uniq <- S2_MET_pheno_fw %>%
+  select(trait, line_name, g, stability_term, estimate, program) %>% 
+  distinct() 
+
+## Log transform the non-linear stability estimates
+S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
+  group_by(trait) %>% 
+  mutate(estimate = if_else(stability_term == "b", estimate, log(estimate)))
+
+# Plot histograms of the regression coefficients and MSEs
+g_pheno_fw_dens <- S2_MET_pheno_fw_uniq_trans %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap(trait ~ stability_term, ncol = 2, scales = "free") +
+  xlab("Estimate") +
+  labs(title = "Stability Measures") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+# Just plot linear stability
+g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq_trans %>%
+  filter(stability_term == "b") %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap( ~ trait, ncol = 1) +
+  xlab(expression(b[i])) +
+  labs(title = "Linear Stability") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+# Just plot non-linear stability
+g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq_trans %>%
+  filter(stability_term == "delta") %>%
+  ggplot(aes(x = estimate)) + 
+  geom_density(aes(fill = "blue")) + 
+  facet_wrap( ~ trait, ncol = 1, scales = "free") +
+  xlab(expression(ln(delta[i]^2))) +
+  labs(title = "Non-Linear Stability") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  theme_bw() +
+  theme(axis.title.y = element_blank())
+
+# Convert to grobs
+grob_list <- list(b = g_pheno_fw_dens_b, delta = g_pheno_fw_dens_delta) %>%
+  map(ggplotGrob)
+# Cowplot
+cowplot::plot_grid(plotlist = grob_list, align = "h")
+
+```
+
+
+
+
+<!-- ```{r fig2, fig.height=5, fig.cap="Example reaction norms"} -->
+
+<!-- pheno_fw_example <- S2_MET_pheno_fw %>% -->
+<!--   filter(stability_term == "b") %>% -->
+<!--   select(trait, line_name, g, estimate) %>%  -->
+<!--   distinct() %>%  -->
+<!--   group_by(trait) %>%  -->
+<!--   filter(estimate == min(estimate) | estimate == max(estimate) | abs(1 - estimate) == min(abs(1 - estimate))) -->
+
+<!-- S2_MET_pheno_fw %>% -->
+<!--   filter(stability_term == "b") %>%  -->
+<!--   select(trait, environment, line_name, value, h) %>%  -->
+<!--   ggplot(aes(x = h, y = value)) +  -->
+<!--   geom_point() +  -->
+<!--   geom_abline(data = pheno_fw_example, aes(intercept = g, slope = estimate, col = line_name), lwd = 1) +  -->
+<!--   scale_color_discrete(guide = FALSE) + -->
+<!--   facet_wrap(~ trait, ncol = 1, scales = "free") + -->
+<!--   ylab("Genotype Mean") + -->
+<!--   xlab("Environment Effect") + -->
+<!--   labs(title = "Example Genotype Responses") + -->
+<!--   theme_bw() + -->
+<!--   theme(legend.position = "bottom", -->
+<!--         legend.background = element_rect(fill = "grey85", color = NA), -->
+<!--         legend.text = element_text(size = 8), -->
+<!--         legend.title = element_text(size = 10)) -->
+
+
+<!-- ``` -->
+
+
+
+
+```{r fig3, fig.height=6, fig.cap="Relationship between genotype mean and stability"}
+
+S2_MET_pheno_fw_uniq_trans %>% 
+  mutate(stability_term = if_else(stability_term == "delta", "ln(delta)", stability_term)) %>%
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  scale_color_discrete(drop = FALSE, guide = guide_legend(title = "Program", nrow = 1)) +
+  facet_wrap(trait ~ stability_term, scales = "free", ncol = 2) +
+  ylab("Stability Estimate") +
+  xlab("Genotype Mean") +
+  labs(title = "Genotype Mean and Stability") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.background = element_rect(fill = "grey85", color = NA))
+
+
+```
+
+## Association Mapping
+
+- Used the *G* model from @Bernardo2013a, @Rincent2014, and @Chen2016
+
+$$
+\mathbf{y = X} \beta + \mathbf{S} \alpha + \mathbf{Z u + e}
+$$
+
+- Association tested using Wald test
+- p-values adjusted using the `qvalue` package  
+
+
+- How to read the following graphs:
+    1. The $-\log_{10}$(q-value) points are plotted
+    2. Chromosomes are represented by column-wise panels. Traits are represented by row-wise panels.
+    3. The points for the genotype mean are always plotted in blue and are oriented upwards
+    4. The points for the phenotypic stability (linear or non-linear) are plotted in orange and are oriented downwards.
+    5. The dashed line refers to a cut-off that controls the genomewide FDR at 10%. Similarly, the solid line refers to FDR = 5%.
+
+```{r association, fig.fullwidth = TRUE, fig.width=10, fig.height=8, message=FALSE, fig.cap="Association q-values for the genotype mean are shown in blue. Association q-values for phenotypic stability are in orange"}
+library(qvalue)
+library(neyhart)
+
+## Main effect QTL
+load(file.path(result_dir, "S2MET_gwas_genotype_mean.RData"))
+
+# Convert to DF and filter for main effect assocations
+gwas_geno_mean <- gwas_main %>% 
+  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
+  filter(term == "main_effect") %>%
+  as_data_frame()
+
+## Adjust the p-values
+gwas_geno_mean_adj <- gwas_geno_mean %>%
+  group_by(., trait, model) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
+  ungroup()
+
+## Stability
+load(file.path(result_dir, "S2MET_pheno_fw_gwas_multi_geno_results.RData"))
+
+# Add the model name to the df
+gwas_pheno_fw1 <- gwas_pheno_fw %>% 
+  map_df(., ~mutate(.$scores, model = .$metadata$model) %>%
+           filter(term == "main_effect")) %>%
+  as_data_frame()
+
+## Adjust the p-values
+gwas_pheno_fw_adj <- gwas_pheno_fw1 %>%
+  group_by(., trait, model) %>% 
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.)))
+
+# Combine mean and stability into a single df.
+# Convert the stability -log10(q) values into their opposites (i.e. *-1)
+gwas_geno_mean_use <- gwas_geno_mean_adj %>%
+  ungroup() %>%
+  filter(model == "G")  %>%
+  select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10)
+
+gwas_pheno_fw_use <- gwas_pheno_fw_adj %>%
+  ungroup() %>%
+  filter(model == "G") %>%
+  separate(trait, into = c("trait", "stability"), sep = "_") %>%
+  mutate(stability = if_else(stability == "b", "linear", "non-linear")) %>% 
+  select(marker:trait, contains("neg_log10_fdr"), stability, Stability = q_value_neg_log10)
+
+# Extract the palette for use in the manhattan plot
+palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)]
+odd_chrom <- seq(1, 7, by = 2)
+
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(stability == "linear") %>%
+  full_join(gwas_geno_mean_use, .) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+# color vector for ggplot
+color_value <- set_names(palette_use, unique(gwas_use$color))
+
+## Plot
+gwas_use %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
+  geom_hline(yintercept = 0)+
+  geom_point(aes(col = color)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  # scale_linetype_discrete(guide = FALSE) +
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
+                     guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analyses for Genotype Mean and Linear Stability") +
+  theme_bw() +
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 1, units = "cm"),
+        # panel.border = element_rect(color = "grey75"),
+        panel.border = element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank())
+
+
+
+```
+
+```{r association2, fig.fullwidth = TRUE, fig.width=10, fig.height=8, message=FALSE, fig.cap="Association q-values for the genotype mean are shown in blue. Association q-values for phenotypic stability are in orange"}
+
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(stability == "non-linear") %>%
+  full_join(gwas_geno_mean_use, .) %>% 
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -stability) %>% 
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+## Plot
+gwas_use %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) + 
+  geom_hline(yintercept = 0)+
+  geom_point(aes(col = color)) +
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")) +
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")) +
+  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  # scale_linetype_discrete(guide = FALSE) +
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), 
+                     guide = FALSE) +
+  ylab("-log(q)") +
+  xlab("Position (Mbp)") +
+  labs(title = "Genomewide Assocation Analyses for Genotype Mean and Non-Linear Stability") +
+  theme_bw() +
+  theme(panel.spacing.x = unit(x = 0, units = "cm"),
+        panel.spacing.y = unit(x = 1, units = "cm"),
+        # panel.border = element_rect(color = "grey75"),
+        panel.border = element_blank(),
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.text.y = element_blank())
+
+```
+
+<!-- ```{r tab3, message=FALSE} -->
+
+<!-- # Extract summary statistics -->
+<!-- gwas_mean_summary <- gwas_geno_mean_adj %>%  -->
+<!--   filter(model == "G") %>%  -->
+<!--   select(marker:term, alpha = estimate, W_statistic, q_value, local_fdr) %>% -->
+<!--   unnest(alpha) %>% -->
+<!--   mutate(conclusion = case_when(q_value <= 0.05 ~ "significant", -->
+<!--                                 q_value <= 0.10 ~ "suggestive", -->
+<!--                                 TRUE ~ "not_significant")) %>% -->
+<!--   filter(conclusion != "not_significant") -->
+
+<!-- gwas_fw_summary <- gwas_pheno_fw_adj %>% -->
+<!--   ungroup() %>% -->
+<!--   filter(model == "G") %>% -->
+<!--   separate(trait, into = c("trait", "stability"), sep = "_") %>% -->
+<!--   mutate(term = if_else(stability == "b", "linear_stability", "nonlinear_stability")) %>%  -->
+<!--   select(marker:trait, term, alpha = estimate, W_statistic, q_value, local_fdr) %>% -->
+<!--   unnest(alpha) %>% -->
+<!--   mutate(conclusion = case_when(q_value <= 0.05 ~ "significant", -->
+<!--                                 q_value <= 0.10 ~ "suggestive", -->
+<!--                                 TRUE ~ "not_significant")) %>% -->
+<!--   filter(conclusion != "not_significant") -->
+
+<!-- # Combine -->
+<!-- gwas_summary_sig <- bind_rows(gwas_mean_summary, gwas_fw_summary) %>%  -->
+<!--   filter(conclusion == "significant") -->
+
+<!-- # Table -->
+<!-- tab3 <- gwas_summary_sig %>%  -->
+<!--   filter(trait == "HeadingDate") %>%  -->
+<!--   arrange(chrom, pos) %>%  -->
+<!--   select(marker:pos, term:alpha) -->
+
+<!-- index <-  map_dbl(unique(tab3$chrom), ~sum(tab3$chrom == .)) %>%  -->
+<!--   set_names(., paste("Chromosome", seq_along(.))) -->
+
+<!-- knitr::kable(select(tab3, -chrom), format = "latex", booktabs = T) %>% -->
+<!--   kable_styling() %>% -->
+<!--   group_rows(index = index) -->
+
+
+<!-- ``` -->
+
+\newpage
+# Discussion
+
+- Discussion points so far:
+    1. Phenotypic data is sampled from an adequate range
+    2. Lines are variable in genotypic means and linear and non-linear stability estimates
+    3. For some traits, the genotype mean and stability are correlated (i.e. *HeadingDate*), and for others there is little to no correlation (i.e. *GrainYield*)
+    4. We could detect significant associations for the genotype mean and for different estimates of stability for several traits
+        - In some instances, significant loci for the mean overlapped with those for phenotypic stability (e.g. long arm of chromosome 5 for *HeadingDate* or the short arm of chromosome 6 for *PlantHeight*)
+        - In other instances, significant loci for linear stability overlapped those for non-linear stability (e.g. long arm of chromosome 5 for *HeadingDate*)
+        - More often, though, there was no overlap.  
+
+
+
+- Next steps:
+    1. Calculate stability coefficients for marker effects across environments and find markers that are significantly plastic or stable
+    2. Establish genomic regions of interest and look at gene annotation and GO terms
+  
+
+
+
+
+
+\newpage
+
+# References
+

@@ -1,0 +1,84 @@
+\begin{thebibliography}{8}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bernardo(2013)]{Bernardo2013a}
+Rex Bernardo.
+\newblock {Genomewide markers as cofactors for precision mapping of
+  quantitative trait loci}.
+\newblock \emph{Theoretical and Applied Genetics}, 126\penalty0 (4):\penalty0
+  999--1009, 2013.
+\newblock ISSN 00405752.
+\newblock \doi{10.1007/s00122-012-2032-2}.
+
+\bibitem[Chen and Lipka(2016)]{Chen2016}
+A~H Chen and A~E Lipka.
+\newblock {The Use of Targeted Marker Subsets to Account for Population
+  Structure and Relatedness in Genome-Wide Association Studies of Maize (Zea
+  mays L.)}.
+\newblock \emph{G3: Genes|Genomes|Genetics}, 6\penalty0 (August):\penalty0
+  2365--2374, 2016.
+\newblock ISSN 2160-1836.
+\newblock \doi{10.1534/g3.116.029090}.
+\newblock URL \url{http://www.ncbi.nlm.nih.gov/pubmed/27233668}.
+
+\bibitem[Eberhart and Russell(1966)]{Eberhart1966}
+S~A Eberhart and W~A Russell.
+\newblock {Stability Parameters for Comparing Varieties}.
+\newblock \emph{Crop Science}, 6\penalty0 (3), 1966.
+
+\bibitem[Finlay and Wilkinson(1963)]{Finlay1963}
+K.W. Finlay and G.N. Wilkinson.
+\newblock {The analysis of adaptation in a plant-breeding programme}.
+\newblock \emph{Australian Journal of Agricultural Research}, 14\penalty0
+  (6):\penalty0 742, 1963.
+\newblock ISSN 0004-9409.
+\newblock \doi{10.1071/AR9630742}.
+
+\bibitem[Kraakman et~al.(2004)Kraakman, Niks, {Van Den Berg}, Stam, and {Van
+  Eeuwijk}]{Kraakman2004}
+Arnold~T.W. Kraakman, Rients~E. Niks, Petra~M.M.M. {Van Den Berg}, Piet Stam,
+  and Fred~A. {Van Eeuwijk}.
+\newblock {Linkage disequilibrium mapping of yield and yield stability in
+  modern spring barley cultivars}.
+\newblock \emph{Genetics}, 168\penalty0 (1):\penalty0 435--446, 2004.
+\newblock ISSN 00166731.
+\newblock \doi{10.1534/genetics.104.026831}.
+
+\bibitem[Kusmec et~al.(2017)Kusmec, Srinivasan, Nettleton, and
+  Schnable]{Kusmec2017}
+Aaron Kusmec, Srikant Srinivasan, Dan Nettleton, and Patrick~S. Schnable.
+\newblock {Distinct genetic architectures for phenotype means and plasticities
+  in Zea mays}.
+\newblock \emph{Nature Plants}, 3\penalty0 (9):\penalty0 715--723, 2017.
+\newblock ISSN 2055-0278.
+\newblock \doi{10.1038/s41477-017-0007-7}.
+\newblock URL \url{http://www.nature.com/articles/s41477-017-0007-7}.
+
+\bibitem[Lacaze et~al.(2009)Lacaze, Hayes, and Korol]{Lacaze2009}
+X~Lacaze, P~M Hayes, and A~Korol.
+\newblock {Genetics of phenotypic plasticity: QTL analysis in barley, Hordeum
+  vulgare}.
+\newblock \emph{Heredity}, 102\penalty0 (2):\penalty0 163--173, 2009.
+\newblock ISSN 0018-067X.
+\newblock \doi{10.1038/hdy.2008.76}.
+\newblock URL \url{http://www.nature.com/doifinder/10.1038/hdy.2008.76}.
+
+\bibitem[Rincent et~al.(2014)Rincent, Moreau, Monod, Kuhn, Melchinger, Malvar,
+  Moreno-Gonzalez, Nicolas, Madur, Combes, Dumas, Altmann, Brunel, Ouzunova,
+  Flament, Dubreuil, Charcosset, and Mary-Huard]{Rincent2014}
+Renaud Rincent, Laurence Moreau, Herv{\'{e}} Monod, Estelle Kuhn, Albrecht~E.
+  Melchinger, Rosa~A. Malvar, Jesus Moreno-Gonzalez, St{\'{e}}phane Nicolas,
+  Delphine Madur, Val{\'{e}}rie Combes, Fabrice Dumas, Thomas Altmann,
+  Dominique Brunel, Milena Ouzunova, Pascal Flament, Pierre Dubreuil, Alain
+  Charcosset, and Tristan Mary-Huard.
+\newblock {Recovering power in association mapping panels with variable levels
+  of linkage disequilibrium}.
+\newblock \emph{Genetics}, 197\penalty0 (1):\penalty0 375--387, 2014.
+\newblock ISSN 19432631.
+\newblock \doi{10.1534/genetics.113.159731}.
+
+\end{thebibliography}
