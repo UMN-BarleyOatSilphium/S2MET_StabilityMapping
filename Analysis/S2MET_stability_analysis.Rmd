@@ -612,7 +612,7 @@ S2_MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
 
 # Save the results
 save_file <- file.path(result_dir, "S2_MET_pheno_fw_resampling.RData")
-save("S2_MET_pheno_sample_fw", file = save_file)
+save("S2MET_pheno_sample_fw", file = save_file)
 
 ```
 
