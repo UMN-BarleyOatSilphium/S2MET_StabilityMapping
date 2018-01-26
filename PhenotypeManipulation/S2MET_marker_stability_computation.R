@@ -52,8 +52,6 @@ load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # load(file.path(geno_dir, "S2_genos_mat.RData"))
 # load(file.path(geno_dir, "S2_genos_hmp.RData"))
 load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
-# Load environmental data
-load(file.path(env_var_dir, "environmental_data_compiled.RData"))
 
 # Load an entry file
 entry_list <- read_excel(file.path(entry_dir, "S2MET_project_entries.xlsx"))
@@ -97,10 +95,14 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   mutate(line_name = as.factor(line_name),
          environment = as.factor(environment))
 
+## Load the phenotype FW regression results
+load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData" ))
+
 
 ## Calculate marker effects in each environment for each trait
-## Do this for the 'all' population and the 'tp' population.
-S2_MET_marker_effect_env <- S2_MET_BLUEs_use %>%
+S2_MET_marker_effect_env <- S2_MET_pheno_mean_fw %>% 
+  select(trait, line_name, environment, value, std_error) %>%
+  mutate(line_name = as.factor(line_name)) %>%
   group_by(trait, environment) %>%
   do({
     # Extract the data.frame
@@ -115,20 +117,32 @@ S2_MET_marker_effect_env <- S2_MET_BLUEs_use %>%
 
     # Subset the genotypes
     M1 <- Zline %*% M
+    
+    # Other matrices to use
+    X <- model.matrix(~ 1, mf)
+    K <- diag(ncol(M1))
+    
+    # Extract the weights for the R matrix
+    R <- diag(df$std_error^2)
+    
+    # Fit the model
+    # Results from this model correlate perfectly with the 'mixed.solve' model, so
+    # only using that model
+    # fit <- sommer::mmer(Y = y, X = X, Z = list(snp = list(Z = M1, K = K)), R = list(res = R))
 
     # Fit the mixed model
     fit <- mixed.solve(y = y, Z = M1)
 
     # Extract the marker effects and convert to data.frame, then output
     fit$u %>%
-      data_frame(marker = names(.), effect = ., beta = fit$beta) }) %>%
-  ungroup()
+      data_frame(marker = names(.), effect = ., beta = fit$beta) })
 
+# Ungroup
+S2_MET_marker_effect_env <- ungroup(S2_MET_marker_effect_env)
 
 ### Perform FW regression using the marker effects
 
-## Load the phenotype FW regression results
-load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData" ))
+
 
 ## Combine the marker effects by environment with the environmental effect from
 ## FW regression
@@ -143,21 +157,24 @@ marker_stability_coef <- S2_MET_marker_env_eff %>%
   do({
     # Extract the data
     df <- .
+    
+    # # Add the beta term to the effect
+    # df1 <- df %>%
+    #   mutate(mar_value = effect + beta)
 
     # Run the regression and tidy the results
     fit <- lm(effect ~ h, data = df)
+    # fit <- lm(mar_value ~ h, data = df1)
     fit_tidy <- tidy(fit)
 
     # Return coefficients
     data.frame(
-      b = subset(fit_tidy, term == "h", estimate, drop = T),
+      b = coef(fit)[2],
       b_std_error = subset(fit_tidy, term == "h", std.error, drop = T),
       df = df.residual(fit),
       delta = mean(resid(fit)^2),
       row.names = NULL
-    ) }) %>%
-  gather(stability_term, estimate, -trait, -marker, -b_std_error, -df) %>%
-  ungroup()
+    ) })
 
 
 ## Add marker information (position, etc.)

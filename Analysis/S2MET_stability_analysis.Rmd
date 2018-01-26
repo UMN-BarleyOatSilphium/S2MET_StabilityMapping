@@ -18,22 +18,25 @@ library(readxl)
 library(lme4)
 library(broom)
 library(stringr)
-library(FW)
+library(modelr)
+# library(FW)
 library(ggridges)
 library(ggforce)
 library(pbr)
 library(qvalue)
 library(cowplot)
+library(patchwork)
 library(boot)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
+tp_geno <- tp_geno_multi
 
 # Remove the environments in which the vp was only observed
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-  group_by(trait, environment) %>%
-  filter(sum(line_name %in% tp) > 1) %>%
+  filter(line_name %in% tp_geno,
+         trait != "TestWeight") %>%
   ungroup()
 
 # Number of environments and entries
@@ -72,6 +75,9 @@ to obtain the environmental effects $E_j$. We then fit the following model for e
 $$
 y_j = \mu + (1 + b)E_j + \epsilon_{ij}
 $$
+
+
+
 
 ## Results
 
@@ -142,18 +148,6 @@ This is typical FW regression (i.e. using the phenotypic means)
 
 ```{r plot.fw.dist}
 
-
-# Plot histograms of the regression coefficients and MSEs
-g_pheno_fw_dens <- S2_MET_pheno_fw_uniq_trans %>%
-  ggplot(aes(x = value)) + 
-  geom_density(aes(fill = "blue")) + 
-  facet_wrap(trait ~ term, ncol = 2, scales = "free") +
-  xlab("Estimate") +
-  labs(title = "Stability Measures") +
-  scale_fill_brewer(palette = "Set2", guide = FALSE) +
-  theme_bw() +
-  theme(axis.title.y = element_blank())
-
 ## Plot the stability terms individually, then combine
 # First define a common list of ggplot modifiers
 g_mod <- list(
@@ -181,11 +175,8 @@ g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq_trans %>%
   facet_wrap( ~ trait, ncol = 1, scales = "free_x") +
   g_mod
 
-# Convert to grobs
-grob_list <- list(b = g_pheno_fw_dens_b, delta = g_pheno_fw_dens_delta) %>%
-  map(ggplotGrob)
-# Cowplot
-g_fw_dist <- cowplot::plot_grid(plotlist = grob_list)
+# Add the plots together
+g_fw_dist <- g_pheno_fw_dens_b + g_pheno_fw_dens_delta
 
 save_file <- file.path(fig_dir, "stability_estimate_distriubtions.jpg")
 ggsave(filename = save_file, plot = g_fw_dist, height = 5.6, width = 5, dpi = 500)
@@ -207,13 +198,28 @@ outlier_lines <- pheno_fw_outliers$line_name
 # Look up the genotypic value
 outlier_original_pheno_fw <- S2_MET_pheno_mean_fw %>% 
   filter(line_name %in% outlier_lines, trait == "HeadingDate") %>% 
-  distinct(environment, line_name, trait, g, h, b, delta)
+  distinct(environment, line_name, trait, value, g, h, b, delta)
+
+# Fit the regression models for these genotypes
+outlier_lm <- outlier_original_pheno_fw %>% 
+  group_by(line_name) %>% 
+  do({
+    df <- .
+    fit <- lm(value ~ h, data = df)
+    df %>% 
+      add_residuals(model = fit) %>%
+      mutate(stand_resid = resid / sd(resid)) })
+
+# Plot the regression lines for these genotypes
+outlier_original_pheno_fw %>% 
+  ggplot(aes(x = h, y = value, group = line_name)) + 
+  geom_point() + 
+  geom_text(data = subset(outlier_lm, abs(stand_resid) >= 2.5), aes(label = environment)) +
+  geom_smooth(method = "lm", se = FALSE) + 
+  facet_wrap(~ line_name) +
+  theme_bw()
 
 ``` 
-
-It doesn't appear that there is anything wrong with these lines. We will consider
-these lines when looking at the relationship between phenotype in each environment
-and environmental mean
 
 
 Plot the stability estimates as lines against g_i vs h_j
@@ -275,46 +281,6 @@ ggsave(filename = save_file, plot = g_pheno_fw_b_example, width = 5, height = 8)
 ```
 
 
-Look at the outliers
-
-```{r fw.reg.outliers}
-
-# Extract the outliers
-pheno_fw_outliers <- S2_MET_pheno_mean_fw_toplot %>% 
-  filter(line_name %in% outlier_lines,
-         trait == "HeadingDate")
-
-g_pheno_fw_b_outliers <- S2_MET_pheno_mean_fw_toplot %>%
-  select(trait, environment, line_name, value, h) %>% 
-  filter(trait == "HeadingDate") %>%
-  ggplot(aes(x = h, y = value)) + 
-  geom_point() + 
-  geom_abline(data = pheno_fw_outliers, aes(intercept = g, slope = b, col = line_name), lwd = 1) + 
-  scale_color_discrete(guide = guide_legend(title = "Line Name", ncol = 1)) +
-  facet_wrap(~ trait, ncol = 1, scales = "free") +
-  ylab("Genotype Mean") +
-  xlab("Environment Effect") +
-  labs(title = "Outlier Genotype Responses") +
-  theme_bw() +
-  theme(legend.position = "right",
-        legend.background = element_rect(fill = "grey85", color = NA),
-        legend.text = element_text(size = 8),
-        legend.title = element_text(size = 10))
-
-# Examine the regression objects for the outliers
-pheno_fw_outlier_fit <- S2_MET_pheno_mean_fw_toplot %>% 
-  filter(line_name %in% outlier_lines,
-         trait == "HeadingDate") %>% 
-  group_by(trait, line_name) %>% 
-  do(fit = lm(value ~ h, data = .))
-
-
-
-```
-
-There doesn't seem to be a common issue with these lines. I struggle to find a reason to exclude them.
-
-
 
 Plot the relationship between the genotypic effect and the sensitivity
 
@@ -330,13 +296,12 @@ stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
     df <- .
     # Perform bootstrap
     boot_out <- df %>% 
-      bootstrap(m = 1000) %>% 
-      do(cor = cor(.$g, .$value)) %>%
-      mutate(cor = unlist(cor))
+      bootstrap(n = 1000) %>% 
+      pull(strap) %>%
+      map_dbl(~as.data.frame(.) %>% ungroup() %>% select(g, value) %>% cor(.) %>% .[1,2])
     
     # Summarize and export
-    boot_out %>% 
-      ungroup() %>% 
+    data.frame(cor = boot_out) %>% 
       summarize(boot_mean = mean(cor), se = sd(cor), 
                 ci_lower = quantile(cor, 0.05 / 2), ci_upper = quantile(cor, 1 - (0.05 / 2))) }) %>%
   # Join with original data
@@ -345,11 +310,13 @@ stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
   group_by(trait, term) %>% 
   mutate(corr = cor(g, value, use = "complete.obs"),
          corr = str_c("r = ", round(corr, 3))) %>% 
-  unnest()
+  unnest() %>%
+  ungroup()
 
 
 # Fit linear models
 stability_mean_lm <- stability_mean_corr %>% 
+  group_by(trait, term) %>%
   do(fit = lm(g ~ value, data = .))
 
 # Tidy up
@@ -400,24 +367,13 @@ g_add <- list(geom_point(),
               theme_bw(),
               theme(legend.background = element_rect(fill = "grey85", color = NA)))
 
-# Plot the linear and non-linear stability together
-g_stability_and_mean <- stability_mean_corr %>%
-  ggplot(aes(x = g, y = value, col = program, group = FALSE)) +
-  facet_wrap(trait ~ term, scales = "free", ncol = 2) +
-  labs(title = "Relationship Between Genotype Mean and Sensitivity") +
-  g_add
-
-save_file <- file.path(fig_dir, "pheno_fw_stability_mean.jpg")
-ggsave(filename = save_file, plot = g_stability_and_mean, width = 6, height = 8)
-
-
 # Plot just the linear stability
 g_linear_stability_and_mean <- stability_mean_corr %>%
   filter(term == "b") %>%
   ggplot(aes(x = g, y = value, col = program, group = FALSE)) +
   facet_wrap(~ trait, scales = "free_x", ncol = 1) +
   labs(title = "Linear Stability") +
-  theme(legend.position = "right")
+  theme(legend.position = "right") +
   g_add
   
 # Plot just the non-linear stability
@@ -485,10 +441,7 @@ ggsave(filename = save_file, plot = g_plotgrid2, width = 6, height = 6)
 
 Heritability of the stability estimates
 
-Estimate heritability 3 ways:
-
-1. Use a mixed model with a genotype effect and weight the residuals based on the standard error of the estimate of $b_i$ (does not allow modelling of $\delta^2_i$, yet).
-2. Mixed model with genotype effect modelled by the relationship matrix and residual genotype effect
+Estimate heritability via a mixed model with genotype effect modelled by the relationship matrix and residual genotype effect
 
 ```{r stab.herit}
 
@@ -551,7 +504,7 @@ S2_MET_fw_herit <- S2_MET_pheno_fw_tomodel %>%
     data.frame(herit = herit)
   })
 
-
+S2_MET_fw_herit
 
 
 ```
@@ -599,9 +552,10 @@ S2_MET_pheno_samples <- p_env %>%
     }) %>% list(., names(.)) %>% pmap_df(~mutate(.x, p = .y))
 
 # Iterate over samples and calculate the stability coefficients
-S2_MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
+S2MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
   unnest() %>%
   group_by(trait, p, iter, line_name) %>%
+  select(-environment, -trait1, -std_error) %>%
   do({
     df <- .
     
@@ -610,8 +564,11 @@ S2_MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
     data.frame(b = coef(fit)[2], delta = mean(resid(fit)^2))
   }) 
 
+# Ungroup
+S2MET_pheno_sample_fw <- ungroup(S2MET_pheno_sample_fw)
+
 # Save the results
-save_file <- file.path(result_dir, "S2_MET_pheno_fw_resampling.RData")
+save_file <- file.path(result_dir, "S2MET_pheno_fw_resampling.RData")
 save("S2MET_pheno_sample_fw", file = save_file)
 
 ```
