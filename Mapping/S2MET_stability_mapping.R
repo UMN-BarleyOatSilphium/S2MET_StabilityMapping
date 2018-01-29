@@ -319,12 +319,15 @@ resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, FUN = function(c
   sig_gwas_list <- vector("list", length = nrow(core_df))
   
   for (i in seq(nrow(core_df))) {
-    gwas_out <- gwas(pheno = core_df$pheno_use[[i]], geno = genos_use, model = "G",
-                     n.PC = 2, P3D = TRUE, n.core = 1)
+    # Remove inifite values
+    pheno_use <- core_df$pheno_use[[i]] %>% 
+      mutate_at(vars(-line_name), parse_number, na = c("", NA, Inf, -Inf))
+    
+    gwas_out <- gwas(pheno = pheno_use, geno = genos_use, model = "G",
+                     n.PC = 0, P3D = TRUE, n.core = 1)
     
     # Find the significant hits and return
     sig_gwas_list[[i]] <- gwas_out$scores %>% 
-      tbl_df %>% 
       filter(term == "main_effect") %>% 
       group_by(trait) %>% 
       mutate(q_value = qvalue(p = p_value)$qvalue) %>% 
