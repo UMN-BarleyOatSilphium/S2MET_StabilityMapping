@@ -89,87 +89,72 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
          environment = as.factor(environment))
 
 
-# ## Use the GWAS G model to estimate the effect of each marker in each environment
-# ## This will be the environment-specific marker effect + the mean
-# 
-# # Subset markers by chromosome
-# markers_by_chrom <- S2TP_imputed_multi_genos_hmp %>% 
-#   select(marker = rs, chrom)
-# 
-# # All marker names
-# markers <- colnames(M)
-# 
-# # Create relationship matrices per chromosome
-# K_chr <- markers_by_chrom %>%
-#   split(.$chrom) %>%
-#   map(~M[,setdiff(markers, .$marker),drop = FALSE]) %>%
-#   map(~A.mat(X = ., min.MAF = 0, max.missing = 1))
-# 
-# ## One trait at a time
-# trait_df <- S2_MET_BLUEs_use %>%
-#   filter(trait == tr) %>%
-#   droplevels()
-# 
-# 
-# 
-# # Model matrices for line_name and environment
-# Zg <- model.matrix(~ -1 + line_name, trait_df)
-# Ze <- model.matrix(~ -1 + environment, trait_df)
-# 
-# # Extract weights
-# wts <- trait_df$std_error^2
-# 
-# # Split markers by core
-# core_list <- markers_by_chrom %>% 
-#   mutate(core = sort(rep(seq(n_cores), length.out = nrow(.)))) %>%
-#   split(.$core)
-# 
-# # Iterate over the core list
-# marker_score_out <- mclapply(X = core_list, FUN = function(core) {
-#   
-#   # empty list to store results
-#   core_list_out <- vector("list", nrow(core)) %>%
-#     set_names(core$marker)
-#   
-#   # Apply a function over the marker matrix
-#   for (i in seq(nrow(core))) {
-#     # Subset the snp
-#     snp <- core[i,]
-#     
-#     mar <- Zg %*% M[,snp$marker, drop = FALSE]
-#     
-#     K_use <- K_chr[[snp$chrom]]
-#     
-#     # fit the model
-#     fit <- relmatLmer(value ~ mar:environment + (1|line_name) + (1|environment), trait_df, 
-#                       relmat = list(line_name = K_use), weights = wts)
-#     
-#     # Extract the coefficients
-#     core_list_out[[i]] <- tidy(fit) %>% 
-#       subset(str_detect(term, "mar"), c(term, estimate))
-#     
-#   }
-#   
-#   # return the list
-#   return(core_list_out)
-#   
-# }, mc.cores = n_cores)
+## Use the GWAS G model to estimate the effect of each marker in each environment
+## This will be the environment-specific marker effect + the mean
+
+# Subset markers by chromosome
+markers_by_chrom <- S2TP_imputed_multi_genos_hmp %>%
+  select(marker = rs, chrom)
+
+# All marker names
+markers <- colnames(M)
+
+# Create relationship matrices per chromosome
+K_chr <- markers_by_chrom %>%
+  split(.$chrom) %>%
+  map(~M[,setdiff(markers, .$marker),drop = FALSE]) %>%
+  map(~A.mat(X = ., min.MAF = 0, max.missing = 1))
+
+## One trait at a time
+trait_df <- S2_MET_BLUEs_use %>%
+  filter(trait == tr) %>%
+  droplevels()
 
 
-## Alternatively, use the gwas function in pbr to test for QxE
 
-# Filter the genotype data and create a data.frame for use in GWAS
-# Note 'select' can take a character vector as an argument.
-genos_use <- S2TP_imputed_multi_genos_hmp %>%
-  select(rs, chrom, pos, tp_geno)
+# Model matrices for line_name and environment
+Zg <- model.matrix(~ -1 + line_name, trait_df)
+Ze <- model.matrix(~ -1 + environment, trait_df)
 
-phenos_use <- S2_MET_pheno_mean_fw %>% 
-  distinct(line_name, trait, g, b, delta) %>% 
-  mutate(log_delta = log(delta)) %>%
-  select(-delta) %>%
-  gather(coef, value, g, b, log_delta) %>% 
-  unite("term", trait, coef, sep = "_") %>% 
-  spread(term, value)
+# Extract weights
+wts <- trait_df$std_error^2
+
+# Split markers by core
+core_list <- markers_by_chrom %>%
+  mutate(core = sort(rep(seq(n_cores), length.out = nrow(.)))) %>%
+  split(.$core)
+
+# Iterate over the core list
+marker_score_out <- mclapply(X = core_list, FUN = function(core) {
+
+  # empty list to store results
+  core_list_out <- vector("list", nrow(core)) %>%
+    set_names(core$marker)
+
+  # Apply a function over the marker matrix
+  for (i in seq(nrow(core))) {
+    # Subset the snp
+    snp <- core[i,]
+
+    mar <- Zg %*% M[,snp$marker, drop = FALSE]
+
+    K_use <- K_chr[[snp$chrom]]
+
+    # fit the model
+    fit <- relmatLmer(value ~ mar:environment + (1|line_name) + (1|environment), trait_df,
+                      relmat = list(line_name = K_use), weights = wts)
+
+    # Extract the coefficients
+    core_list_out[[i]] <- tidy(fit) %>%
+      subset(str_detect(term, "mar"), c(term, estimate))
+
+  }
+
+  # return the list
+  return(core_list_out)
+
+}, mc.cores = n_cores)
+
 
 
 # Save the output
