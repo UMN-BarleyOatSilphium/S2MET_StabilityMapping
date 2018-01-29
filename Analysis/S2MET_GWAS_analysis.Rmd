@@ -26,6 +26,7 @@ library(qvalue)
 library(ggforce)
 library(ggridges)
 library(cowplot)
+library(patchwork)
 library(neyhart)
 
 # Project and other directories
@@ -797,8 +798,208 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
 
 
 
+#### Resampling the Number of Environments
 
- 
+I want to know how many of the same QTL for stability are recovered when we estimate 
+stability using a different number of environments.
+
+I resampled 20, 40, 60, or 80% of environments 100 times each, calculate the stability
+estimates, then performed the mapping.
+
+```{r resampling.results}
+
+# Read in the results
+load(file.path(result_dir, "S2MET_pheno_fw_gwas_resample_results.RData"))
+
+# Remove the NULLs from error
+resample_gwas_sig_out1 <- resample_gwas_sig_out %>%
+  .[!map_lgl(., inherits, "try-error")] %>%
+  bind_rows()
+
+## Filter the original GWAS results for the stability QTL and the G model
+gwas_sig_fw <- gwas_pheno_mean_fw_adj %>% 
+  filter(model == "G", 
+         coef != "g", 
+         q_value <= alpha)
+
+# Iterate over the resampling results and find the signficant loci at alpha
+resample_gwas_sig_fw <- resample_gwas_sig_out1 %>%
+  select(p, iter, sig_out) %>% 
+  unnest() %>%
+  # SPlit the trait into trait and coefficient
+  separate(col = trait, into = c("trait", "coef"), sep = "_", extra = "merge") %>% 
+  filter(q_value <= alpha)
+
+## First, for each proportion of environments and for each level of stability,
+## how many significant SNPs were detected?
+resample_gwas_sig_fw_count <- resample_gwas_sig_fw %>% 
+  group_by(p, iter, trait, coef) %>% 
+  summarize(n_SNP = n()) %>%
+  ungroup() %>%
+  complete(p, iter, trait, coef, fill = list(n_SNP = 0)) %>%
+  group_by(p, trait, coef) %>%
+  mutate_at(vars(n_SNP), funs(mean, sd)) %>%
+  ungroup()
+
+## Plot this
+g_resample_n_SNPs <- resample_gwas_sig_fw_count %>% 
+  ggplot(aes(x = p, y = mean, col = trait, group = trait)) + 
+  geom_point() + 
+  geom_line() + 
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.25) + 
+  ylab("Number of Significant SNPs") +
+  xlab("Proportion of Environments Sampled") +
+  facet_grid(~ coef) + 
+  theme_bw()
+
+# Table
+
+
+# Subset the original gwas results
+gwas_sig_fw_intersect <- gwas_sig_fw %>%
+  select(marker, trait, coef)
+
+# For each p, iter, trait, and coef, how often do we detect new SNPs or the same
+# SNPs as in the full analysis?
+resample_gwas_sig_fw_intersect <- resample_gwas_sig_fw %>% 
+  select(p, iter, marker, trait, coef) %>%
+  group_by(p, iter, trait, coef) %>%
+  do({
+    df <- .
+    
+    # Trait and coef
+    tr <- unique(df$trait)
+    co <- unique(df$coef)
+    
+    # Filter the original data
+    gwas_sig_fw_intersect1 <- gwas_sig_fw_intersect %>%
+      filter(trait == tr, coef == co)
+    
+    # Intersect
+    marker_intersect <- intersect(df$marker, gwas_sig_fw_intersect1$marker)
+    marker_new <- setdiff(df$marker, gwas_sig_fw_intersect1$marker)
+    
+    # Return a data.frame of the intersected markers, the unique markers, and the counts of each
+    data_frame(hit_SNPs = list(marker_intersect), 
+               new_SNPs = list(marker_new))  })
+
+resample_gwas_sig_fw_intersect1 <- resample_gwas_sig_fw_intersect %>% 
+  ungroup() %>% 
+  gather(SNP_type, SNPs, -p:-coef) %>% 
+  mutate(n_SNPs = map_dbl(SNPs, length)) %>% 
+  group_by(p, trait, coef, SNP_type) %>% 
+  summarize_at(vars(n_SNPs), funs(mean, sd)) %>%
+  ungroup()
+
+## Remember, the above measures the number of intersected or new SNPs conditional
+## on actually detected significant associations
+
+# Number of iterations
+n_iter <- n_distinct(resample_gwas_sig_fw$iter)
+
+
+# Plot
+g_resample_intersect <- resample_gwas_sig_fw_intersect1 %>% 
+  ggplot(aes(x = p, y = mean, fill = SNP_type, group = SNP_type)) + 
+  geom_col(position = "dodge") + 
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.25, 
+                position = position_dodge(0.9)) + 
+  ylab("Number of SNPs") +
+  xlab("Proportion of Environments Sampled") +
+  facet_grid(trait ~ coef, scales = "free_y") + 
+  theme_bw()
+
+save_file <- file.path(fig_dir, "resample_gwas_intersection.jpg")
+ggsave(filename = save_file, plot = g_resample_intersect, width = 6, height = 5)
+
+
+## Count up the intersected and new SNPs and rank by number of times
+## the SNP was detected
+
+resample_snp_detect_count <- resample_gwas_sig_fw_intersect %>% 
+  ungroup() %>% 
+  gather(SNP_type, marker, -p:-coef) %>%
+  unnest() %>% 
+  group_by(p, trait, coef, SNP_type, marker) %>% 
+  summarize(times_detected = n(), prop_detected = times_detected / n_iter) %>%
+  ungroup() %>%
+  left_join(., select(S2TP_imputed_multi_genos_hmp, marker = rs, chrom, pos), by = "marker")
+
+# Are we more likely to discover new SNPs or those we discovered before?
+g_resample_snp_detect_count <- resample_snp_detect_count %>%
+  mutate_at(vars(p, trait, coef, SNP_type), funs(as.factor)) %>% 
+  complete(p, trait, coef, SNP_type, fill = list(prop_detected = 0)) %>%
+  ggplot(aes(x = p, y = prop_detected, color = SNP_type)) +
+  geom_boxplot(position = "dodge", width = 0.5) +
+  scale_color_discrete(drop = FALSE) +
+  facet_grid(trait ~ coef) + 
+  theme_bw()
+
+save_file <- file.path(fig_dir, "resample_gwas_intersection_prop.jpg")
+ggsave(filename = save_file, plot = g_resample_snp_detect_count, width = 6, height = 5)
+
+
+# Sort and display
+resample_snp_detect_count_max <- resample_snp_detect_count %>%
+  filter(times_detected == max(times_detected))
+  
+
+# Common plot modifier
+g_mod <- list(geom_point(),
+  geom_segment(data = barley_lengths, aes(x = 0, y = 0, xend = 0, yend = length / 1000000), 
+               inherit.aes = FALSE, size = 2, lineend = "round", col = "grey70") ,
+  ylab("Position (Mbp)") ,
+  xlim(c(-2, 2)) , 
+  facet_grid(~ chrom, switch = "x") , 
+  scale_shape_manual(values = c("hit_SNPs" = 1, "new_SNPs" = 0)) , 
+  # scale_size_manual(breaks = seq(0, 1, by = 0.25)),
+  scale_y_reverse() , 
+  theme_bw() , 
+  theme(panel.grid = element_blank(), 
+        panel.border = element_blank(), 
+        # panel.spacing.x = unit(1, units = "cm"),
+        axis.text.x = element_blank(), 
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        strip.background = element_blank()) )
+
+
+# Create a 'heatmap' for each trait
+g_resample_hd <- resample_snp_detect_count %>% 
+  mutate(p = parse_number(p),
+         x = if_else(SNP_type == "hit_SNPs", -p * 2, p * 2)) %>% 
+  filter(trait == "HeadingDate") %>% 
+  ggplot(aes(y = pos / 1000000, x = x, size = prop_detected, col = coef, shape = SNP_type)) + 
+  g_mod +
+  labs(title = "Heading Date")
+
+g_resample_ph <- resample_snp_detect_count %>% 
+  mutate(p = parse_number(p),
+         x = if_else(SNP_type == "hit_SNPs", -p * 2, p * 2)) %>% 
+  filter(trait == "PlantHeight") %>% 
+  ggplot(aes(y = pos / 1000000, x = x, size = prop_detected, col = coef, shape = SNP_type)) + 
+  g_mod +
+  labs(title = "Plant Height")
+
+g_resample_gy <- resample_snp_detect_count %>% 
+  mutate(p = parse_number(p),
+         x = if_else(SNP_type == "hit_SNPs", -p * 2, p * 2)) %>% 
+  filter(trait == "GrainYield") %>% 
+  ggplot(aes(y = pos / 1000000, x = x, size = prop_detected, col = coef, shape = SNP_type)) + 
+  g_mod +
+  labs(title = "Grain Yield")
+
+## Plot together
+save_file <- file.path(fig_dir, "resample_count_hd.jpg")
+ggsave(filename = save_file, plot = g_resample_hd, width = 10, height = 7, dpi = 1000)
+
+save_file <- file.path(fig_dir, "resample_count_ph.jpg")
+ggsave(filename = save_file, plot = g_resample_ph, width = 10, height = 7, dpi = 1000)
+
+save_file <- file.path(fig_dir, "resample_count_gy.jpg")
+ggsave(filename = save_file, plot = g_resample_gy, width = 10, height = 7, dpi = 1000)
+
+```
 
 
 #### Intervals around significant associations

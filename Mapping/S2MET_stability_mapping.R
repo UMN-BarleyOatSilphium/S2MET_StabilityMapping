@@ -8,7 +8,7 @@
 
 # List of packages to load
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP", "EMMREML", "qvalue")
+              "parallel", "purrrlyr", "rrBLUP", "EMMREML", "qvalue", "lme4qtl")
 
 packages <- c(packages, "pbr")
 
@@ -85,10 +85,12 @@ genos_use <- S2TP_imputed_multi_genos_hmp %>%
   select(rs, chrom, pos, tp_geno)
 
 
+
 # Load the FW results
 load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData"))
 # Load the FW sampling results
 load(file.path(result_dir, "S2MET_pheno_fw_resampling.RData"))
+
 
 ## Format the FW results as a phenotype data.frame
 ## Filter the lines that only have genotype data
