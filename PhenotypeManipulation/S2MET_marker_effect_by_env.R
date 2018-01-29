@@ -11,11 +11,13 @@ tr <- args[1]
 # List of packages to load
 # List of packages
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP", "ggplot2", "broom", "Matrix", "pbr", "lme4qtl")
+              "parallel", "purrrlyr", "rrBLUP", "ggplot2", "broom", "Matrix", "lme4qtl")
 
 # Set the directory of the R packages
 package_dir <- NULL
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
+package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
+
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
