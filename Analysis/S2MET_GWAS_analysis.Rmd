@@ -44,6 +44,10 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 # M <- s2_imputed_mat[tp_geno,]
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
+# Get the marker information
+snp_info <- S2TP_imputed_multi_genos_hmp %>%
+  select(marker = rs, chrom, pos, cM_pos)
+
 # Subset the entry list for the tp
 tp_entry_list <- entry_list %>%
   filter(Line %in% tp_geno) %>%
@@ -813,7 +817,6 @@ load(file.path(result_dir, "S2MET_pheno_fw_gwas_resample_results.RData"))
 
 # Remove the NULLs from error
 resample_gwas_sig_out1 <- resample_gwas_sig_out %>%
-  .[!map_lgl(., inherits, "try-error")] %>%
   bind_rows()
 
 ## Filter the original GWAS results for the stability QTL and the G model
@@ -933,7 +936,8 @@ g_resample_snp_detect_count <- resample_snp_detect_count %>%
   geom_boxplot(position = "dodge", width = 0.5) +
   scale_color_discrete(drop = FALSE) +
   facet_grid(trait ~ coef) + 
-  theme_bw()
+  theme_bw() +
+  labs(subtitle = "Proportion of samples in which any one SNP is considered significant")
 
 save_file <- file.path(fig_dir, "resample_gwas_intersection_prop.jpg")
 ggsave(filename = save_file, plot = g_resample_snp_detect_count, width = 6, height = 5)
@@ -1004,8 +1008,9 @@ ggsave(filename = save_file, plot = g_resample_gy, width = 10, height = 7, dpi =
 
 #### Intervals around significant associations
 
-Group significant SNPs for each trait that are within 5 Mbp and in high LD ($r^2 \ge 0.80$). 
 
+
+Group significant SNPs for each trait that are within 5 Mbp and in high LD ($r^2 \ge 0.80$). 
 
 
 ```{r sig.overlap}
@@ -1074,7 +1079,8 @@ LD_threshold <- 0.80
 wind_size <- 10000000
 
 # Create GRanges objects
-sig_markers_GRange <- sig_markers %>%
+sig_markers_GRange <- gwas_mlmm_Gmodel %>%
+  ungroup() %>%
   mutate(snp_pos = pos) %>%
   group_by(trait, coef, chrom) %>%
   do(grange = {
@@ -1114,7 +1120,8 @@ sig_markers_groups <- sig_markers_GRange %>%
 # Combine the data
 sig_markers_grange_df <- sig_markers_groups$grange %>% 
   map_df(as.data.frame) %>% 
-  as_data_frame() 
+  as_data_frame() %>%
+  dplyr::rename(chrom = seqnames)
 
 # Save this
 save_file <- file.path(result_dir, "S2MET_gwas_sig_loci.RData")
@@ -1124,176 +1131,111 @@ save("sig_markers_grange_df", file = save_file)
 ```
 
 
-Summarize the number of intervals and regions
+
+
+Summarize the number of significant markers and intervals
 
 ```{r summ.intervals}
 
-## Assign regions, while storing the marker names and adding windows around the
-## range of positions
-sig_genomic_regions <- sig_genomic_groups %>% 
-  group_by(new_groups, add = T) %>% 
-  mutate_at(vars(pos), funs(min, max)) %>% 
-  group_by(test_type, min, max, add = T) %>%
-  nest(marker, .key = "marker") %>%
-  mutate(start = min - bp_distance,
-         end = max + bp_distance) %>%
-  select(trait:new_groups, start, end, marker)
+## Summarize the number of significant markers and the number of sgnificant intervals
+sig_summary <- sig_markers_grange_df %>% 
+  group_by(trait, coef, seqnames) %>% 
+  summarize(SNP = n_distinct(marker), Interval = n_distinct(group)) %>% 
+  summarize_at(vars(SNP, Interval), sum)
 
-# How many regions per chromosome, per trait, per test
-n_regions <- sig_genomic_regions %>% 
-  group_by(trait, test_type, chrom) %>% 
-  summarize(n_interval = n_distinct(new_groups)) %>% 
-  mutate(total_interval = sum(n_interval))
+# Translator for coefficient
+coef_repl <- function(x) {
+  case_when(x == "log_delta" ~ "Non-Linear Stability",
+            x == "g" ~ "Genotype Mean", 
+            x == "b" ~ "Linear Stability")
+}
 
-# Plot the number of intervals
-n_regions %>% 
-  ungroup() %>% 
-  complete(trait, test_type) %>% 
-  ggplot(aes(x = trait, y = total_interval, group = test_type, fill = test_type)) + 
-  geom_col(position = "dodge") + 
-  scale_fill_discrete(drop = FALSE)
-
-g_n_regions <- n_regions %>% 
-  ungroup() %>% 
-  complete(trait, test_type) %>% 
-  # filter(test_typea %in% c("main_effect_mean", "linear_stability", "non-linear_stability")) %>%
-  ggplot(aes(x = trait, y = total_interval, group = test_type, fill = test_type)) + 
-  geom_col(position = "dodge") + 
-  scale_fill_discrete(drop = FALSE) +
-  theme_bw()
-
-save_file <- file.path(fig_dir, "number_significant_intervals.jpg")
-ggsave(filename = save_file, plot = g_n_regions)
-
-# sug_loci_df_intervals <- sug_loci_df_groups %>% 
-#   group_by(group, add = T) %>% 
-#   mutate(interval_start = min(start), interval_end = max(end)) %>%
-#   ungroup() %>%
-#   # Assign a y axis value to each test
-#   mutate(test = factor(test, levels = c("mean", "stability", "stable", "sensitive")),
-#          y_level = as.numeric(test))
-
-## Plot the windows
-g_sig_windows <- ggplot(data = S2TP_imputed_multi_genos_hmp, aes(x = pos / 1000000)) + 
-  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
-  geom_segment(data = mutate(sig_genomic_regions, y_level = as.numeric(as.factor(test_type))), 
-               aes(x = start, xend = end, y = y_level, yend = y_level, col = test_type),
-               lwd = 2.5, lineend = "round") +
-  ylab("") +
-  xlab("Position (Mbp)") +
-  ylim(c(0, 10)) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+## Plot the intervals
+# First change the coefficient to a factor and create y axis 
+g_sig_interval <- sig_markers_grange_df %>% 
+  mutate(coef = parse_factor(coef, levels = c("g", "b", "log_delta")),
+         y_coef = as.numeric(coef) / 2) %>% 
+  ggplot() + 
+  geom_segment(aes(x = y_coef, xend = y_coef, y = start / 1000000, 
+                   yend = end / 1000000, col = coef), size = 3) + 
+  geom_segment(data = barley_lengths, aes(x = 0, y = 0, xend = 0, yend = length / 1000000), 
+               inherit.aes = FALSE, size = 2, lineend = "round", col = "grey70") + 
+  ylab("Position (Mbp)") +
+  xlim(c(-1, 2)) +
+  facet_grid(trait ~ chrom, switch = "x") + 
+  scale_y_reverse() +
   theme_bw() +
-  theme(axis.text.y = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.spacing.x = unit(0, "in"),
-        panel.border = element_rect(color = "grey75"))
+  theme(panel.grid = element_blank(), 
+        panel.border = element_blank(), 
+        panel.spacing.y = unit(0.5, units = "cm"),
+        axis.text.x = element_blank(), 
+        axis.title.x = element_blank(), 
+        axis.ticks.x = element_blank(),
+        strip.background = element_blank())
 
-save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
-ggsave(filename = save_file, plot = g_sig_windows, height = 7, width = 9)
-
-
-# Zoom in chromosome 5 for heading date
-g_sig_windows_HD <- S2TP_imputed_multi_genos_hmp %>%
-  filter(chrom == 5, between(pos, 550000000, 650000000)) %>%
-  ggplot(data = .) + 
-  geom_segment(aes(x = min(pos  / 1000000), xend = max(pos  / 1000000), y = 0, yend = 0), lwd = 1.5) +
-  geom_segment(data = mutate(sig_genomic_regions, y_level = as.numeric(as.factor(test_type))) %>%
-                 filter(trait == "HeadingDate", chrom == 5, between(start, 550000000, 650000000)), 
-               aes(x = start, xend = end, y = y_level, yend = y_level, col = test_type),
-               lwd = 2.5, lineend = "round") +
-  ylab("") +
-  xlab("Position (Mbp)") +
-  ylim(c(0, 6)) +
-  xlim(c(550000000, 650000000)) +
-  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
-  theme_bw() +
-  theme(axis.text.y = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.spacing.x = unit(0, "in"),
-        panel.border = element_rect(color = "grey75"))
-
-save_file <- file.path(fig_dir, "significant_loci_windows_zoom_HeadingDate.jpg")
-ggsave(filename = save_file, plot = g_sig_windows_HD, height = 4, width = 6)
-
-
-
-# ## Do the same for suggestive regions
-# sug_loci_df_groups <- sig_loci_df %>% 
-#   group_by(trait, test, chrom) %>%
-#   do({
-#     # Grab the data
-#     df <- .
-#     
-#     # Add +/- 250 kbp to each position and assign preliminary groups based on overlap
-#     df1 <- df %>% 
-#       mutate(start = pos - 250000, end = pos + 250000,
-#              prelim_group = IRanges(start = start, end = end) %>% 
-#                findOverlaps(reduce(.), .) %>% queryHits() ) %>%
-#       as.data.frame()
-#     
-#     # If n_marker == 1, skip
-#     if (nrow(df1) == 1) {
-#       new_grps <- 1
-#       
-#     } else {
-#     
-#       # Subset the genotype matrix and calculate LD
-#       LD <- cor(M[,df1$marker])^2
-#       # Extract the 'adjacent' LD
-#       adj_LD <- diag(LD[,-1])
-#       
-#       # Vector of new groups
-#       new_grps <- numeric(nrow(df1))
-#       new_grps[df1$prelim_group == 1] <- 1
-#       
-#       # Iterate over preliminary groups in the df
-#       for (grp in seq(2, max(df1$prelim_group))) {
-#         # Extract the markers in that group plus the markers in previous group
-#         grp_mar <- subset(df1, prelim_group == grp, marker, drop = TRUE)
-#         prev_mar <- subset(df1, prelim_group == grp - 1, marker, drop = TRUE)
-#         
-#         # Are any markers in the previous group in high LD?
-#         any_LD <- colSums(LD[grp_mar, prev_mar, drop = FALSE] >= LD_threshold)
-#         # If any are, merge the groups
-#         if (any(any_LD > 0)) {
-#           # Change the grp number of those groups matching the previous group
-#           # to the new group number
-#           new_grps[new_grps == grp - 1] <- grp
-#           
-#         }
-#         # Add the current grp
-#         new_grps[df1$prelim_group == grp] <- grp
-#       }
-#       
-#     }
-# 
-#       # Add groups to the markers
-#       df1 %>% 
-#         mutate(group = str_c("group", new_grps)) })
-
-
-
-
-
-# # Plot for suggestive windows
-# g_sug_windows <- ggplot(data = snp_info, aes(x = pos)) + 
-#   geom_segment(aes(x = min(pos), xend = max(pos), y = 0, yend = 0), lwd = 1.5) +
-#   geom_segment(data = sug_loci_df_intervals, 
-#                aes(x = interval_start, xend = interval_end, y = y_level, yend = y_level, col = test),
-#                lwd = 2.5, lineend = "round") +
-#   ylim(c(0, 10)) +
-#   facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
-#   theme_bw() +
-#   theme(axis.text.y = element_blank(),
-#         panel.spacing.x = unit(0, "in"),
-#         panel.border = element_rect(color = "grey75"))
-# 
-# save_file <- file.path(fig_dir, "significant_loci_windows.jpg")
-# ggsave(filename = save_file, plot = g_windows, height = 7, width = 9)
+save_file <- file.path(fig_dir, "significant_loci_intervals.jpg")
+ggsave(filename = save_file, plot = g_sig_interval, height = 7, width = 9)
 
 
 ```
+
+
+
+
+For each of the significant intervals, plot the LD of those markers with nearby markers within 10 Mbp
+
+```{r zoom.LD}
+
+# In each group, select the marker with the highest p-value
+sig_markers_grange_df_select <- sig_markers_grange_df %>% 
+  group_by(trait, coef, chrom, group) %>% 
+  filter(p_value == min(p_value))
+
+# Calculate LD across all markers on each chromosome
+snp_LD <- snp_info %>% 
+  split(.$chrom) %>% 
+  map("marker") %>% 
+  map(~cor(M[,.])^2)
+
+# Iterate over each marker and calculate the LD between that marker
+# and all nearby markers within the interval
+sig_markers_grange_df_select_LD <- sig_markers_grange_df_select %>%
+  group_by(trait, coef, marker) %>%
+  do({
+    df <- .
+    
+    nearby_markers <- snp_info %>% 
+      filter(chrom == df$chrom, between(pos, left = df$start, right = df$end),
+             marker != df$marker)
+    
+    # Extract LD
+    df_LD <- snp_LD[[df$chrom]][df$marker, nearby_markers$marker]
+    
+    # Add the LD to the nearby markers and return
+    to_return <- nearby_markers %>% 
+      mutate(LD = df_LD) 
+    
+    df %>% 
+      select(chrom, snp_pos, alpha:q_value) %>% 
+      mutate(snp_LD = list(to_return)) })
+
+# Plot the significant marker and the LD of the surrounding markers
+g_sig_marker_LD <- sig_markers_grange_df_select_LD %>% 
+  unnest() %>% 
+  ggplot() + 
+  geom_point(aes(x = pos / 1000000, y = LD)) + 
+  geom_vline(aes(xintercept = snp_pos / 1000000)) + 
+  ylab(expression(r^2)) + 
+  xlab("Position (Mbp)") + 
+  ylim(c(0,1)) +
+  facet_wrap_paginate(~ trait + coef + marker, nrow = 3, ncol = 3, scales = "free_x")
+
+# Iterate over the pages and save
+
+
+
+```
+
 
 
 

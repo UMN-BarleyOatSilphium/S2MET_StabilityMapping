@@ -10,7 +10,7 @@
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
               "parallel", "purrrlyr", "rrBLUP", "EMMREML", "qvalue", "lme4qtl")
 
-packages <- c(packages, "pbr")
+# packages <- c(packages, "pbr")
 
 # Set the directory of the R packages
 package_dir <- NULL
