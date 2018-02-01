@@ -110,180 +110,179 @@ pheno_use <- S2_MET_pheno_mean_fw %>%
 n_cores <- detectCores()
 
 
-# ### Mapping using the observed stability estimates ###
-# 
-# # Models to use
-# models <- c("K", "G", "QK", "QG")
-# 
-# ## GWAS for pheno FW
-# gwas_pheno_mean_fw <- vector("list", length(models)) %>%
-#   set_names(models)
-# 
-# for (model in models) {
-#   gwas_pheno_mean_fw[[model]] <- gwas(pheno = pheno_use, geno = genos_use, model = model,
-#                                  n.PC = 2, P3D = TRUE, n.core = n_cores)
-# 
-# }
-# 
-# 
-# ### Fit a multi-locus mixed model to identify significant QTL ###
-# 
-# # First correct the p_values
-# gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw %>% 
-#   map_df(~mutate(.$scores, model = .$metadata$model)) %>%
-#   filter(term == "main_effect") %>%
-#   separate(trait, c("trait", "coef"), sep = "_", extra = "merge") %>%
-#   group_by(., trait, coef, model) %>% 
-#   mutate(p_adj = p.adjust(p_value, method = "fdr"),
-#          q_value = qvalue(p = p_value)$qvalue,
-#          local_fdr = qvalue(p = p_value)$lfdr,
-#          neg_log10_fdr05 = -log10(0.05),
-#          neg_log10_fdr10 = -log10(0.10)) %>%
-#   mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
-#   ungroup()
-# 
-# # Cutoff for significance
-# sig_cutoff <- 0.05
-# 
-# # Select the G model and identify the signficant associations
-# gwas_adj_sig <- gwas_pheno_mean_fw_adj %>%
-#   filter(model == "G", q_value <= sig_cutoff)
-# 
-# 
-# ## Fit MLMM on a chromosome-wise basis
-# # Identify the SNPs on each chromosome
-# snps_by_chrom <- S2TP_imputed_multi_genos_hmp %>% 
-#   split(.$chrom) %>% 
-#   map("rs")
-# 
-# # Create relationship matrices for each chromosome
-# K_c <- snps_by_chrom %>% 
-#   map(~subset(S2TP_imputed_multi_genos_mat, select = setdiff(colnames(S2TP_imputed_multi_genos_mat), .))) %>%
-#   map(~A.mat(., min.MAF = 0, max.missing = 1))
-# 
-# # Define a function to make a matrix full rank
-# make_full <- function(X) {
-#   svd.X <- svd(X)
-#   r <- max(which(svd.X$d > 1e-08))
-#   X.full <- as.matrix(svd.X$u[, 1:r])
-#   # X.full <- X[,-ncol(X)]
-#   return(X.full)
-# }
-# 
-# # Define a function that fits the linear mm and returns estimates, std.errors, and pvalue of
-# # markers
-# mlmm <- function(y, X, Z, K) {
-#   # Fit the model
-#   fit <- mixed.solve(y = y, Z = Z, K = K, X = X, SE = TRUE)
-#   alpha <- fit$beta[-1]
-#   se <- fit$beta.SE[-1]
-#   # Perform hypothesis test
-#   chisq <- alpha^2 / se^2
-#   p_value <- pchisq(q = chisq, df = 1, lower.tail = FALSE)
-#   q_value <- p.adjust(p = p_value, method = "BH")
-#   
-#   # # Calculate residuals
-#   # y_hat <- ((X %*% fit$beta) + (Z %*% fit$u))
-#   # res <-  y - y_hat
-#   # 
-#   # SSE <- sum(res^2)
-#   # SSR <- sum((y_hat - mean(y))^2)
-#   
-#   # Return a data.frame
-#   data.frame(marker = names(alpha), alpha, se, p_value, q_value)
-#   
-# }
-# 
-# # Function for removing colinear SNPs
-# remove_colinear <- function(x) {
-#   # LD
-#   x_LD <- cor(x)^2
-#   # Find the index of the SNPs to be dropped
-#   snp_index <- apply(X = x_LD, MARGIN = 1, FUN = function(LD) max(which(round(LD, 4) == 1)))
-#   to_drop <- which(duplicated(snp_index))
-#   
-#   ifelse(length(to_drop) > 0, return(x[,-to_drop, drop = FALSE]), return(x))
-#   
-# }
-# 
-# # Iterate over trait, coef, and chromosome
-# gwas_mlmm_Gmodel <- gwas_adj_sig %>% 
-#   group_by(trait, coef, chrom) %>%
-#   do({
-#     # Extract the data
-#     df <- .
-#     
-#     # What chromosome are we dealing with?
-#     chrom <- unique(df$chrom)
-#     # What are the traits and coefficients?
-#     trait <- str_c(unique(df$trait), "_", unique(df$coef))
-#     
-#     # Get the appropriate relationship matrix
-#     K_use <- K_c[[chrom]]
-#     
-#     # Subset the data.frame and create a model.frame
-#     mf <- pheno_use %>% 
-#       select(line_name, trait) %>%
-#       model.frame(formula = as.formula(str_c(trait, " ~ line_name")))
-#     
-#     # Response vector
-#     y <- model.response(mf)
-#     # Fixed effect mean matrix
-#     X_mu <- model.matrix(~ 1, mf) %>%
-#       make_full()
-#     # Random effect of each entry
-#     Z_g <- model.matrix(~ -1 + line_name, mf)
-#     # Fixed effect of each SNP
-#     X_snp <- {Z_g %*% S2TP_imputed_multi_genos_mat[,df$marker, drop = FALSE]} %>%
-#       remove_colinear()
-#     
-#     # Combine the fixed effect matrices
-#     X <- cbind(X_mu, X_snp)
-#     
-#     # Fit the model and return estimates
-#     fit_out <- mlmm(y = y, X = X, Z = Z_g, K = K_use)
-#       
-#     # Are any qvalues greater than the significance threshold?
-#     nonsig <- fit_out$q_value > sig_cutoff
-#     
-#     # While loop to backwards eliminate
-#     while(any(nonsig)) {
-#       
-#       # Which markers had the largest p_value
-#       which_remove <- which.max(fit_out$p_value)
-#       # Remove that marker from the X matrix
-#       X_snp <- X_snp[,-which_remove, drop = FALSE]
-#       
-#       # If no SNPs are present, return NA
-#       if (ncol(X_snp) == 0) {
-#         fit_out[1,] <- NA
-#         # Stop the loop
-#         break
-#         
-#       } else {
-#         # New X matrix
-#         X_new <- cbind(X_mu, X_snp)
-#         
-#         # Fit the model and return estimates
-#         fit_out <- mlmm(y = y, X = X_new, Z = Z_g, K = K_use)
-#         
-#       }
-#       
-#       # Are any qvalues greater than the significance threshold?
-#       nonsig <- fit_out$q_value > sig_cutoff
-#       
-#     } # End of while loop
-#     
-#     # Return the data.frame
-#     df %>% 
-#       select(marker:pos) %>% 
-#       right_join(., fit_out, by = "marker")
-#   })
-# 
-# 
-# # Save this data
-# save_file <- file.path(result_dir, "S2MET_pheno_fw_mean_gwas_results.RData")
-# save("gwas_pheno_mean_fw", "gwas_mlmm_Gmodel", file = save_file)
+### Mapping using the observed stability estimates ###
+
+# Models to use
+models <- c("K", "G", "QK", "QG")
+
+## GWAS for pheno FW
+gwas_pheno_mean_fw <- vector("list", length(models)) %>%
+  set_names(models)
+
+for (model in models) {
+  gwas_pheno_mean_fw[[model]] <- gwas(pheno = pheno_use, geno = genos_use, model = model,
+                                 n.PC = 2, P3D = TRUE, n.core = n_cores)
+
+}
+
+
+### Fit a multi-locus mixed model to identify significant QTL ###
+
+# First correct the p_values
+gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw %>%
+  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
+  filter(term == "main_effect") %>%
+  separate(trait, c("trait", "coef"), sep = "_", extra = "merge") %>%
+  group_by(., trait, coef, model) %>%
+  mutate(p_adj = p.adjust(p_value, method = "fdr"),
+         q_value = qvalue(p = p_value)$qvalue,
+         local_fdr = qvalue(p = p_value)$lfdr,
+         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr10 = -log10(0.10)) %>%
+  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
+  ungroup()
+
+# Cutoff for significance
+sig_cutoff <- 0.05
+
+# Select the G model and identify the signficant associations
+gwas_adj_sig <- gwas_pheno_mean_fw_adj %>%
+  filter(model == "G", q_value <= sig_cutoff)
+
+
+## Fit MLMM on a chromosome-wise basis
+# Identify the SNPs on each chromosome
+snps_by_chrom <- S2TP_imputed_multi_genos_hmp %>%
+  split(.$chrom) %>%
+  map("rs")
+
+# Create relationship matrices for each chromosome
+K_c <- snps_by_chrom %>%
+  map(~subset(S2TP_imputed_multi_genos_mat, select = setdiff(colnames(S2TP_imputed_multi_genos_mat), .))) %>%
+  map(~A.mat(., min.MAF = 0, max.missing = 1))
+
+# Define a function to make a matrix full rank
+make_full <- function(X) {
+  svd.X <- svd(X)
+  r <- max(which(svd.X$d > 1e-08))
+  X.full <- as.matrix(svd.X$u[, 1:r])
+  # X.full <- X[,-ncol(X)]
+  return(X.full)
+}
+
+# Define a function that fits the linear mm and returns estimates, std.errors, and pvalue of
+# markers
+mlmm <- function(y, X, Z, K) {
+  # Fit the model
+  fit <- mixed.solve(y = y, Z = Z, K = K, X = X, SE = TRUE)
+  alpha <- fit$beta[-1]
+  se <- fit$beta.SE[-1]
+  # Perform hypothesis test
+  chisq <- alpha^2 / se^2
+  p_value <- pchisq(q = chisq, df = 1, lower.tail = FALSE)
+  q_value <- p.adjust(p = p_value, method = "BH")
+
+  # # Calculate residuals
+  # y_hat <- ((X %*% fit$beta) + (Z %*% fit$u))
+  # res <-  y - y_hat
+  #
+  # SSE <- sum(res^2)
+  # SSR <- sum((y_hat - mean(y))^2)
+
+  # Return a data.frame
+  data.frame(marker = names(alpha), alpha, se, p_value, q_value)
+
+}
+
+# Function for removing colinear SNPs
+remove_colinear <- function(x) {
+  # LD
+  x_LD <- cor(x)^2
+  # Find the index of the SNPs to be dropped
+  snp_index <- apply(X = x_LD, MARGIN = 1, FUN = function(LD) max(which(LD > 0.99)))
+  to_drop <- which(duplicated(snp_index))
+
+  ifelse(length(to_drop) > 0, return(x[,-to_drop, drop = FALSE]), return(x))
+
+}
+
+# Iterate over trait, coef, and chromosome
+gwas_mlmm_Gmodel <- gwas_adj_sig %>%
+  group_by(trait, coef, chrom) %>%
+  do({
+    # Extract the data
+    df <- .
+
+    # What chromosome are we dealing with?
+    chrom <- unique(df$chrom)
+    # What are the traits and coefficients?
+    trait <- str_c(unique(df$trait), "_", unique(df$coef))
+
+    # Get the appropriate relationship matrix
+    K_use <- K_c[[chrom]]
+
+    # Subset the data.frame and create a model.frame
+    mf <- pheno_use %>%
+      select(line_name, trait) %>%
+      model.frame(formula = as.formula(str_c(trait, " ~ line_name")))
+
+    # Response vector
+    y <- model.response(mf)
+    # Fixed effect mean matrix
+    X_mu <- model.matrix(~ 1, mf)
+    # Random effect of each entry
+    Z_g <- model.matrix(~ -1 + line_name, mf)
+    # Fixed effect of each SNP
+    X_snp <- {Z_g %*% S2TP_imputed_multi_genos_mat[,df$marker, drop = FALSE]} %>%
+      remove_colinear()
+
+    # Combine the fixed effect matrices
+    X <- cbind(X_mu, X_snp)
+
+    # Fit the model and return estimates
+    fit_out <- mlmm(y = y, X = X, Z = Z_g, K = K_use)
+
+    # Are any qvalues greater than the significance threshold?
+    nonsig <- fit_out$q_value > sig_cutoff
+
+    # While loop to backwards eliminate
+    while(any(nonsig)) {
+
+      # Which markers had the largest p_value
+      which_remove <- which.max(fit_out$p_value)
+      # Remove that marker from the X matrix
+      X_snp <- X_snp[,-which_remove, drop = FALSE]
+
+      # If no SNPs are present, return NA
+      if (ncol(X_snp) == 0) {
+        fit_out[1,] <- NA
+        # Stop the loop
+        break
+
+      } else {
+        # New X matrix
+        X_new <- cbind(X_mu, X_snp)
+
+        # Fit the model and return estimates
+        fit_out <- mlmm(y = y, X = X_new, Z = Z_g, K = K_use)
+
+      }
+
+      # Are any qvalues greater than the significance threshold?
+      nonsig <- fit_out$q_value > sig_cutoff
+
+    } # End of while loop
+
+    # Return the data.frame
+    df %>%
+      select(marker:pos) %>%
+      right_join(., fit_out, by = "marker")
+  })
+
+
+# Save this data
+save_file <- file.path(result_dir, "S2MET_pheno_fw_mean_gwas_results.RData")
+save("gwas_pheno_mean_fw", "gwas_mlmm_Gmodel", file = save_file)
 
 
 

@@ -13,6 +13,8 @@ tr <- args[1]
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
               "parallel", "purrrlyr", "rrBLUP", "ggplot2", "broom", "Matrix", "lme4qtl")
 
+# packages <- c(packages, "pbr")
+
 # Set the directory of the R packages
 package_dir <- NULL
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
@@ -94,6 +96,8 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 ## Use the GWAS G model to estimate the effect of each marker in each environment
 ## This will be the environment-specific marker effect + the mean
 
+# The code below using the lme4qtl package
+
 # Subset markers by chromosome
 markers_by_chrom <- S2TP_imputed_multi_genos_hmp %>%
   select(marker = rs, chrom)
@@ -156,6 +160,8 @@ marker_score_out <- mclapply(X = core_list, FUN = function(core) {
   return(core_list_out)
 
 }, mc.cores = n_cores)
+
+
 
 
 

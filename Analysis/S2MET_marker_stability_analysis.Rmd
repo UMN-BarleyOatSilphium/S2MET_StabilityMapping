@@ -4,8 +4,8 @@ output: html_notebook
 bibliography: C:/Users/Jeff/Documents/Literature/library.bib
 ---
 
-This notebook will outline the analysis of GWAS mapping procedures using the S2MET data.
-
+This notebook will look at marker effect stability from marker effect estimates 
+in each environment
 
 ## Introduction
 
@@ -15,23 +15,33 @@ Load packages and set directories
 
 library(tidyverse)
 library(stringr)
-library(readxl)
-library(modelr)
-library(rrBLUP)
-library(GGally)
+library(readxl) 
 library(GenomicRanges)
 library(qvalue)
-library(purrrlyr)
+library(lme4qtl)
+library(patchwork)
+library(neyhart)
 
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
-# Load the marker effect FW results
-load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
 # Load the stability results
-load(file.path(result_dir, "S2MET_pheno_fw_regression_results.RData"))
+load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData"))
+# List the files containing marker effect by environment estimates
+mxe_files <- list.files(result_dir, pattern = "marker_by_env", full.names = TRUE)
 
-tp_geno <- tp_geno_multi
+# Iterate over files and save in a list
+mxe_list <- list()
+for (file in mxe_files) {
+  load(file)
+  trait <- str_extract(string = file, "[A-Za-z]*.RData") %>% str_replace(pattern = ".RData", "")
+  
+  mxe_list[[trait]] <- marker_score_out
+}
+
+# Get the marker information
+snp_info <- S2TP_imputed_multi_genos_hmp %>%
+  select(marker = rs, chrom, pos, cM_pos)
 
 # Filter the BLUEs to use
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
@@ -40,11 +50,6 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
-# Quartile coefficient of dispersion statistics
-qcd <- function(x) {
-  quants <- quantile(x = x, probs = c(0.50, 0.75))
-  as.numeric(diff(quants) / sum(quants))
-}
 
 ```
 
@@ -53,21 +58,160 @@ qcd <- function(x) {
 
 ## Results
 
+Manage the mxe data and convert to a tidy data.frame
+
+```{r tidy.mxe}
+
+# Tidy up
+marker_by_environment <- mxe_list %>%
+  map(~map_df(., ~list(., names(.)) %>% pmap_df(~mutate(.x, marker = .y)))) %>%
+  list(., names(.)) %>%
+  pmap_df(~mutate(.x, trait = .y)) %>%
+  as_data_frame() %>%
+  select(trait, marker, names(.))
+
+# Rename
+mxe_df <- marker_by_environment %>% 
+  mutate(environment = str_extract(term, "[A-Z]{3}[0-9]{2}")) %>%
+  select(trait, marker, environment, estimate)
+
+# Combine with the environmental mean
+mxe_df1 <- mxe_df %>%
+  left_join(., distinct(S2_MET_pheno_mean_fw, trait, environment, h), 
+            by = c("environment", "trait"))
+
+# Calculate the marker effect stability
+marker_effect_stab <- mxe_df1 %>%
+  group_by(trait, marker) %>%
+  do({
+    df <- . 
+    # Fit the model
+    fit <- lm(estimate ~ h, df)
+    data_frame(b = coef(fit)[2], 
+               b_std_error = summary(fit)$coefficients[2,"Std. Error"],
+               delta = mean(resid(fit)^2),
+               df = df.residual(fit),
+               fit = list(fit)) })
+    
+
+
+# Add the snp information
+S2_MET_marker_mean_fw <- mxe_df1 %>% 
+  full_join(., marker_effect_stab, by = c("trait", "marker")) %>% 
+  left_join(., snp_info, by = "marker") %>% 
+  select(marker, chrom:cM_pos, trait, environment, estimate, h:delta, df)
+
+# Save the data
+save_file <- file.path(result_dir, "S2MET_marker_mean_fw_results.RData")
+save("S2_MET_marker_mean_fw", "marker_effect_stab", file = save_file)
+
+```
+
+
+Plot the distribution of stability estimates
+
+
+```{r plot.dist}
+
+## Transform
+S2_MET_marker_mean_fw_trans <- S2_MET_marker_mean_fw %>% 
+  distinct(marker, chrom, pos, trait, b, delta) %>%
+  mutate(log_delta = log(delta), b = b + 1)
+
+
+## Plot the stability terms individually, then combine
+# First define a common list of ggplot modifiers
+g_mod <- list(
+  geom_density(aes(fill = "blue")),
+  xlab("Estimate"),
+  theme_bw() +
+  theme(axis.title.y = element_blank()) )
+
+# Just plot linear stability
+g_marker_fw_dens_b <- S2_MET_marker_mean_fw_trans %>%
+  ggplot(aes(x = b)) + 
+  labs(title = "Linear Stability") +
+  facet_wrap( ~ trait, ncol = 1) +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  g_mod
+
+
+# Just plot non-linear stability
+g_marker_fw_dens_delta <- S2_MET_marker_mean_fw_trans %>%
+  ggplot(aes(x = log_delta)) + 
+  labs(title = "Non-Linear Stability") +
+  scale_fill_brewer(palette = "Set2", guide = FALSE) +
+  facet_wrap( ~ trait, ncol = 1, scales = "free_x") +
+  g_mod
+
+# Add the plots together
+g_marker_fw_dist <- g_marker_fw_dens_b + g_marker_fw_dens_delta
+
+save_file <- file.path(fig_dir, "marker_stability_estimate_distriubtions.jpg")
+ggsave(filename = save_file, plot = g_marker_fw_dist, height = 5.6, width = 5, dpi = 500)
+
+
+
+```
+
+
+Plot the stability estimates across the genome
+
+```{r map.stab}
+
+# Make some name edits and tidy
+S2_MET_marker_mean_fw_tidy <- S2_MET_marker_mean_fw_trans %>%
+  gather(coef, estimate, b:log_delta) %>%
+  filter(coef != "log_delta") %>%
+  mutate(stab_type = if_else(coef == "b", "Linear", "Non-Linear"))
+
+g_mar_stab <- S2_MET_marker_mean_fw_tidy %>%
+  ggplot(aes(x = pos / 1000000, y = estimate)) + 
+  geom_point() + 
+  facet_grid(trait + stab_type ~ chrom, scales = "free", space = "free_x", switch = "x") +
+  theme_manhattan()
+
+
+# Calculate a p-value for stability and one for sensitivity
+# Linear tests only
+marker_stability_hyp_test <- S2_MET_marker_mean_fw %>% 
+  distinct(marker, chrom, pos, trait, b, b_std_error, df) %>% 
+  mutate(statistic = b / b_std_error, 
+         p_value_stab = pt(q = statistic, df = df), 
+         p_value_sens = 1 - p_value_stab) %>%
+  select(marker:trait, starts_with("p_value")) %>%
+  gather(test, p_value, starts_with("p_value")) %>%
+  group_by(trait, test) %>%
+  mutate(q_value = qvalue(p_value)$qvalue,
+         neg_log_p = -log10(p_value),
+         neg_log_q = -log10(q_value) )
+
+# Plot
+
+  
+
+
+```
+
+
+
+
 First group markers into those that are highly stable, highly sensitive, or neither
 
 ```{r grp.mars}
 
-# Get the distinct observations of the stability measures
-S2_MET_marker_eff_pheno_fw_uniq <- S2_MET_marker_eff_pheno_fw %>% 
-  select(trait, marker:pos, b_std_error, df, stability_term, estimate) %>% 
-  distinct()
+# Tidy up
+S2_MET_marker_mean_fw_tidy <- S2_MET_marker_mean_fw_trans %>% 
+  select(-delta) %>% 
+  gather(coef, estimate, -marker:-trait)
+  
 
-# What should be the significance level
+# What should be the cutoff level?
 alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
-S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
-  filter(stability_term == "b") %>% 
+S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_mean_fw_tidy %>%
+  filter(coef == "b") %>% 
   group_by(trait) %>% 
   # mutate(estimate = scale(estimate)) %>%
   mutate(lower_perc = quantile(estimate, alpha / 2), 
@@ -75,7 +219,7 @@ S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
   ungroup() %>%
   mutate(significance = case_when(estimate >= upper_perc ~ "sensitive",
                                   estimate <= lower_perc ~ "stable",
-                                  TRUE ~ "not_significant"),
+                                  TRUE ~ "average"),
          marker_type = if_else(str_detect(marker, "^S"), "GBS", "BOPA"))
 
 # Calculate a table of GBS markers and sensitive/stable/notsignificant
@@ -90,31 +234,28 @@ mar_stab_table %>%
 
 
 # Plot the distributions of marker effect stabilities and show the empirical threholds
-S2_MET_marker_eff_pheno_fw_sig %>% 
+g_b_dist <- S2_MET_marker_eff_pheno_fw_sig %>% 
   ggplot(aes(x = estimate, fill = "red")) + 
   geom_density() + 
   geom_vline(aes(xintercept = upper_perc)) +
   geom_vline(aes(xintercept = lower_perc)) + 
-  facet_grid(trait ~ .) + 
+  facet_wrap(~ trait, ncol = 1, scales = "free_x") + 
   scale_fill_discrete(guide = FALSE) + 
   theme_bw()
 
-# Calculate quartile coefficients of dispersion
-S2_MET_marker_eff_pheno_fw_uniq %>% 
-  mutate(stability_term = if_else(stability_term == "b", "linear", "non-linear")) %>%
-  group_by(trait, stability_term) %>% 
-  summarize(qcd = qcd(estimate)) %>%
-  ggplot(aes(x = trait, y = qcd, shape = stability_term)) +
-  geom_point(size = 3) +
-  theme_bw()
-
 # Boxplots
-S2_MET_marker_eff_pheno_fw_uniq %>% 
-  mutate(stability_term = if_else(stability_term == "b", "linear", "non-linear")) %>% 
+S2_MET_marker_mean_fw_tidy %>% 
+  mutate(coef = if_else(coef == "b", "linear", "non-linear")) %>% 
   ggplot(aes(x = trait, y = estimate)) + 
   geom_boxplot() +
-  facet_wrap(~ stability_term, scales = "free_y")
+  facet_wrap(~ coef, scales = "free_y") +
+  theme_bw()
 
+# Calculate the mean stability per group
+S2_MET_marker_eff_pheno_fw_sig %>% 
+  group_by(trait, significance) %>% 
+  summarize(mean = mean(estimate)) %>% 
+  spread(significance, mean)
 
 ```
 

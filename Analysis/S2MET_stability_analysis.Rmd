@@ -296,7 +296,7 @@ stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
     df <- .
     # Perform bootstrap
     boot_out <- df %>% 
-      bootstrap(n = 1000) %>% 
+      bootstrap(n = 10000) %>% 
       pull(strap) %>%
       map_dbl(~as.data.frame(.) %>% ungroup() %>% select(g, value) %>% cor(.) %>% .[1,2])
     
@@ -445,133 +445,43 @@ Estimate heritability via a mixed model with genotype effect modelled by the rel
 
 ```{r stab.herit}
 
+library(lme4qtl)
 library(rrBLUP)
 
-# Extract the data for modelling
-S2_MET_pheno_fw_tomodel <- S2_MET_pheno_mean_fw %>% 
-  distinct(trait, line_name, b, b_std_error, delta) %>%
-  mutate(log_delta = log(delta))
-# 
-# ## Estimate heritability by modeling the R matrix
-# S2_MET_linear_fw_herit <- S2_MET_pheno_fw_tomodel %>%
-#   group_by(trait) %>%
-#   do({
-#     # Extract data
-#     df <- .
-#     
-#     # Use the square of the standard errors to model the weights
-#     wts <- df$b_std_error^2
-#     # lmer control
-#     control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore")
-#     
-#     # Fit
-#     fit <- lmer(b ~ (1|line_name), data = df, control = control, weights = wts)
-#     herit <- herit(object = fit, exp = "line_name / (line_name + Residual)")
-#     
-#     # Estimate heritability and return
-#     data_frame(fit = list(fit), herit = herit)
-#   })
-    
+# Create the K matrix across all SNPs
+K <- A.mat(X = S2TP_imputed_multi_genos_mat, min.MAF = 0, max.missing = 1)
+
 ## Estimate heritability by using the K matrix to model genotype effect (i.e. SNP heritability)
-S2_MET_fw_herit <- S2_MET_pheno_fw_tomodel %>% 
-  select(line_name, trait, b, log_delta) %>% 
-  gather(stability_estimate, value, b, log_delta) %>%
-  group_by(trait, stability_estimate) %>%
+S2_MET_fw_herit <- S2_MET_pheno_fw_uniq_trans %>% 
+  group_by(trait, term) %>%
   do({
     # Extract data
     df <- .
     
-    # Model frame and matrices
-    mf <- model.frame(value ~ line_name, df)
-    y <- model.response(mf)
-    X <- model.matrix(~ 1, mf)
-    Z_snp <- Z_g <- model.matrix(~ -1 + line_name, mf) # Two random effect matrices
-    # Covariance matrices
-    K_snp <- A.mat(X = S2TP_imputed_multi_genos_mat, min.MAF = 0, max.missing = 1)
-    K_g <- diag(ncol(Z_g))
+    # Copy the line_name column
+    df1 <- df %>% mutate(snp = line_name)
     
-    # Single random effect model
-    fit <- mixed.solve(y = y, Z = Z_snp, K = K_snp, X = X)
-    # # Two random effect models
-    # fit2 <- EMMREML::emmremlMultiKernel(y = y, X = X, Zlist = list(Z_snp, Z_g), Klist = list(K_snp, K_g))
-    # fit2 <- sommer::mmer(Y = y, X = X, Z = list(snp = list(Z = Z_snp, K = K_snp), g = list(Z = Z_g, K = K_g)))
+    # Fit the model
+    fit <- relmatLmer(value ~ (1|snp), df1, relmat = list(snp = K))
     
     # Heritability
-    herit <- fit$Vu / (fit$Vu + fit$Ve)
-    # herit <- fit2$Vu / (fit2$Vu + fit2$Ve)
-    
-    # Estimate heritability and return
-    data.frame(herit = herit)
+    herit_boot(object = fit, exp = "snp / (snp + Residual)", boot.reps = 100)
   })
 
-S2_MET_fw_herit
+## Plot
+g_fw_herit <- S2_MET_fw_herit %>%
+  ggplot(aes(x = trait, y = heritability - bias, fill = term, group = term)) +
+  geom_col(position = "dodge") +
+  geom_col(aes(y = heritability), fill = "grey") +
+  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(0.9),
+                width = 0.5) +
+  theme_bw()
 
 
 ```
 
 
-How robust are our estimates of stability?
 
-Use a resampling approach where 20, 40, 60, or 80% of the environments are used, then estimate the stability. Compare with the original estimation
-
-```{r stab.robustness}
-
-# Extract data to model
-S2_MET_pheno_tomodel <- S2_MET_pheno_mean_fw %>% 
-  distinct(environment, line_name, trait, value, std_error, h)
-
-# Vector of proportion of environments
-p_env <- seq(0.2, 0.8, by = 0.2)
-# Number of bootstrap iterations
-n_iter <- 100
-
-# Iterate over the proportion of environments to sample
-# Create bootstrapping replicates
-S2_MET_pheno_samples <- p_env %>% 
-  set_names(., .) %>%
-  map(function(p) {
-    # Create samples grouped by trait
-    S2_MET_pheno_tomodel %>% 
-      group_by(trait) %>% 
-      do({
-        trait_df <- .
-        
-        # Name of environments
-        envs <- data_frame(environment = unique(trait_df$environment))
-
-        # Sample environments n_iter times
-        sample_envs <- rerun(n_iter, sample_frac(tbl = envs, size = p))
-        
-        # Map over the list and subset the trait data
-        sample_trait_df <- sample_envs %>% 
-          map(~left_join(., trait_df, by = "environment"))
-        
-        # Create and return a data.frame
-        data_frame(iter = seq(n_iter), data = sample_trait_df) }) %>% ungroup()
-  
-    }) %>% list(., names(.)) %>% pmap_df(~mutate(.x, p = .y))
-
-# Iterate over samples and calculate the stability coefficients
-S2MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
-  unnest() %>%
-  group_by(trait, p, iter, line_name) %>%
-  select(-environment, -trait1, -std_error) %>%
-  do({
-    df <- .
-    
-    # Fit the linear model 
-    fit <- lm(value ~ h, df)
-    data.frame(b = coef(fit)[2], delta = mean(resid(fit)^2))
-  }) 
-
-# Ungroup
-S2MET_pheno_sample_fw <- ungroup(S2MET_pheno_sample_fw)
-
-# Save the results
-save_file <- file.path(result_dir, "S2MET_pheno_fw_resampling.RData")
-save("S2MET_pheno_sample_fw", file = save_file)
-
-```
 
 
 

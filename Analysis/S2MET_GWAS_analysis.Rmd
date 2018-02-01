@@ -66,35 +66,35 @@ alpha <- 0.05
 
 Convert the markers into a GRanges object, then align with the gene annotations
 
-```{r marker.annotation}
-
-# Load the genome annotation
-ann_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation"
-load(file.path(ann_dir, "barley_genomic_ranges.RData"))
-
-
-# Convert to GRanges object
-snp_info <- S2TP_imputed_multi_genos_hmp %>% 
-  select(rs:cM_pos) %>%
-  separate(alleles, c("ref", "alt"), "/") %>%
-  mutate(chrom = str_c("chr", chrom, "H"))
-  
-
-snp_info_grange <- GRanges(seqnames = snp_info$chrom,
-                           ranges = IRanges(snp_info$pos, snp_info$pos),
-                           ref = snp_info$ref, alt = snp_info$alt, 
-                           cM_pos = snp_info$cM_pos, rs = snp_info$rs)
-
-## Align the markers to the barley granges information
-snp_info_grange_overlap <- barley_grange_list %>% 
-  as.list() %>% 
-  map(~ mergeByOverlaps(query = snp_info_grange, subject = .))
-
-## Save
-save_file <- file.path(result_dir, "snp_genome_annotation.RData")
-save("snp_info_grange_overlap", file = save_file)
-
-```
+<!-- # ```{r marker.annotation} -->
+<!-- #  -->
+<!-- # # Load the genome annotation -->
+<!-- # ann_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation" -->
+<!-- # load(file.path(ann_dir, "barley_genomic_ranges.RData")) -->
+<!-- #  -->
+<!-- #  -->
+<!-- # # Convert to GRanges object -->
+<!-- # snp_info <- S2TP_imputed_multi_genos_hmp %>%  -->
+<!-- #   select(rs:cM_pos) %>% -->
+<!-- #   separate(alleles, c("ref", "alt"), "/") %>% -->
+<!-- #   mutate(chrom = str_c("chr", chrom, "H")) -->
+<!-- #    -->
+<!-- #  -->
+<!-- # snp_info_grange <- GRanges(seqnames = snp_info$chrom, -->
+<!-- #                            ranges = IRanges(snp_info$pos, snp_info$pos), -->
+<!-- #                            ref = snp_info$ref, alt = snp_info$alt,  -->
+<!-- #                            cM_pos = snp_info$cM_pos, rs = snp_info$rs) -->
+<!-- #  -->
+<!-- # ## Align the markers to the barley granges information -->
+<!-- # snp_info_grange_overlap <- barley_grange_list %>%  -->
+<!-- #   as.list() %>%  -->
+<!-- #   map(~ mergeByOverlaps(query = snp_info_grange, subject = .)) -->
+<!-- #  -->
+<!-- # ## Save -->
+<!-- # save_file <- file.path(result_dir, "snp_genome_annotation.RData") -->
+<!-- # save("snp_info_grange_overlap", file = save_file) -->
+<!-- #  -->
+<!-- # ``` -->
 
 
 
@@ -107,45 +107,43 @@ First examine population structure within the germplasm
 
 ```{r pop.str}
 
-# Calculate the A matrix
-# A_all <- A.mat(X = M, min.MAF = 0, max.missing = 1)
-A_tp <- A.mat(X = M, min.MAF = 0, max.missing = 1)
+# Calculate the kinship matrix
+K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 ## Visualize pop structure
-A_prcomp <- prcomp(A_tp)
+K_prcomp <- prcomp(K)
 
 # Tidy, calculate lambda, then add program information
-A_prcomp_df <- tidy(A_prcomp) %>%
+K_prcomp_df <- tidy(K_prcomp) %>%
   mutate(PC = str_c("PC", PC)) %>%
   dplyr::rename(line_name = row) %>%
   left_join(entry_list, by = c("line_name" = "Line"))
 
 # Extract lambda and calculate variance explained
-var_exp <- A_prcomp$sdev %>% 
+var_exp <- K_prcomp$sdev %>% 
   set_names(str_c("PC", seq_along(.))) %>%
   {. / sum(.)}
 
 ## Combine data.frame to plot
-df_PC1_PC2 <- A_prcomp_df %>% 
+df_PC1_PC2 <- K_prcomp_df %>% 
   filter(PC %in% c("PC1", "PC2")) %>% 
   spread(PC, value) %>%
   mutate(x = "PC1", y = "PC2", var_expx = var_exp["PC1"], var_expy = var_exp["PC2"]) %>%
   dplyr::rename(xvalue = PC1, yvalue = PC2)
 
-df_PC1_PC3 <- A_prcomp_df %>% 
+df_PC1_PC3 <- K_prcomp_df %>% 
   filter(PC %in% c("PC1", "PC3")) %>% 
   spread(PC, value) %>%
   mutate(x = "PC1", y = "PC3", var_expx = var_exp["PC1"], var_expy = var_exp["PC3"]) %>%
   dplyr::rename(xvalue = PC1, yvalue = PC3)
 
-df_PC2_PC3 <- A_prcomp_df %>% 
+df_PC2_PC3 <- K_prcomp_df %>% 
   filter(PC %in% c("PC2", "PC3")) %>% 
   spread(PC, value) %>%
   mutate(x = "PC2", y = "PC3", var_expx = var_exp["PC3"], var_expy = var_exp["PC4"]) %>%
   dplyr::rename(xvalue = PC2, yvalue = PC3)
 
 ## Combine the data.frames
-## Add the variance explained
 df_combined <- bind_rows(df_PC1_PC2, df_PC1_PC3, df_PC2_PC3)
 
 
@@ -168,6 +166,8 @@ ggsave(filename = save_file, plot = g_pop_str, width = 5, height = 5)
 ```
 
 
+
+
 How is population structure correlated with the traits?
 
 ```{r mme.blues, eval=FALSE}
@@ -183,7 +183,7 @@ S2_MET_pheno_mean_fw_trans <- S2_MET_pheno_mean_fw %>%
 
 
 # Combine the trait and PCs, duplicating the BLUEs to make summarizing smoother
-trait_pop_str <- A_prcomp_df %>% 
+trait_pop_str <- K_prcomp_df %>% 
   filter(PC %in% c("PC1", "PC2", "PC3")) %>% 
   select(line_name, program = Program, PC, eigenvalue = value) %>%
   left_join(., S2_MET_pheno_mean_fw_trans) %>%
@@ -194,7 +194,7 @@ trait_pop_str <- A_prcomp_df %>%
 ## Use a bootstrap to estimate confidence interval
 trait_pop_str_corr <- trait_pop_str %>% 
   group_by(trait, PC, measure) %>% 
-  do(gws::boot_cor(x = .$value, y = .$eigenvalue, boot.reps = 1000)) %>%
+  do(gws::boot_cor(x = .$value, y = .$eigenvalue, boot.reps = 10000)) %>%
   # Which ones are significant
   mutate(significant = !between(0, ci_lower, ci_upper),
          annotation = ifelse(significant, "*", ""))
@@ -256,10 +256,10 @@ Several of the "traits" were significantly correlated with population structure 
 The baseline model for GWAS is as follows:
 
 $$
-\mathbf{y = X \beta + Wm + Zu + e},
+\mathbf{y = 1\beta + Wm + Zu + e}
 $$
 
-where $\mathbf{y}$ is the response vector, $\mathbf{X}$ is the fixed effect incidence matrix modeling environment as a fixed effect, $\mathbf{\beta}$ is the vector of fixed environmental effects, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
+where $\mathbf{y}$ is the response vector, $\mathbf{1}$ is a vector of 1s for the grand mean, $\mathbf{\beta}$ is the grand mean, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
 
 I use population parameters previously determined [P3D; @Kang2010] to speed up the models without reducing detection power significantly. I also the `gwas()` function in my `pbr` package. Models included K and G [@Bernardo2013b; @Chen2016].
 
@@ -412,13 +412,6 @@ ggsave(filename = save_file, plot = g_man_Gmodel, width = 9, height = 8)
 
 First we will map QTL for trait stability. The stability coefficients are first calculated using FW regression, and the coefficients are then used in the GWAS mixed model:
 
-$$
-\mathbf{y = 1\beta + Wm + Zu + e}
-$$
-
-where $\mathbf{y}$ is the response vector, $\mathbf{1}$ is a vector of 1s for the grand mean, $\mathbf{\beta}$ is the grand mean, $\mathbf{Z}$ is the incidence matrix modeling the random genetic background effect, $\mathbf{g}$ is the vector of random genetic background effects, $\mathbf{W}$ is the SNP marker matrix, and $\mathbf{m}$ is the vector of fixed additive SNP effects. $\mathbf{g}$ is assumed to be distributed such that $\mathbf{g} \sim N(0, \mathbf{K} \sigma^2_g )$, where $\mathbf{K}$ models the population structure among genotypes.
-
-The G and K models were fitted to scan for assocations.
 
 Load the data, adjust p-values, and plot
 
@@ -815,7 +808,7 @@ estimates, then performed the mapping.
 # Read in the results
 load(file.path(result_dir, "S2MET_pheno_fw_gwas_resample_results.RData"))
 
-# Remove the NULLs from error
+# Bind rows
 resample_gwas_sig_out1 <- resample_gwas_sig_out %>%
   bind_rows()
 
@@ -926,7 +919,9 @@ resample_snp_detect_count <- resample_gwas_sig_fw_intersect %>%
   group_by(p, trait, coef, SNP_type, marker) %>% 
   summarize(times_detected = n(), prop_detected = times_detected / n_iter) %>%
   ungroup() %>%
-  left_join(., select(S2TP_imputed_multi_genos_hmp, marker = rs, chrom, pos), by = "marker")
+  left_join(., select(S2TP_imputed_multi_genos_hmp, marker = rs, chrom, pos), by = "marker") %>%
+  # Assign proportion bins 
+  mutate(prop_group = cut(x = prop_detected, breaks = seq(0, 1, 0.2), include.lowest = TRUE, right = TRUE))
 
 # Are we more likely to discover new SNPs or those we discovered before?
 g_resample_snp_detect_count <- resample_snp_detect_count %>%
@@ -973,7 +968,7 @@ g_resample_hd <- resample_snp_detect_count %>%
   mutate(p = parse_number(p),
          x = if_else(SNP_type == "hit_SNPs", -p * 2, p * 2)) %>% 
   filter(trait == "HeadingDate") %>% 
-  ggplot(aes(y = pos / 1000000, x = x, size = prop_detected, col = coef, shape = SNP_type)) + 
+  ggplot(aes(y = pos / 1000000, x = x, size = prop_group, col = coef, shape = SNP_type)) + 
   g_mod +
   labs(title = "Heading Date")
 
@@ -981,7 +976,7 @@ g_resample_ph <- resample_snp_detect_count %>%
   mutate(p = parse_number(p),
          x = if_else(SNP_type == "hit_SNPs", -p * 2, p * 2)) %>% 
   filter(trait == "PlantHeight") %>% 
-  ggplot(aes(y = pos / 1000000, x = x, size = prop_detected, col = coef, shape = SNP_type)) + 
+  ggplot(aes(y = pos / 1000000, x = x, size = prop_group, col = coef, shape = SNP_type)) + 
   g_mod +
   labs(title = "Plant Height")
 
@@ -989,7 +984,7 @@ g_resample_gy <- resample_snp_detect_count %>%
   mutate(p = parse_number(p),
          x = if_else(SNP_type == "hit_SNPs", -p * 2, p * 2)) %>% 
   filter(trait == "GrainYield") %>% 
-  ggplot(aes(y = pos / 1000000, x = x, size = prop_detected, col = coef, shape = SNP_type)) + 
+  ggplot(aes(y = pos / 1000000, x = x, size = prop_group, col = coef, shape = SNP_type)) + 
   g_mod +
   labs(title = "Grain Yield")
 

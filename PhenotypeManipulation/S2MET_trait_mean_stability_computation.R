@@ -274,6 +274,70 @@ save_file <- file.path(result_dir, "S2MET_pheno_mean_fw_results.RData")
 save("S2_MET_fw_fitted", "S2_MET_pheno_mean_fw", file = save_file)
 
 
+# How robust are our estimates of stability?
+#   
+# Use a resampling approach where 20, 40, 60, or 80% of the environments are used, then estimate the stability. Compare with the original estimation
+
+
+# Extract data to model
+S2_MET_pheno_tomodel <- S2_MET_pheno_mean_fw %>% 
+  distinct(environment, line_name, trait, value, std_error, h)
+
+# Vector of proportion of environments
+p_env <- seq(0.2, 0.8, by = 0.2)
+# Number of bootstrap iterations
+n_iter <- 250
+
+# Iterate over the proportion of environments to sample
+# Create bootstrapping replicates
+S2_MET_pheno_samples <- p_env %>% 
+  set_names(., .) %>%
+  map(function(p) {
+    # Create samples grouped by trait
+    S2_MET_pheno_tomodel %>% 
+      group_by(trait) %>% 
+      do({
+        trait_df <- .
+        
+        # Name of environments
+        envs <- data_frame(environment = unique(trait_df$environment))
+        
+        # Sample environments n_iter times
+        sample_envs <- rerun(n_iter, sample_frac(tbl = envs, size = p))
+        
+        # Map over the list and subset the trait data
+        sample_trait_df <- sample_envs %>% 
+          map(~left_join(., trait_df, by = "environment"))
+        
+        # Create and return a data.frame
+        data_frame(iter = seq(n_iter), data = sample_trait_df) }) %>% ungroup()
+    
+  }) %>% list(., names(.)) %>% pmap_df(~mutate(.x, p = .y))
+
+# Iterate over samples and calculate the stability coefficients
+S2MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
+  unnest() %>%
+  group_by(trait, p, iter, line_name) %>%
+  select(-environment, -trait1, -std_error) %>%
+  do({
+    df <- .
+    
+    # Fit the linear model 
+    fit <- lm(value ~ h, df)
+    data.frame(b = coef(fit)[2], delta = mean(resid(fit)^2))
+  }) 
+
+# Ungroup
+S2MET_pheno_sample_fw <- ungroup(S2MET_pheno_sample_fw)
+
+# Save the results
+save_file <- file.path(result_dir, "S2MET_pheno_fw_resampling.RData")
+save("S2MET_pheno_sample_fw", file = save_file)
+
+
+
+
+
 # ### Fit the environmental covariable version of the Finlay-Wilkinson Regression model
 # 
 # # Fit the model for the one-year and multi-year ECs

@@ -2,15 +2,19 @@
 ## 
 ## 
 
+# Capture the trait to use (argument 1)
+args <- commandArgs(trailingOnly = T)
+tr <- args[1]
+
 # List of packages to load
 # List of packages
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "parallel", "rrBLUP",
-              "purrrlyr")
+              "purrrlyr", "lme4qtl")
 
 # Set the directory of the R packages
 package_dir <- NULL
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
-# package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
+package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
@@ -43,17 +47,12 @@ analysis_dir <- file.path(proj_dir, "Analysis")
 result_dir <- file.path(proj_dir, "Results")
 
 
-# Load the phenotypic data
+# Load phenotypic data
 load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # Load the genotypic data
-# load(file.path(geno_dir, "S2_genos_mat.RData"))
-# load(file.path(geno_dir, "S2_genos_hmp.RData"))
 load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
-# Load environmental data
-load(file.path(env_var_dir, "environmental_data_compiled.RData"))
-
 # Load the marker effect stability results
-load(file.path(result_dir, "S2MET_pheno_mar_eff_fw_results.RData"))
+load(file.path(result_dir, "S2MET_marker_mean_fw_results.RData"))
 
 # Load an entry file
 entry_list <- read_excel(file.path(entry_dir, "S2MET_project_entries.xlsx"))
@@ -68,29 +67,28 @@ tp <- entry_list %>%
 tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
 
 
-# Filter the BLUEs to use
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  filter(line_name %in% c(tp_geno)) %>%
-  droplevels()
-
 # Create a genotype marker matrix
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
+S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
+  filter(line_name %in% c(tp_geno)) %>%
+  mutate(line_name = as.factor(line_name),
+         environment = as.factor(environment))
 
 ## First group markers into those that are highly stable, highly sensitive, or neither
 
-
-# Get the distinct observations of the stability measures
-S2_MET_marker_eff_pheno_fw_uniq <- S2_MET_marker_eff_pheno_fw %>% 
-  select(trait, marker:pos, b_std_error, df, stability_term, estimate) %>% 
-  distinct()
+S2_MET_marker_mean_fw_tidy <- S2_MET_marker_mean_fw %>% 
+  distinct(marker, chrom, pos, trait, b, delta) %>%
+  mutate(log_delta = log(delta), b = b + 1) %>%
+  select(-delta) %>% 
+  gather(coef, estimate, -marker:-trait)
 
 # What should be the significance level
 alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
-S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
-  filter(stability_term == "b") %>% 
+S2_MET_marker_fw_sig <- S2_MET_marker_mean_fw_tidy %>%
+  filter(coef == "b") %>% 
   group_by(trait) %>% 
   # mutate(estimate = scale(estimate)) %>%
   mutate(lower_perc = quantile(estimate, alpha / 2), 
@@ -98,136 +96,118 @@ S2_MET_marker_eff_pheno_fw_sig <- S2_MET_marker_eff_pheno_fw_uniq %>%
   ungroup() %>%
   mutate(significance = case_when(estimate >= upper_perc ~ "sensitive",
                                   estimate <= lower_perc ~ "stable",
-                                  TRUE ~ "not_significant"),
+                                  TRUE ~ "average"),
          marker_type = if_else(str_detect(marker, "^S"), "GBS", "BOPA"))
 
 
 ## Fit the mixed models to determine variance components
 
 # Number of model fittings
-n_iter <- 100
+n_iter <- 50
 # Detect cores
 n_cores <- detectCores()
-#n_cores <- 4
 
 
 ## Calculate relationship matrices
 # Main effect relationship matrix
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
-# Extract the traits
-trts <- unique(S2_MET_marker_eff_pheno_fw_sig$trait)
 
-# One trait
-trts <- "HeadingDate"
+## Create marker samples and K matrices
+# Extract stable markers
+stab_mar <- S2_MET_marker_fw_sig %>% 
+  filter(trait == tr, significance == "stable") %>%
+  pull(marker)
+# Extract sensitive  markers
+sens_mar <- S2_MET_marker_fw_sig %>% 
+  filter(trait == tr, significance == "sensitive") %>%
+  pull(marker)
 
-# Create a results list
-var_comp_out <- vector("list", length(trts)) %>%
-  set_names(trts)
+# What is the minimum number of markers to sample?
+min_marker <- min(c(length(stab_mar), length(sens_mar)))
+
+# Extract non-sig markers and take samples
+non_sig_mar <- S2_MET_marker_fw_sig %>% 
+  filter(trait == tr, significance == "average") %>%
+  pull(marker)
+
+non_sig_mar_samples <- replicate(n = n_iter, sample(x = non_sig_mar, size = min_marker),
+                                 simplify = FALSE)
+
+## Subset marker matrices and create the static relationship matrices
+K_stab <- M[,stab_mar,drop = FALSE] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+K_sens <- M[,sens_mar,drop = FALSE] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+
+# List of non-sig K matrices
+K_ns_sample <- non_sig_mar_samples %>%
+  map(~M[,.,drop = FALSE]) %>%
+  map(~A.mat(X = ., min.MAF = 0, max.missing = 1))
 
 
-# Iterate over the traits
-for (tr in trts) {
-  
-  # Extract the data to use
-  pheno_df <- S2_MET_BLUEs_use %>%
-    filter(trait == tr) %>%
-    # filter(environment %in% sample(unique(.$environment), 5)) %>%
-    droplevels() %>%
-    mutate_at(vars(line_name, environment), as.factor)
-  
-  # Extract the significant markers
-  sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>% 
-    filter(trait == tr, significance != "not_significant")
-  # Extract non-sig markers
-  non_sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>% 
-    filter(trait == tr, significance == "not_significant")
-  
-  ## Subset marker relationship matrices
-  sig_mar <- pull(sig_mar_df, marker)
-  M_s <- M[,sig_mar]
-  K_s <- A.mat(X = M_s, min.MAF = 0, max.missing = 1)
 
-  non_sig_mar <- pull(non_sig_mar_df, marker)
-  # Sample markers to construct Ks
-  non_sig_mar_sample <- replicate(n = n_iter, {sort(sample(non_sig_mar, size = length(sig_mar)))}, simplify = FALSE)
-  M_ns_list <- map(non_sig_mar_sample, ~M[,.])
-  K_ns_list <- map(M_ns_list, ~A.mat(X = ., min.MAF = 0, max.missing = 1))
+
+# Extract the data to use
+pheno_df <- S2_MET_BLUEs_use %>%
+  filter(trait == tr) %>%
+  # filter(environment %in% sample(unique(.$environment), 5)) %>%
+  droplevels() %>%
+  mutate_at(vars(line_name, environment), as.factor)
   
-  ## Model frame/matrices
-  mf <- model.frame(value ~ line_name + environment + std_error, pheno_df) %>%
-    mutate(gt = interaction(line_name, environment)) %>%
-    droplevels()
+
+## Model frame/matrices
+mf <- model.frame(value ~ line_name + environment + std_error, pheno_df) %>%
+  mutate(scale_value = scale(value),
+         avg = interaction(line_name, environment), stab = avg, sens = avg)
+
+# Weights
+wts <- mf$std_error^2
   
-  y <- mf$value
-  # Fixed effect of environments?
-  X <- model.matrix(~ environment, mf)
+## Create the random genotype matrix
+# Random effect of genotypic main effect
+Z_g <- model.matrix(~ -1 + line_name, mf)
+# Random effect of environment
+Z_e <- model.matrix(~ -1 + environment, mf)
+
+## Compute useable K matrices
+# Ze tcrossprod
+ZeZe <- tcrossprod(Z_e)
+
+# Stable markers
+K_stab_use <- sommer::hadamard.prod(x = tcrossprod((Z_g %*% K_stab), Z_g), y = ZeZe) %>%
+  `dimnames<-`(., list(mf$avg, mf$avg))
+
+# Stable markers
+K_sens_use <- sommer::hadamard.prod(x = tcrossprod((Z_g %*% K_sens), Z_g), y = ZeZe) %>%
+  `dimnames<-`(., list(mf$avg, mf$avg))
+
+# Stable markers
+K_ns_use_sample <- K_ns_sample %>%
+  map(~sommer::hadamard.prod(x = tcrossprod((Z_g %*% .), Z_g), y = ZeZe) %>%
+  `dimnames<-`(., list(mf$avg, mf$avg)))
+
+## Split up these samples by cores
+K_ns_split <- K_ns_use_sample %>%
+  split(., cut(seq_along(.), breaks = n_cores))
+
+
+# Apply over cores
+var_comp_out <- mclapply(X = K_ns_split, FUN = function(K_ns_core_list) {
   
-  # Random effect of environment
-  Z_e <- model.matrix(~ -1 + environment, mf)
-  
-  # Random effect of genotypic main effect
-  Z_g <- model.matrix(~ -1 + line_name, mf) %>%
-    `colnames<-`(value = str_replace(colnames(.), "line_name", ""))
-  
-  # Random effect of GxE
-  Z_gt <- model.matrix(~ -1 + gt, mf, drop.unused.levels = T)  %>%
-    `colnames<-`(value = str_replace(colnames(.), "gt", ""))
-  
-  ## K_s used in the model
-  K_s_use <- sommer::hadamard.prod(x = (Z_g %*% K_s %*% t(Z_g)), y = tcrossprod(Z_e)) %>%
-    `dimnames<-`(value = list(colnames(Z_gt), colnames(Z_gt)))
-  
-  ## Split the list of K_ns by core
-  K_ns_list_core <- split(x = K_ns_list, f = cut(x = seq(n_iter), breaks = n_cores)) %>%
-    set_names(seq(n_cores))
-  # K_ns_list_core <- list(`1` = K_ns_list)
-  
-  # Parallelize over the core split list of K_ns matrices
-  parallel_out <- mclapply(X = K_ns_list_core, FUN = function(K_ns_core) {
+  # Iterate over the K_ns list of matrices
+  map(K_ns_use_sample, function(K_avg_use) {
     
-    # Calculate the K matrices that will be used
-    K_ns_core_use <- vector("list", length(K_ns_core))
+    # Define the formula
+    form <- value ~ 1 + (1|line_name) + (1|environment) + (1|stab) + (1|sens) + (1|avg) 
     
-    # Empty list of variance component estimates
-    var_comp_list <- vector("list", length(K_ns_core_use))
-    
-    # Iterate over the list of K matrices, calculate the K used in the model,
-    # then fit the model and extract variance components
-    for (i in seq_along(K_ns_core_use)) {
-      K_ns_use <- sommer::hadamard.prod(x = (Z_g %*% K_ns_core[[i]] %*% t(Z_g)), y = tcrossprod(Z_e)) %>%
-        `dimnames<-`(value = list(colnames(Z_gt), colnames(Z_gt)))
-      
-      # Fit the model
-      fit <- sommer::mmer(Y = y, X = X, Z = list(g = list(Z = Z_g, K = K), gt_s = list(Z = Z_gt, K = K_s_use),
-                                                 gt_ns = list(Z = Z_gt, K = K_ns_use)))
-      
-      # Extract variance components and return to the list
-      var_comp_list[[i]] <- map_df(fit$var.comp, unname)
-    }
-
-    return(bind_rows(var_comp_list))
-    
-  }, mc.cores = n_cores)
+    # Fit the model
+    fit <- relmatLmer(formula = form, data = mf, weights = wts,
+                      relmat = list(line_name = K, avg = K_avg_use, 
+                                    stab = K_stab_use, sens = K_sens_use))
   
-  # Add the output to the list
-  var_comp_out[[tr]] <- bind_rows(parallel_out)
+    # Return the variance components
+    return(VarProp(fit)) }) })
   
-} # Close the trait for loop
-
 
 # Save the results
-## Determine if a file is already there
-# Save the results
-## Determine if a file is already there
-save_file <- file.path(result_dir, "S2MET_pheno_mar_fw_varcomp.RData")
-present <- file.exists(save_file)
-
-# Use while loop to edit the file until it does not exist
-i = 1
-while(present) {
-  save_file <- file.path(result_dir, str_c("S2MET_pheno_mar_fw_varcomp.RData", i, ".RData"))
-  present <- file.exists(save_file)
-}
-
+save_file <- file.path(result_dir, str_c("S2MET_pheno_mar_fw_varcomp_", tr, ".RData"))
 save("var_comp_out", file = save_file)
