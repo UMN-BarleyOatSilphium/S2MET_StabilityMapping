@@ -196,7 +196,7 @@ marker_stability_hyp_test <- S2_MET_marker_mean_fw %>%
 
 
 
-First group markers into those that are highly stable, highly sensitive, or neither
+First group markers into those that are highly stable, highly sensitive, or neither using empirical thresholds
 
 ```{r grp.mars}
 
@@ -259,6 +259,41 @@ S2_MET_marker_eff_pheno_fw_sig %>%
 
 ```
 
+Now use a t test to determine stable / sensitive markers. Use either a one-sided or two-sided t-test to determine stable/sensitive markers
+
+```{r stab.t.test}
+
+S2_MET_marker_mean_fw_tomodel <- S2_MET_marker_mean_fw %>% 
+  distinct(marker, chrom, pos, trait, b, b_std_error, df)
+
+# Calculate t-statistics and then calculate one-sided versus two-sided p-values
+S2_MET_marker_mean_fw_hyptest <- S2_MET_marker_mean_fw_tomodel %>% 
+  mutate(statistic = b / b_std_error, 
+         le_zero_pvalue = pt(q = statistic, df = df, lower.tail = TRUE), 
+         gt_zero_pvalue = 1 - le_zero_pvalue, 
+         not_zero_pvalue = 2 * pt(q = abs(statistic), df = df, lower.tail = FALSE))
+
+# Adjust the p-values
+S2_MET_marker_mean_fw_hyptest_adj <- S2_MET_marker_mean_fw_hyptest %>% 
+  group_by(trait) %>% 
+  mutate_at(vars(contains("pvalue")), funs(padj = p.adjust(p = ., method = "bonf"))) %>% 
+  select(-ends_with("pvalue")) %>% 
+  gather(test, padj, ends_with("padj")) %>%
+  mutate(neg_log_padj = -log10(padj))
+
+# Plot
+S2_MET_marker_mean_fw_hyptest_adj %>% 
+  filter(test == "not_zero_pvalue_padj") %>% 
+  ggplot(aes(x = pos / 1000000, y = neg_log_padj)) + 
+  geom_point() + 
+  facet_grid(trait + test ~ chrom, scales = "free") + 
+  theme_manhattan()
+
+
+
+```
+
+
 
 Determine the proportion of GxE variance ($V_{GE}$) that is explained by sensitive/stable markers vs not signficant markers
 
@@ -295,141 +330,113 @@ var_comp_prop %>%
 ```
 
 
-Examine MxE by looking at the variance of marker effects in each environment
 
 
-```{r mxe}
+#### Gene Annotation
 
-## Use the marker effect FW regression output to examine the original variance of
-## marker effects across environments
-marker_effect_env_var <- S2_MET_marker_eff_pheno_fw %>% 
-  select(trait, marker:pos, environment, mar_effect) %>% 
-  distinct() %>%
-  group_by(trait, marker) %>%
-  mutate(mar_effect_var = var(mar_effect))
+Look at gene annotation with relation to the different groups of SNPs. 
+Determine the proportion of SNPs in genes, gene-proximal, or intergenic
+Perhaps look at other annotations such as exons or transcripts, etc.
+
+
+```{r snp.annotation}
+
+## Load the barley annotation
+ann_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation"
+load(file.path(ann_dir, "barley_genomic_ranges.RData"))
+
+# Conver the SNPs in this experiment to a GRanges object
+snp_info <- S2TP_imputed_multi_genos_hmp %>%
+  select(rs:cM_pos) %>%
+  separate(alleles, c("ref", "alt"), "/") %>%
+  mutate(chrom = str_c("chr", chrom, "H"))
+
+snp_info_grange <- GRanges(seqnames = snp_info$chrom,
+                           ranges = IRanges(snp_info$pos, snp_info$pos),
+                           ref = snp_info$ref, alt = snp_info$alt,
+                           cM_pos = snp_info$cM_pos, rs = snp_info$rs)
+
+
+# Find the distance to the nearest gene for each SNP
+# Convert to a data.frame and add the SNP info
+snp_info_distance_to_gene <- distanceToNearest(x = snp_info_grange, subject = barley_grange_list$genes) %>%
+  as.data.frame() %>%
+  bind_cols(snp_info, .) %>%
+  mutate(gene_id = barley_grange_list$genes[subjectHits]$gene_id) %>% # Add the gene id
+  select(-queryHits, -subjectHits)
+
+# Assign a cutoff for proximal
+proximity_cutoff <- 10000
+
+## Assign genic, proximal, or non-genic 
+snp_info_distance_to_gene_ann <- snp_info_distance_to_gene %>%
+  mutate(class = case_when(distance == 0 ~ "genic",
+                           between(distance, 0, proximity_cutoff) ~ "proximal",
+                           distance > proximity_cutoff ~ "non-genic",
+                           TRUE ~ as.character(NA)),
+         class = parse_factor(class, levels = c("genic", "proximal", "non-genic")),
+         marker_type = if_else(str_detect(rs, "^[1-2]{2}"), "BOPA", "GBS")) %>%
+  dplyr::rename(marker = rs)
+
+# Find the proportion of SNPs that are in each group. This forms the null proportion
+null_snp_prop <- snp_info_distance_to_gene_ann %>% 
+  group_by(class) %>% 
+  summarize(nSNP = n()) %>%
+  mutate(prop = nSNP / sum(nSNP))
+
+# Curiosity - is there a difference between GBS and BOPA snps?
+# Yes - vast majority of BOPA markers are genic - derived from ESTs - this makes sense
+
+# Now use the marker stability estimates to group SNPs
+snp_info_distance_to_gene_ann1 <- snp_info_distance_to_gene_ann %>%
+  full_join(., select(S2_MET_marker_eff_pheno_fw_sig, marker, trait, significance),
+            by = "marker")
+
+# Group by the marker stability classes and calculate proportions
+# Then add the null proportion
+marker_stability_snp_prop <- snp_info_distance_to_gene_ann1 %>% 
+  group_by(trait, significance, class) %>% 
+  summarize(nSNP = n()) %>% 
+  mutate(prop = nSNP / sum(nSNP),
+         significance_SNP = sum(nSNP)) %>%
+  left_join(., select(null_snp_prop, class, null_prop = prop), by = "class")
+  
+
+# Table
+marker_stability_snp_prop %>%
+  select(-nSNP, -null_prop) %>% 
+  spread(class, prop)
+
+## Perform an binomial exact test
+## H0: the proportion of SNPs in each significance group in each class is
+## not different than the proportion across all SNPs
+marker_stability_snp_prop_test <- marker_stability_snp_prop %>% 
+  group_by(trait, significance, class) %>%
+  mutate(binom_test = list({binom.test(x = nSNP, n = significance_SNP, p = null_prop)})) %>%
+  ungroup() %>% 
+  mutate(p_value = map_dbl(binom_test, "p.value"),
+         p_ann = case_when(p_value <= 0.01 ~ "***",
+                           p_value <= 0.05 ~ "**",
+                           p_value <= 0.10 ~ "*",
+                           TRUE ~ ""))
+
 
 # Plot
-g_mar_eff_var <- marker_effect_env_var %>% 
-  select(trait:pos, mar_effect_var) %>% 
+g_snp_ann_prop <- marker_stability_snp_prop_test %>% 
+  select(trait, class, prop = null_prop) %>% 
   distinct() %>% 
-  ggplot(aes(x = pos, y = mar_effect_var)) + 
-  geom_point() + 
-  facet_grid(trait ~ chrom, scales = "free", space = "free_x")
+  mutate(significance = "null") %>% 
+  bind_rows(marker_stability_snp_prop_test, .) %>% 
+  mutate(significance = parse_factor(significance, levels = c("null", "average", "sensitive", "stable"))) %>%
+  ggplot(aes(x = class, y = prop, fill = significance,  group = significance)) + 
+  geom_col(position = "dodge") + 
+  geom_text(aes(label = p_ann), position = position_dodge(0.9), hjust = -1, vjust = 0.5, angle = 90) + 
+  scale_fill_manual(values = rev(umn_palette(n = 6)[-c(1:2)])) + # Add custom colors
+  facet_grid(~ trait) + 
+  theme_bw()
 
-## Use the permutation results to establish a 95% confidence interval
-load(file.path(result_dir, "S2MET_pheno_mar_eff_by_env_perm.RData"))
-
-# For each trait, interation, and marker, calculate the variance of marker effects
-# across environments
-marker_env_var_perm <- phenos_mxe_perm_parallel_out %>% 
-  unlist(recursive = FALSE, use.names = FALSE) %>%
-  map_df(~group_by(., trait, marker) %>%
-          summarize(mar_effect_var = var(effect)) %>%
-          ungroup() )
-
-# Calculate a confidence interval
-marker_env_var_perm_ci <- marker_env_var_perm %>% 
-  group_by(trait, marker) %>% 
-  summarize(ci_lower = quantile(mar_effect_var, probs = alpha / 2), 
-            ci_upper = quantile(mar_effect_var, probs = 1 - (alpha / 2))) %>%
-  ungroup()
-
-# Merge with the original results
-marker_effect_env_var_sig <- marker_effect_env_var %>% 
-  select(trait:pos, mar_effect_var) %>% 
-  distinct() %>% 
-  full_join(., marker_env_var_perm_ci)
-
-marker_effect_env_var_sig
-
-
+save_file <- file.path(fig_dir, "marker_stability_gene_annotation.jpg")
+ggsave(filename = save_file, plot = g_snp_ann_prop, height = 5, width = 8)
 
 ```
-
-
-
-
-
-
-
-Determine the proportion of genetic variance of phenotypic stability ($V_G$) that is explained by sensitive/stable markers
-
-<!-- This may not work because there are no replications -->
-
-<!-- ```{r prop.g.fw} -->
-
-<!-- # Number of model fittings -->
-<!-- n_iter <- 10 -->
-
-
-<!-- ## Calculate relationship matrices -->
-<!-- # Extract the traits -->
-<!-- trts <- unique(S2_MET_marker_eff_pheno_fw_sig$trait) -->
-<!-- # Create a results list -->
-<!-- var_comp_list <- vector("list", length(trts)) %>% -->
-<!--   set_names(trts) -->
-
-<!-- # Iterate over the traits -->
-<!-- for (tr in trts) { -->
-
-<!--   # Extract the data to use -->
-<!--   pheno_df <- S2_MET_pheno_fw %>%  -->
-<!--     filter(trait == tr, stability_term == "b") %>% -->
-<!--     select(line_name, estimate, b_std_error) %>%  -->
-<!--     distinct() %>% -->
-<!--     droplevels() -->
-
-<!--   # Extract the significant markers -->
-<!--   sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>%  -->
-<!--     filter(trait == tr, significance != "not_significant") -->
-<!--   # Extract non-sig markers -->
-<!--   non_sig_mar_df <- S2_MET_marker_eff_pheno_fw_sig %>%  -->
-<!--     filter(trait == tr, significance == "not_significant") -->
-
-<!--   ## Subset marker relationship matrices -->
-<!--   sig_mar <- pull(sig_mar_df, marker) -->
-<!--   M_s <- M[,sig_mar] -->
-<!--   K_s <- A.mat(X = M_s, min.MAF = 0, max.missing = 1) -->
-
-<!--   non_sig_mar <- pull(non_sig_mar_df, marker) -->
-<!--   # Sample markers to construct Ks -->
-<!--   non_sig_mar_sample <- replicate(n = n_iter, {sort(sample(non_sig_mar, size = length(sig_mar)))}, simplify = FALSE) -->
-<!--   M_ns_list <- map(non_sig_mar_sample, ~M[,.]) -->
-<!--   K_ns_list <- map(M_ns_list, ~A.mat(X = ., min.MAF = 0, max.missing = 1)) -->
-
-<!--   ## Model frame/matrices -->
-<!--   mf <- model.frame(estimate ~ line_name + b_std_error, pheno_df) -->
-
-<!--   y <- model.response(mf) -->
-
-<!--   # Weights -->
-<!--   R <- solve(diag(mf$b_std_error^2)) -->
-
-<!--   X <- model.matrix(~ 1, mf) -->
-
-<!--   # Random effect of genotypic main effect -->
-<!--   Z_g <- model.matrix(~ -1 + line_name, mf) %>% -->
-<!--     `colnames<-`(., colnames(K_s)) -->
-
-<!--   # Iterate over the list of K_ns matrices -->
-<!--   var_comp_out <- K_ns_list %>% -->
-<!--     map_df(~sommer::mmer(Y = y, X = X, Z = list(g_s = list(Z = Z_g, K = K_s), g_ns = list(Z = Z_g, K = .)), -->
-<!--                          R = list(units = R), silent = T) %>% .$var.comp %>% map_df(unname)) -->
-
-<!--   # Add the output to the list -->
-<!--   var_comp_list[[tr]] <- parallel_out -->
-
-<!-- } # Close the trait for loop -->
-
-
-
-
-<!-- ``` -->
-
-
-
-
-
-
-
 

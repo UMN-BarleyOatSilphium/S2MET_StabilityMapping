@@ -60,6 +60,5 @@ entries <- entry_list %>%
 s2_imputed_mat_use <- s2_imputed_mat[c(tp_geno, vp_geno),]
 
 
-# # Filter the S2 MET BLUEs for non-irrigated trials
-# S2_MET_BLUEs <- S2_MET_BLUEs %>% 
-#   filter(!grepl(pattern = "BZI|HTM", x = environment))
+# Read in the trial metadata
+trial_info <- read_csv(file = file.path(pheno_dir, "trial_metadata.csv"))

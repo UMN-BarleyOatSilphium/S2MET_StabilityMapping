@@ -103,7 +103,7 @@ S2_MET_marker_fw_sig <- S2_MET_marker_mean_fw_tidy %>%
 ## Fit the mixed models to determine variance components
 
 # Number of model fittings
-n_iter <- 50
+n_iter <- 25
 # Detect cores
 n_cores <- detectCores()
 
@@ -149,14 +149,14 @@ K_ns_sample <- non_sig_mar_samples %>%
 # Extract the data to use
 pheno_df <- S2_MET_BLUEs_use %>%
   filter(trait == tr) %>%
-  # filter(environment %in% sample(unique(.$environment), 5)) %>%
+  # filter(environment %in% sample(unique(.$environment), 3)) %>%
   droplevels() %>%
   mutate_at(vars(line_name, environment), as.factor)
   
 
 ## Model frame/matrices
 mf <- model.frame(value ~ line_name + environment + std_error, pheno_df) %>%
-  mutate(scale_value = scale(value),
+  mutate(scale_value = as.numeric(scale(value)),
          avg = interaction(line_name, environment), stab = avg, sens = avg)
 
 # Weights
@@ -190,19 +190,34 @@ K_ns_split <- K_ns_use_sample %>%
   split(., cut(seq_along(.), breaks = n_cores))
 
 
+## Fit the base model first (accounting for G and E only)
+form_base <- value ~ 1 + (1|line_name) + (1|environment)
+fit_base <- relmatLmer(formula = form_base, data = mf, weights = wts,
+                       relmat = list(line_name = K))
+
+# Add the residuals to the model frame
+mf1 <- mf %>% 
+  mutate(y_star = resid(fit_base))
+
+
 # Apply over cores
 var_comp_out <- mclapply(X = K_ns_split, FUN = function(K_ns_core_list) {
   
   # Iterate over the K_ns list of matrices
   map(K_ns_use_sample, function(K_avg_use) {
     
-    # Define the formula
-    form <- value ~ 1 + (1|line_name) + (1|environment) + (1|stab) + (1|sens) + (1|avg) 
+    # # Define the formula
+    # form <- value ~ 1 + (1|line_name) + (1|environment) + (1|stab) + (1|sens) + (1|avg) 
+    # 
+    # # Fit the model
+    # fit <- relmatLmer(formula = form, data = mf, weights = wts,
+    #                   relmat = list(line_name = K, avg = K_avg_use, 
+    #                                 stab = K_stab_use, sens = K_sens_use))
     
-    # Fit the model
-    fit <- relmatLmer(formula = form, data = mf, weights = wts,
-                      relmat = list(line_name = K, avg = K_avg_use, 
-                                    stab = K_stab_use, sens = K_sens_use))
+    # Fit the second model
+    form_ext <- y_star ~ 1 + (1|stab) + (1|sens) + (1|avg)
+    fit_ext <- relmatLmer(formula = form_ext, data = mf1, 
+                          relmat = list(avg = K_avg_use, stab = K_stab_use, sens = K_sens_use))
   
     # Return the variance components
     return(VarProp(fit)) }) })

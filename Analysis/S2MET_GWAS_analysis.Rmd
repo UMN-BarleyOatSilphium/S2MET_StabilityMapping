@@ -66,37 +66,6 @@ alpha <- 0.05
 
 Convert the markers into a GRanges object, then align with the gene annotations
 
-<!-- # ```{r marker.annotation} -->
-<!-- #  -->
-<!-- # # Load the genome annotation -->
-<!-- # ann_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Annotation" -->
-<!-- # load(file.path(ann_dir, "barley_genomic_ranges.RData")) -->
-<!-- #  -->
-<!-- #  -->
-<!-- # # Convert to GRanges object -->
-<!-- # snp_info <- S2TP_imputed_multi_genos_hmp %>%  -->
-<!-- #   select(rs:cM_pos) %>% -->
-<!-- #   separate(alleles, c("ref", "alt"), "/") %>% -->
-<!-- #   mutate(chrom = str_c("chr", chrom, "H")) -->
-<!-- #    -->
-<!-- #  -->
-<!-- # snp_info_grange <- GRanges(seqnames = snp_info$chrom, -->
-<!-- #                            ranges = IRanges(snp_info$pos, snp_info$pos), -->
-<!-- #                            ref = snp_info$ref, alt = snp_info$alt,  -->
-<!-- #                            cM_pos = snp_info$cM_pos, rs = snp_info$rs) -->
-<!-- #  -->
-<!-- # ## Align the markers to the barley granges information -->
-<!-- # snp_info_grange_overlap <- barley_grange_list %>%  -->
-<!-- #   as.list() %>%  -->
-<!-- #   map(~ mergeByOverlaps(query = snp_info_grange, subject = .)) -->
-<!-- #  -->
-<!-- # ## Save -->
-<!-- # save_file <- file.path(result_dir, "snp_genome_annotation.RData") -->
-<!-- # save("snp_info_grange_overlap", file = save_file) -->
-<!-- #  -->
-<!-- # ``` -->
-
-
 
 
 ## Results
@@ -295,6 +264,8 @@ load(file.path(result_dir, "snp_genome_annotation.RData"))
 
 
 ```
+
+
 
 
 
@@ -561,6 +532,30 @@ ggsave(filename = save_file, plot = g_man_stab, width = 9, height = 8)
 ```
 
 
+What are the numbers of significant marker-trait assocations for each trait and type?
+
+Create a table
+
+```{r summary.assoc.}
+
+gwas_sig_snp_summ <- gwas_pheno_mean_fw_adj %>% 
+  filter(model == "G") %>% 
+  group_by(trait, coef, chrom) %>% 
+  summarize(n_sig_SNP = sum(q_value <= 0.05)) %>%
+  mutate(type = "GWAS")
+
+mlmm_sig_snp_summ <- gwas_mlmm_Gmodel %>% 
+  ungroup() %>% 
+  complete(trait, coef, chrom) %>% 
+  group_by(trait, coef, chrom) %>% 
+  summarize(n_sig_SNP = sum(q_value <= 0.05, na.rm = T)) %>%
+  mutate(type = "MLMM")
+
+# Combine with the multi-locus mixed model results
+gwas_pheno_mean_fw_sig <- bind_rows(gwas_sig_snp_summ, mlmm_sig_snp_summ)
+
+
+```
 
 
 
@@ -1134,7 +1129,7 @@ Summarize the number of significant markers and intervals
 
 ## Summarize the number of significant markers and the number of sgnificant intervals
 sig_summary <- sig_markers_grange_df %>% 
-  group_by(trait, coef, seqnames) %>% 
+  group_by(trait, coef, chrom) %>% 
   summarize(SNP = n_distinct(marker), Interval = n_distinct(group)) %>% 
   summarize_at(vars(SNP, Interval), sum)
 

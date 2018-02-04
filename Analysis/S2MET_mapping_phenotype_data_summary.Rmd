@@ -65,6 +65,9 @@ Interpretation: of the possible line x environment combinations in which at leas
 
 
 
+
+
+
 Visualization of distributions
 
 ```{r pheno.viz}
@@ -121,6 +124,9 @@ We will assume the random effects are distributed such that $g \sim N(0, \sigma^
 
 ```{r herit.across}
 
+# Use a different optimizer
+library(optimx)
+
 # Group by trait and fit the multi-environment model
 stage_two_model_fits <- S2_MET_BLUEs_use %>% 
   group_by(trait) %>%
@@ -133,15 +139,17 @@ stage_two_model_fits <- S2_MET_BLUEs_use %>%
     # List of models
     models <- formulas(~ value,
                       base = ~ 1 + (1|env) + (1|line_name),
-                      full = add_predictors(base, ~ 1 | line_name:env))
+                      full = add_predictors(base, ~ (1 | line_name:env)))
     
     # Lmer control
-    lmer_control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore")
+    lmer_control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore",
+                                optimizer ='optimx', optCtrl=list(method='nlminb'))
     # Get the weights
     wts <- df$std_error^2
     
     # Fit the models
-    fits <- fit_with(data = df, lmer, models, control = lmer_control, weights = wts)
+    fits <- models %>% 
+      map(~lmer(formula = ., data = df, control = lmer_control, weights = wts))
     
     # Table of lines by environments (i.e. plots)
     plot_table <- xtabs(formula = ~ line_name + env, data = df)
@@ -222,8 +230,10 @@ Now calculate heritability across all environments
 # Extract the full model and calculate heritability
 stage_two_herit <- stage_two_model_fits %>% 
   mutate(full_fit = map(fits, "full")) %>%
-  do(suppressWarnings(herit_boot(object = .$full_fit[[1]], n_e = .$n_e, n_r = .$n_r, boot.reps = 100,
+  do(suppressWarnings(herit_boot(object = .$full_fit[[1]], n_e = .$n_e, n_r = .$n_r, boot.reps = 10,
                        exp = "line_name / (line_name + (line_name:env / n_e) + (Residual / n_r))")))
+
+stage_two_herit
     
 
 # Plot

@@ -168,3 +168,100 @@ marker_score_out <- mclapply(X = core_list, FUN = function(core) {
 # Save the output
 save_file <- file.path(result_dir, str_c("S2MET_marker_by_env_", tr, ".RData"))
 save("marker_score_out", file = save_file)
+
+
+
+# ## Calculate marker effects x environment as in Lopez-Cruz 2015
+# 
+# ## Group by trait and estimate the base marker effect and enivornmnet-specific deviation
+# mar_effect_by_env <- S2_MET_BLUEs_use %>%
+#   group_by(trait) %>%
+#   do({
+# 
+#     # Convert the . to df
+#     df <- .
+#     # Create a model frame with lines and environments
+#     mf <- model.frame(value ~ line_name + environment, data = df, drop.unused.levels = TRUE)
+#     env_names <- levels(mf$environment)
+# 
+#     # Response vector
+#     y <- model.response(mf)
+# 
+#     # Model matrix for the fixed effects
+#     X <- model.matrix(~ environment, data = mf)
+# 
+#     # Model matrix of the line_name incidence
+#     Z_line <- sparse.model.matrix(~ -1 + line_name, mf)
+#     # Model matrix of the marker random effects
+# 
+#     ## First the main effect of each marker
+#     Z0 <- Z_line %*% M
+#     K0 <- Diagonal(ncol(Z0))
+# 
+#     # Random deviation of each marker in each environment
+#     Z1 <- mf %>%
+#       split(.$environment) %>%
+#       map(~ sparse.model.matrix(~ -1 + line_name, .)) %>%
+#       map(~ . %*% M)
+#     Z1 <- .bdiag(Z1)
+# 
+#     K1 <- Diagonal(ncol(Z1))
+# 
+#     # fit <- EMMREML::emmremlMultiKernel(y = y, X = X, Zlist = list(Z0, Z1), Klist = list(K0, K1))
+#     fit <- sommer::mmer(Y = y, X = X, Z = list(m = list(Z = Z0, K = K0), mxe = list(Z = Z1, K = K1)))
+# 
+#     # Rename the random effect vector
+#     fit$uhat %>%
+#       setNames(c(mar_names, paste(rep(mar_names, length(env_names)),
+#                                   rep(env_names, each = length(mar_names)), sep = ":"))) %>%
+#       data.frame(marker = names(.), effect = ., row.names = NULL, stringsAsFactors = FALSE) %>%
+#       separate(marker, c("marker", "environment"), sep = ":", fill = "right")
+# 
+#   })
+# 
+# ## Save this
+# save_file <- file.path(result_dir, "S2MET_marker_eff_by_env.RData")
+# save("mar_effect_by_env", file = save_file)
+
+
+
+
+# # Map over the list and calculate FW regression slopes and deviations for each
+# # of the markers
+# marker_stability_coef <- S2_MET_marker_env_eff %>%
+#   map(~group_by(., trait, marker) %>%
+#         do({
+#           # Extract the data
+#           df <- .
+#           
+#           # Run the regression and tidy the results
+#           fit <- lm(effect ~ h, data = df)
+#           fit_tidy <- tidy(fit)
+#           
+#           # Return coefficients
+#           data.frame(
+#             b = subset(fit_tidy, term == "h", estimate, drop = T),
+#             b_std_error = subset(fit_tidy, term == "h", std.error, drop = T),
+#             df = df.residual(fit),
+#             delta = mean(resid(fit)^2),
+#             row.names = NULL
+#           ) }) %>%
+#         gather(stability_term, estimate, -trait, -marker, -b_std_error, -df) %>%
+#         ungroup() )
+# 
+# 
+# ## Add marker information (position, etc.)
+# marker_stability_coef_info <- marker_stability_coef %>% 
+#   map(~left_join(rename(snp_info, marker = `rs#`), ., by = "marker"))
+# 
+# # Add the regression coefficients to the marker effects
+# S2_MET_marker_eff_pheno_fw <- list(S2_MET_marker_env_eff, marker_stability_coef_info) %>%
+#   pmap(~left_join(.x, .y, by = c("marker", "trait"))) %>%
+#   # Rearrange some columns and edit some variables
+#   map(~select(., trait, environment, env_effect = h, marker, chrom, alleles, pos, cM_pos, 
+#               mar_effect = effect, b_std_error, df, stability_term, estimate))
+
+
+
+
+
