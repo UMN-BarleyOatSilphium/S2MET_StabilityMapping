@@ -10,8 +10,8 @@
 
 # List of packages to load
 # List of packages
-packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP", "ggplot2", "broom", "Matrix", "lme4qtl")
+packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", 
+              "Matrix", "lme4qtl", "sommer", "rrBLUP")
 
 # packages <- c(packages, "pbr")
 
@@ -67,17 +67,6 @@ tp <- entry_list %>%
   pull(Line)
 
 tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
-
-# Define the checks
-checks <- entry_list %>% 
-  filter(Class == "Check") %>% 
-  pull(Line)
-
-entries <- entry_list %>% 
-  pull(Line)
-
-# Number of cores
-n_cores <- detectCores()
 
 
 # Matrix of genotype data for all individuals
@@ -170,73 +159,116 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 # save("marker_score_out", file = save_file)
 
 
-
-## Calculate marker effects x environment as in Lopez-Cruz 2015
-
-# Find the unique traits
-trts <- unique(S2_MET_BLUEs_use$trait)
-
-# Create an empty list
-marker_by_env <- list()
-
-# Iterate over traits
-for (tr in trts) {
-  
-  # Extract the data for that trait
-  df <- S2_MET_BLUEs_use %>%
-    filter(trait == tr)
+## Calculate marker effects separately for each environment
+marker_by_env <- S2_MET_BLUEs_use %>%
+  group_by(trait, environment) %>%
+  do({
+    df <- .
     
-  # Create a model frame with lines and environments
-  mf <- model.frame(value ~ line_name + environment + std_error, data = df, drop.unused.levels = TRUE)
-  env_names <- levels(mf$environment)
-  
-  # Response vector
-  y <- model.response(mf)
-  
-  # Model matrix for the fixed effects
-  X <- model.matrix(~ environment, data = mf)
-  
-  # Model matrix of the line_name incidence
-  Z_line <- sparse.model.matrix(~ -1 + line_name, mf)
-  
-  # Model matrix of the marker random effects
-  ## First the main effect of each marker
-  Z0 <- Z_line %*% M
-  K0 <- Diagonal(ncol(Z0))
-  
-  # Random deviation of each marker in each environment
-  Z1 <- mf %>%
-    split(.$environment) %>%
-    map(~ sparse.model.matrix(~ -1 + line_name, .)) %>%
-    map(~ . %*% M)
-  Z1 <- .bdiag(Z1)
-  
-  K1 <- Diagonal(ncol(Z1))
+    # Model frame
+    mf <- model.frame(value ~ line_name + std_error, df)
 
-  # fit <- EMMREML::emmremlMultiKernel(y = y, X = X, Zlist = list(Z0, Z1), Klist = list(K0, K1))
-  fit <- sommer::mmer(Y = y, X = X, Z = list(m = list(Z = Z0, K = K0), mxe = list(Z = Z1, K = K1)))
-  
-  # Extract the base marker effects
-  base_eff <- fit$u.hat$m %>%
-    as.data.frame() %>%
-    rownames_to_column("marker") %>%
-    mutate(environment = NA) %>%
-    rename(effect = T1)
-  
-  # Extract the mxe effects
-  mxe_eff <- fit$u.hat$mxe %>% 
-    as.data.frame() %>% 
-    mutate(marker = rep(markers, length(env_names)), 
-           environment = rep(env_names, each = length(markers))) %>% 
-    rename(effect = T1)
-  
-  # combine
-  random_eff <- bind_rows(base_eff, mxe_eff)
-  
-  # Add to the list
-  marker_by_env[[tr]] <- random_eff
-  
-}
+    # Response
+    y <- model.response(mf)
+    # Grand mean design
+    X <- model.matrix(~ 1, mf)
+    # Line_name design
+    Zg <- model.matrix(~ -1 + line_name, mf)
+    
+    # Subset the marker matrix
+    Z <- Zg %*% M
+    K <- diag(ncol(Z))
+    
+    # Pull out the weights into an R matrix
+    # R <- solve(diag(mf$std_error^2))
+    
+    # Fit
+    # fit <- sommer::mmer(Y = y, X = X, Z = list(marker = list(Z = Z, K = K)), R = list(res = R))
+    fit <- mixed.solve(y = y, Z = Z, method = "REML")
+    
+    
+    # # Grab the marker effects and return
+    # marker_effect <- fit$u.hat$marker %>% 
+    #   as.data.frame() %>% 
+    #   rownames_to_column("marker") %>% 
+    #   dplyr::select(marker, effect = T1)
+    
+    # Grab the marker effects and return
+    marker_effect <- fit$u %>% 
+      as.data.frame() %>% 
+      rownames_to_column("marker") %>%
+      rename(effect = ".")
+    
+    # Return a data_frame
+    data_frame(marker_effect = list(marker_effect), fit = list(fit)) })
+    
+
+# ## Calculate marker effects x environment as in Lopez-Cruz 2015
+# 
+# # Find the unique traits
+# trts <- unique(S2_MET_BLUEs_use$trait)
+# 
+# # Create an empty list
+# marker_by_env <- list()
+# 
+# # Iterate over traits
+# for (tr in trts) {
+#   
+#   # Extract the data for that trait
+#   df <- S2_MET_BLUEs_use %>%
+#     filter(trait == tr)
+#     
+#   # Create a model frame with lines and environments
+#   mf <- model.frame(value ~ line_name + environment + std_error, data = df, drop.unused.levels = TRUE)
+#   env_names <- levels(mf$environment)
+#   
+#   # Response vector
+#   y <- model.response(mf)
+#   
+#   # Model matrix for the fixed effects
+#   X <- model.matrix(~ environment, data = mf)
+#   
+#   # Model matrix of the line_name incidence
+#   Z_line <- sparse.model.matrix(~ -1 + line_name, mf)
+#   
+#   # Model matrix of the marker random effects
+#   ## First the main effect of each marker
+#   Z0 <- Z_line %*% M
+#   K0 <- Diagonal(ncol(Z0))
+#   
+#   # Random deviation of each marker in each environment
+#   Z1 <- mf %>%
+#     split(.$environment) %>%
+#     map(~ sparse.model.matrix(~ -1 + line_name, .)) %>%
+#     map(~ . %*% M)
+#   Z1 <- .bdiag(Z1)
+#   
+#   K1 <- Diagonal(ncol(Z1))
+# 
+#   # fit <- EMMREML::emmremlMultiKernel(y = y, X = X, Zlist = list(Z0, Z1), Klist = list(K0, K1))
+#   fit <- mmer(Y = y, X = X, Z = list(m = list(Z = Z0, K = K0), mxe = list(Z = Z1, K = K1)))
+#   
+#   # Extract the base marker effects
+#   base_eff <- fit$u.hat$m %>%
+#     as.data.frame() %>%
+#     rownames_to_column("marker") %>%
+#     mutate(environment = NA) %>%
+#     rename(effect = T1)
+#   
+#   # Extract the mxe effects
+#   mxe_eff <- fit$u.hat$mxe %>% 
+#     as.data.frame() %>% 
+#     mutate(marker = rep(markers, length(env_names)), 
+#            environment = rep(env_names, each = length(markers))) %>% 
+#     rename(effect = T1)
+#   
+#   # combine
+#   random_eff <- bind_rows(base_eff, mxe_eff)
+#   
+#   # Add to the list
+#   marker_by_env[[tr]] <- random_eff
+#   
+# }
 
 ## Save this
 save_file <- file.path(result_dir, "S2MET_marker_ranef_by_env.RData")

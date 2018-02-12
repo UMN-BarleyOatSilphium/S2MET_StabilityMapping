@@ -21,46 +21,103 @@ library(stringr)
 # Project and other directories
 source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
 
+# Load the results
+load(file.path(result_dir, "S2MET_stability_crossv_results.RData"))
+
+
 ```
 
 
 ## Results
 
-### Cross-Validation of Training Set Using GBS Markers
+Cross-Validation of Training Set using all markers or marker subsets
 
-These are the result of random cross-validation using only the 175 training population individuals and GBS markers
+The first results use relationship matrices created using all markers in each subgroup
 
 ```{r crossv.gbs.tp}
 
-# Load the results
-load(file.path(result_dir, "S2MET_stability_crossv_results.RData"))
+## Boxplots
+# g_cv_acc_all <- cv_results %>% 
+#   mutate(coef = parse_factor(coef, levels = c("g", "b", "log_delta"))) %>%
+#   ggplot(aes(x = coef, y = acc, color = significance)) + 
+#   geom_boxplot(position = "dodge") + 
+#   ylab("Prediction Accuracy") +
+#   xlab("") +
+#   ylim(c(-0.4, 1)) + 
+#   labs(caption = "Results of 100 iterations of 7-fold cross-validation") +
+#   scale_color_discrete(name = "Marker Group") +
+#   facet_grid(~trait) + 
+#   theme_bw()
 
-# Plot
-(g_crossv_gbs <- crossv_gbs_out %>%
-  ungroup() %>%
-  mutate(coef = ifelse(coef == "b", "Sensitivity", "GenotypeMean")) %>%
-  ggplot(aes(x = trait, y = acc, fill = coef)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  geom_errorbar(aes(ymin = acc - acc_sd, ymax = acc + acc_sd), 
-                position = position_dodge(0.9), width = 0.5) +
+## Actually only plot the results of using all markers
+g_cv_acc_all <- cv_results %>%
+  filter(significance == "all_markers") %>%
+  mutate(coef = parse_factor(coef, levels = c("g", "b", "log_delta"))) %>%
+  ggplot(aes(x = coef, y = acc)) +
+  geom_boxplot(position = "dodge") +
   ylab("Prediction Accuracy") +
-  xlab(NULL) +
-  ylim(c(0, 1)) +
-  scale_fill_brewer(palette = "Set2", guide = guide_legend(title = NULL)) +
-  labs(
-    title = "Cross-Validation Accuracy for Genotype Mean and Sensitivity",
-    subtitle = str_c("Based on ", unique(crossv_gbs_out$crossv_iter), " iterations using ", 
-                     unique(crossv_gbs_out$p_train) * 100, "% training.\nError bars are 1 SD.")
-  ) +
-  theme_bw() +
-  theme(
-    legend.position = c(0.85, 0.85),
-    legend.background = element_rect(fill = "grey85", color = NA)
-  ))
+  xlab("") +
+  ylim(c(-0.4, 1)) +
+  labs(caption = "Results of 100 iterations of 7-fold cross-validation") +
+  facet_grid(~trait) +
+  theme_bw()
 
 # Save this
-save_file <- file.path(fig_dir, "crossv_gbs.jpg")
-ggsave(filename = save_file, plot = g_crossv_gbs, width = 6, height = 5)
+save_file <- file.path(fig_dir, "cv_results_all.jpg")
+ggsave(filename = save_file, plot = g_cv_acc_all, width = 8, height = 5)
+
+# Calculate average accuracy
+(cv_results_avg_acc <- cv_results %>% 
+  filter(significance == "all_markers") %>%
+  group_by(trait, coef) %>% 
+  summarize(mean_acc = mean(acc)) %>%
+  spread(coef, mean_acc))
+
+```
+
+
+Results of using marker samples of the same size
+
+```{r const.mark.size}
+
+# First, take the average accuracy of the 10 replications of each sample
+cv_results_samples_avg1 <- cv_results_samples_tidy %>% 
+  group_by(trait, coef, rep, significance) %>% 
+  summarize(acc = mean(acc.rep_acc)) %>%
+  ungroup()
+
+# Plot boxplots
+g_cv_acc_samples <- cv_results_samples_avg1 %>% 
+  mutate(coef = parse_factor(coef, levels = c("g", "b", "log_delta"))) %>%
+  ggplot(aes(x = coef, y = acc, color = significance)) + 
+  geom_boxplot(position = "dodge") + 
+  ylab("Prediction Accuracy") +
+  xlab("") +
+  ylim(c(-0.4, 1)) + 
+  labs(caption = "Results of 100 iterations of 7-fold cross-validation using constant marker size (232).") +
+  scale_color_discrete(name = "Marker Group") +
+  facet_grid(~trait) + 
+  theme_bw()
+
+
+# Save this
+save_file <- file.path(fig_dir, "cv_results_samples.jpg")
+ggsave(filename = save_file, plot = g_cv_acc_samples, width = 8, height = 5)
+
+
+(cv_results_samples_avg2 <- cv_results_samples_avg1 %>% 
+  group_by(trait, coef, significance) %>% 
+  summarize(mean_acc = mean(acc)) %>% 
+  spread(significance, mean_acc))
+
+# Calculate the percent change over random markers
+(cv_results_samples_perc <- cv_results_samples_avg2 %>% 
+  mutate_at(vars(average:stable), funs((. - all) / all)))
+
 
 
 ```
+
+
+
+

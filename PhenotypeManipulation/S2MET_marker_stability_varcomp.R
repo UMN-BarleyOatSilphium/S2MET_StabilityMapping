@@ -9,7 +9,7 @@ tr <- args[1]
 # List of packages to load
 # List of packages
 packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "parallel", "rrBLUP",
-              "purrrlyr", "lme4qtl")
+              "purrrlyr", "sommer")
 
 # Set the directory of the R packages
 package_dir <- NULL
@@ -80,7 +80,7 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 S2_MET_marker_mean_fw_tidy <- S2_MET_marker_mean_fw %>% 
   distinct(marker, chrom, pos, trait, b, delta) %>%
   mutate(log_delta = log(delta), b = b + 1) %>%
-  select(-delta) %>% 
+  dplyr::select(-delta) %>% 
   gather(coef, estimate, -marker:-trait)
 
 # What should be the significance level
@@ -159,68 +159,137 @@ mf <- model.frame(value ~ line_name + environment + std_error, pheno_df) %>%
   mutate(scale_value = as.numeric(scale(value)),
          avg = interaction(line_name, environment), stab = avg, sens = avg)
 
+# Response
+y <- mf$value
+
+# Grand mean as fixed effect
+X <- model.matrix(~ 1, mf)
+
 # Weights
 wts <- mf$std_error^2
+# R matrix
+R <- Diagonal(x = wts)
   
 ## Create the random genotype matrix
 # Random effect of genotypic main effect
-Z_g <- model.matrix(~ -1 + line_name, mf)
+Z_g <- sparse.model.matrix(~ -1 + line_name, mf)
 # Random effect of environment
-Z_e <- model.matrix(~ -1 + environment, mf)
+Z_e <- sparse.model.matrix(~ -1 + environment, mf)
+# Random effect of GxE
+Z_ge <- sparse.model.matrix(~ -1 + avg, droplevels(mf))
+
+K_e <- Diagonal(ncol(Z_e))
 
 ## Compute useable K matrices
 # Ze tcrossprod
 ZeZe <- tcrossprod(Z_e)
 
 # Stable markers
-K_stab_use <- sommer::hadamard.prod(x = tcrossprod((Z_g %*% K_stab), Z_g), y = ZeZe) %>%
-  `dimnames<-`(., list(mf$avg, mf$avg))
+K_stab_use <- tcrossprod((Z_g %*% K_stab), Z_g)
+K_stab_use <- K_stab_use * ZeZe
+dimnames(x = K_stab_use) <- list(mf$avg, mf$avg)
 
-# Stable markers
-K_sens_use <- sommer::hadamard.prod(x = tcrossprod((Z_g %*% K_sens), Z_g), y = ZeZe) %>%
-  `dimnames<-`(., list(mf$avg, mf$avg))
+# rm(K_stab)
 
-# Stable markers
+# Plastic markers
+K_sens_use <- tcrossprod((Z_g %*% K_sens), Z_g)
+K_sens_use <- K_sens_use * ZeZe
+dimnames(x = K_sens_use) <- list(mf$avg, mf$avg)
+
+# rm(K_sens)
+
+# Sample of random markers
 K_ns_use_sample <- K_ns_sample %>%
-  map(~sommer::hadamard.prod(x = tcrossprod((Z_g %*% .), Z_g), y = ZeZe) %>%
-  `dimnames<-`(., list(mf$avg, mf$avg)))
-
-## Split up these samples by cores
-K_ns_split <- K_ns_use_sample %>%
-  split(., cut(seq_along(.), breaks = n_cores))
-
-
-## Fit the base model first (accounting for G and E only)
-form_base <- value ~ 1 + (1|line_name) + (1|environment)
-fit_base <- relmatLmer(formula = form_base, data = mf, weights = wts,
-                       relmat = list(line_name = K))
-
-# Add the residuals to the model frame
-mf1 <- mf %>% 
-  mutate(y_star = resid(fit_base))
+  map(~tcrossprod((Z_g %*% .), Z_g))
+K_ns_use_sample <- K_ns_use_sample %>%
+  map(~. * ZeZe)
+K_ns_use_sample <- K_ns_use_sample %>%
+  map(~`dimnames<-`(., list(mf$avg, mf$avg)))
 
 
-# Apply over cores
-var_comp_out <- mclapply(X = K_ns_split, FUN = function(K_ns_core_list) {
+# Empty list of variance components
+var_comp_out <- vector("list", n_iter)
+
+
+# Create a list in which the random effects go
+Z <- list(
+  line_name = list(Z = Z_g, K = K),
+  environment = list(Z = Z_e, K = K_e),
+  gxe_stable = list(Z = Z_ge, K = K_stab_use),
+  gxe_plastic = list(Z = Z_ge, K = K_sens_use),
+  gxe_avg = list(Z = Z_ge, K = NULL)
+)
+
+
+
+## Iterate over the samples
+for (i in seq_along(K_ns_use_sample)) {
   
-  # Iterate over the K_ns list of matrices
-  map(K_ns_use_sample, function(K_avg_use) {
-    
-    # # Define the formula
-    # form <- value ~ 1 + (1|line_name) + (1|environment) + (1|stab) + (1|sens) + (1|avg) 
-    # 
-    # # Fit the model
-    # fit <- relmatLmer(formula = form, data = mf, weights = wts,
-    #                   relmat = list(line_name = K, avg = K_avg_use, 
-    #                                 stab = K_stab_use, sens = K_sens_use))
-    
-    # Fit the second model
-    form_ext <- y_star ~ 1 + (1|stab) + (1|sens) + (1|avg)
-    fit_ext <- relmatLmer(formula = form_ext, data = mf1, 
-                          relmat = list(avg = K_avg_use, stab = K_stab_use, sens = K_sens_use))
+  # Extract the K_matrix
+  K_ns_use <- K_ns_use_sample[[i]]
   
-    # Return the variance components
-    return(VarProp(fit)) }) })
+  # Edit the Z list
+  Z$gxe_avg$K <- K_ns_use
+  
+  
+  # Use sommer to fit the model
+  fit <- mmer(Y = y, X = X, Z = Z, R = list(res = R))
+  
+  # Add the variance components to the list
+  var_comp_out[[i]] <- fit$var.comp
+  
+}
+
+
+# ## Use BGLR
+# K_ns_use <- K_ns_split$`(0.976,7]`[[1]]
+# 
+# # Create the regression function
+# ETA <- list(list(X = Z_e, model = "FIXED"),
+#             list(K = kronecker(K_e, K), model = "RKHS"),
+#             # list(K = diag(ncol(Z_e)), model = "RKHS"),
+#             list(K = K_ns_use, model = "RKHS"))
+# 
+# fit <- BGLR(y = y, ETA = ETA)
+# 
+# 
+# ## Fit the base model first (accounting for G and E only)
+# form_base <- value ~ 1 + (1|line_name) + (1|environment)
+# fit_base <- relmatLmer(formula = form_base, data = mf, weights = wts,
+#                        relmat = list(line_name = K))
+# 
+# # Add the residuals to the model frame
+# mf1 <- mf %>% 
+#   mutate(y_star = resid(fit_base))
+# 
+# 
+# ## Split up these samples by cores
+# K_ns_split <- K_ns_use_sample %>%
+#   split(., cut(seq_along(.), breaks = n_cores))
+# 
+# 
+# 
+# # Apply over cores
+# var_comp_out <- mclapply(X = K_ns_split, FUN = function(K_ns_core_list) {
+#   
+#   # Iterate over the K_ns list of matrices
+#   map(K_ns_use_sample, function(K_avg_use) {
+#     
+#     # # Define the formula
+#     # form <- value ~ 1 + (1|line_name) + (1|environment) + (1|stab) + (1|sens) + (1|avg) 
+#     # 
+#     # # Fit the model
+#     # fit <- relmatLmer(formula = form, data = mf, weights = wts,
+#     #                   relmat = list(line_name = K, avg = K_avg_use, 
+#     #                                 stab = K_stab_use, sens = K_sens_use))
+#     
+#     # Fit the second model
+#     form_ext <- y_star ~ 1 + (1|stab) + (1|sens) + (1|avg)
+#     fit_ext <- relmatLmer(formula = form_ext, data = mf1, 
+#                           relmat = list(avg = K_avg_use, stab = K_stab_use, sens = K_sens_use))
+#   
+#     # Return the variance components
+#     return(VarProp(fit)) }) })
   
 
 # Save the results

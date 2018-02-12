@@ -182,15 +182,21 @@ mlmm <- function(y, X, Z, K) {
   p_value <- pchisq(q = chisq, df = 1, lower.tail = FALSE)
   q_value <- p.adjust(p = p_value, method = "BH")
 
-  # # Calculate residuals
-  # y_hat <- ((X %*% fit$beta) + (Z %*% fit$u))
-  # res <-  y - y_hat
-  #
-  # SSE <- sum(res^2)
-  # SSR <- sum((y_hat - mean(y))^2)
+  # Calculate R-squared
+  y_hat_all <- ((X %*% fit$beta) + (Z %*% fit$u))
+  y_hat_snp <- (X %*% fit$beta)
+  
+  # Calculate R^2 and adjusted R^2
+  n <- length(y)
+  p <- ncol(X) - 1
 
-  # Return a data.frame
-  data.frame(marker = names(alpha), alpha, se, p_value, q_value)
+  R_sqr <- cor(y, y_hat_snp)^2
+  R_sqr_adj <- R_sqr - ((1 - R_sqr) * (p / (n - p - 1)))
+  
+
+  # Return a list and a data.frame
+  data.frame(marker = names(alpha), alpha, se, p_value, q_value, R_sqr = R_sqr,
+             R_sqr_adj = R_sqr_adj)
 
 }
 
@@ -273,6 +279,47 @@ gwas_mlmm_Gmodel <- gwas_adj_sig %>%
 
     } # End of while loop
 
+    # Return the data.frame
+    df %>%
+      select(marker:pos) %>%
+      right_join(., fit_out, by = "marker")
+  })
+
+
+# Create a K matrix using all markers
+K <- A.mat(X = S2TP_imputed_multi_genos_mat, min.MAF = 0, max.missing = 1)
+
+## Now fit a mixed model using the SNPs identified in the chromosome-specific analysis
+gwas_mlmm_final_model <- gwas_mlmm_Gmodel %>%
+  group_by(trait, coef) %>%
+  do({
+    # Extract the data
+    df <- .
+    
+    # What are the traits and coefficients?
+    trait <- str_c(unique(df$trait), "_", unique(df$coef))
+    
+    # Subset the data.frame and create a model.frame
+    mf <- pheno_use %>%
+      select(line_name, trait) %>%
+      model.frame(formula = as.formula(str_c(trait, " ~ line_name")))
+    
+    # Response vector
+    y <- model.response(mf)
+    # Fixed effect mean matrix
+    X_mu <- model.matrix(~ 1, mf)
+    # Random effect of each entry
+    Z_g <- model.matrix(~ -1 + line_name, mf)
+    # Fixed effect of each SNP
+    X_snp <- {Z_g %*% S2TP_imputed_multi_genos_mat[,df$marker, drop = FALSE]} %>%
+      remove_colinear()
+    
+    # Combine the fixed effect matrices
+    X <- cbind(X_mu, X_snp)
+    
+    # Fit the model and return estimates
+    fit_out <- mlmm(y = y, X = X, Z = Z_g, K = K)
+  
     # Return the data.frame
     df %>%
       select(marker:pos) %>%

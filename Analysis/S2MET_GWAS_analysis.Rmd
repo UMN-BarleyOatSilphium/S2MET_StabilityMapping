@@ -46,7 +46,9 @@ M <- S2TP_imputed_multi_genos_mat[tp_geno,]
 
 # Get the marker information
 snp_info <- S2TP_imputed_multi_genos_hmp %>%
-  select(marker = rs, chrom, pos, cM_pos)
+  select(marker = rs, chrom, pos, cM_pos) %>%
+  # Correct the cM position for BOPA snps
+  mutate(cM_pos = if_else(str_detect(marker, "^S"), cM_pos, cM_pos / 1000))
 
 # Subset the entry list for the tp
 tp_entry_list <- entry_list %>%
@@ -558,178 +560,232 @@ gwas_pheno_mean_fw_sig <- bind_rows(gwas_sig_snp_summ, mlmm_sig_snp_summ)
 ```
 
 
+Adjust the manhattan plots to show the markers that were declared significant
+in the mlmm with different colors
+
+```{r highlight.sig.mar}
+
+# Filter the GWAS results
+gwas_pheno_mean_fw_focus <- gwas_pheno_mean_fw_adj %>% 
+  filter(model == "G") %>% 
+  unnest() %>%
+  select(trait, coef, marker:pos, alpha = estimate, p_value, q_value)
+
+# Get the SNPs not in the mlmm df
+gwas_pheno_not_sig <- anti_join(gwas_pheno_mean_fw_focus, gwas_mlmm_Gmodel, 
+                                by = c("trait", "coef", "marker", "chrom", "pos")) %>%
+  mutate(significant = FALSE)
+
+# Combine
+gwas_results_toplot <- gwas_mlmm_Gmodel %>%
+  ungroup() %>%
+  select(-se) %>%
+  mutate(significant = TRUE) %>%
+  bind_rows(., gwas_pheno_not_sig) %>%
+  mutate(neg_log_qvalue = -log10(q_value),
+         coef = case_when(coef == "g" ~ "Genotype Mean",
+                          coef == "b" ~ "Linear Stability",
+                          coef == "log_delta" ~ "Non-Linear Stability"), 
+         coef = parse_factor(coef, levels = c("Genotype Mean", "Linear Stability", "Non-Linear Stability")),
+         color = case_when(chrom %in% seq(1, 7, by = 2) & !significant ~ "B",
+                           !chrom %in% seq(1, 7, by = 2) & !significant ~ "G",
+                           TRUE ~ "Bl"))
+
+# Color scheme
+color <- c("Bl" = umn_palette(n = 3)[3], "B" = "black", "G" = "grey75")
+
+## Plot
+g_gwas_complete_plot <- gwas_results_toplot %>% 
+  ggplot(aes(x = pos / 1000000, y = neg_log_qvalue, color = color)) + 
+  geom_point() + 
+  geom_hline(yintercept = -log10(0.05), lty = 2) + 
+  scale_color_manual(values = color, guide = FALSE) +
+  ylab(expression(-log[10]~(italic(q)))) +
+  xlab("Position (Mbp)") + 
+  facet_grid(trait + coef ~ chrom, scales = "free", space = "free_x", switch = "x") + 
+  theme_manhattan()
+
+# Save this
+save_file <- file.path(fig_dir, "gwas_manhattan_complete.jpg")
+ggsave(filename = save_file, plot = g_gwas_complete_plot, width = 9, height = 12)
 
 
-<!-- Combine the mean and stability manhattan plots into a single graph -->
-
-
-<!-- ```{r plot.mean.and.stability} -->
-
-<!-- # Model to use -->
-<!-- model_toplot <- "G" -->
-
-<!-- # Combine mean and stability into a single df. -->
-<!-- # Convert the stability -log10(q) values into their opposites (i.e. *-1) -->
-<!-- gwas_geno_mean_use <- gwas_pheno_mean_fw_adj %>% -->
-<!--   ungroup() %>% -->
-<!--   filter(model == "QG", coef == "g")  %>% -->
-<!--   select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10) -->
-
-<!-- gwas_pheno_fw_use <- gwas_pheno_mean_fw_adj %>% -->
-<!--   ungroup() %>% -->
-<!--   filter(model == "QG", coef != "g") %>% -->
-<!--   mutate(coef = if_else(coef == "b", "linear", "non-linear")) %>%  -->
-<!--   select(marker:trait, contains("neg_log10_fdr"), coef, Stability = q_value_neg_log10) -->
-
-<!-- # Extract the palette for use in the manhattan plot -->
-<!-- palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)] -->
-<!-- odd_chrom <- seq(1, 7, by = 2) -->
-
-<!-- gwas_use <-  gwas_pheno_fw_use %>% -->
-<!--   filter(coef == "linear") %>% -->
-<!--   full_join(gwas_geno_mean_use, .) %>%  -->
-<!--   gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -coef) %>%  -->
-<!--   mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>% -->
-<!--   mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1", -->
-<!--                            !chrom %in% odd_chrom & test == "Mean" ~ "palette2", -->
-<!--                            chrom %in% odd_chrom & test == "Stability" ~ "palette3", -->
-<!--                            !chrom %in% odd_chrom & test == "Stability" ~ "palette4"), -->
-<!--          chrom = as.factor(chrom)) -->
-
-<!-- # color vector for ggplot -->
-<!-- color_value <- set_names(palette_use, unique(gwas_use$color)) -->
-
-<!-- # Create the combo plot -->
-<!-- ## Create the common modifier -->
-<!-- g_mod <- list( -->
-<!--   geom_hline(yintercept = 0), -->
-<!--   geom_point(aes(col = color)), -->
-<!--   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")), -->
-<!--   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")), -->
-<!--   facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x"), -->
-<!--   scale_linetype_discrete(guide = FALSE), -->
-<!--   scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), -->
-<!--                      guide = FALSE), -->
-<!--   # ylab("-log(q)"), -->
-<!--   # xlab("Position (Mbp)"), -->
-<!--   # labs(title = "Genomewide Assocation Analyses"), -->
-<!--   theme_manhattan() -->
-<!-- ) -->
-
-
-<!-- ## Plot GrainYield -->
-<!-- g_mean_fw_gy <- gwas_use %>% -->
-<!--   filter(trait == "GrainYield") %>% -->
-<!--   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +  -->
-<!--   ylim(c(-1.5, 1.5)) + -->
-<!--   g_mod + -->
-<!--   theme(axis.text.x = element_blank(), -->
-<!--         strip.text.x = element_blank(), -->
-<!--         axis.ticks.x = element_blank(), -->
-<!--         axis.title = element_blank()) -->
-
-<!-- ## Plot HeadingDate -->
-<!-- g_mean_fw_hd <- gwas_use %>% -->
-<!--   filter(trait == "HeadingDate") %>% -->
-<!--   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +  -->
-<!--   ylim(c(-4, 4)) + -->
-<!--   g_mod + -->
-<!--   ylab(expression(-log[10](italic(q)))) + -->
-<!--   theme(axis.text.x = element_blank(), -->
-<!--         strip.text.x = element_blank(), -->
-<!--         axis.ticks.x = element_blank(), -->
-<!--         axis.title.x = element_blank()) -->
-
-<!-- ## Plot PlantHeight -->
-<!-- g_mean_fw_ph <- gwas_use %>% -->
-<!--   filter(trait == "PlantHeight") %>% -->
-<!--   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +  -->
-<!--   ylim(c(-4.5, 4.5)) + -->
-<!--   g_mod + -->
-<!--   xlab("Position (Mbp)") + -->
-<!--   theme(axis.title.y = element_blank()) -->
-
-<!-- # Create grobs -->
-<!-- grobs <- list(g_mean_fw_gy, g_mean_fw_hd, g_mean_fw_ph) %>% -->
-<!--   map(ggplotGrob) -->
-
-<!-- save_file <- file.path(fig_dir, "gwas_pheno_mean_and_linear_stability.jpg") -->
-<!-- ggsave(filename = save_file, plot = do.call("rbind", grobs), width = 9, height = 6) -->
+```
 
 
 
 
-<!-- ## Plot non-linear stability -->
-<!-- gwas_use <-  gwas_pheno_fw_use %>% -->
-<!--   filter(coef == "non-linear") %>% -->
-<!--   full_join(gwas_geno_mean_use, .) %>%  -->
-<!--   gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -coef) %>%  -->
-<!--   mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>% -->
-<!--   mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1", -->
-<!--                            !chrom %in% odd_chrom & test == "Mean" ~ "palette2", -->
-<!--                            chrom %in% odd_chrom & test == "Stability" ~ "palette3", -->
-<!--                            !chrom %in% odd_chrom & test == "Stability" ~ "palette4"), -->
-<!--          chrom = as.factor(chrom)) -->
 
-<!-- # Create the combo plot -->
-<!-- ## Create the common modifier -->
-<!-- g_mod <- list( -->
-<!--   geom_hline(yintercept = 0), -->
-<!--   geom_point(aes(col = color)), -->
-<!--   geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")), -->
-<!--   geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")), -->
-<!--   facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x"), -->
-<!--   scale_linetype_discrete(guide = FALSE), -->
-<!--   scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"), -->
-<!--                      guide = FALSE), -->
-<!--   # ylab("-log(q)"), -->
-<!--   # xlab("Position (Mbp)"), -->
-<!--   # labs(title = "Genomewide Assocation Analyses"), -->
-<!--   theme_manhattan() -->
-<!-- ) -->
+Combine the mean and stability manhattan plots into a single graph
 
 
-<!-- ## Plot GrainYield -->
-<!-- g_mean_fw_gy <- gwas_use %>% -->
-<!--   filter(trait == "GrainYield") %>% -->
-<!--   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +  -->
-<!--   ylim(c(-1.5, 1.5)) + -->
-<!--   g_mod + -->
-<!--   theme(axis.text.x = element_blank(), -->
-<!--         strip.text.x = element_blank(), -->
-<!--         axis.ticks.x = element_blank(), -->
-<!--         axis.title = element_blank()) -->
+```{r plot.mean.and.stability}
 
-<!-- ## Plot HeadingDate -->
-<!-- g_mean_fw_hd <- gwas_use %>% -->
-<!--   filter(trait == "HeadingDate") %>% -->
-<!--   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +  -->
-<!--   ylim(c(-7, 7)) + -->
-<!--   g_mod + -->
-<!--   ylab(expression(-log[10](italic(q)))) + -->
-<!--   theme(axis.text.x = element_blank(), -->
-<!--         strip.text.x = element_blank(), -->
-<!--         axis.ticks.x = element_blank(), -->
-<!--         axis.title.x = element_blank()) -->
+# Model to use
+model_toplot <- "G"
 
-<!-- ## Plot PlantHeight -->
-<!-- g_mean_fw_ph <- gwas_use %>% -->
-<!--   filter(trait == "PlantHeight") %>% -->
-<!--   ggplot(aes(x = pos /  1000000, y = q_value_neg_log10)) +  -->
-<!--   ylim(c(-3.5, 3.5)) + -->
-<!--   g_mod + -->
-<!--   xlab("Position (Mbp)") + -->
-<!--   theme(axis.title.y = element_blank()) -->
+# Combine mean and stability into a single df.
+# Convert the stability -log10(q) values into their opposites (i.e. *-1)
+gwas_geno_mean_use <- gwas_pheno_mean_fw_adj %>%
+  ungroup() %>%
+  filter(model == "QG", coef == "g")  %>%
+  select(marker:trait, contains("neg_log10_fdr"), Mean = q_value_neg_log10)
 
-<!-- # Create grobs -->
-<!-- grobs <- list(g_mean_fw_gy, g_mean_fw_hd, g_mean_fw_ph) %>% -->
-<!--   map(ggplotGrob) -->
+gwas_pheno_fw_use <- gwas_pheno_mean_fw_adj %>%
+  ungroup() %>%
+  filter(model == "QG", coef != "g") %>%
+  mutate(coef = if_else(coef == "b", "linear", "non-linear")) %>%
+  select(marker:trait, contains("neg_log10_fdr"), coef, Stability = q_value_neg_log10)
 
-<!-- save_file <- file.path(fig_dir, "gwas_pheno_mean_and_nonlinear_stability.jpg") -->
-<!-- ggsave(filename = save_file, plot = do.call("rbind", grobs), width = 9, height = 6) -->
+# Extract the palette for use in the manhattan plot
+palette_use <- umn_palette("Secondary_Tier2")[c(3,8,4,9)]
+odd_chrom <- seq(1, 7, by = 2)
+
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(coef == "linear") %>%
+  full_join(gwas_geno_mean_use, .) %>%
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -coef) %>%
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+# color vector for ggplot
+color_value <- set_names(palette_use, unique(gwas_use$color))
+
+# Create the combo plot
+## Create the common modifier
+g_mod <- list(
+  geom_hline(yintercept = 0),
+  geom_point(aes(col = color)),
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")),
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x"),
+  scale_linetype_discrete(guide = FALSE),
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"),
+                     guide = FALSE),
+  # ylab("-log(q)"),
+  # xlab("Position (Mbp)"),
+  # labs(title = "Genomewide Assocation Analyses"),
+  theme_manhattan()
+)
 
 
-<!-- ``` -->
+## Plot GrainYield
+g_mean_fw_gy <- gwas_use %>%
+  filter(trait == "GrainYield") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +
+  ylim(c(-1.5, 1.5)) +
+  g_mod +
+  theme(axis.text.x = element_blank(),
+        strip.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title = element_blank())
+
+## Plot HeadingDate
+g_mean_fw_hd <- gwas_use %>%
+  filter(trait == "HeadingDate") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +
+  ylim(c(-4, 4)) +
+  g_mod +
+  ylab(expression(-log[10](italic(q)))) +
+  theme(axis.text.x = element_blank(),
+        strip.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank())
+
+## Plot PlantHeight
+g_mean_fw_ph <- gwas_use %>%
+  filter(trait == "PlantHeight") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +
+  ylim(c(-4.5, 4.5)) +
+  g_mod +
+  xlab("Position (Mbp)") +
+  theme(axis.title.y = element_blank())
+
+# Create grobs
+grobs <- list(g_mean_fw_gy, g_mean_fw_hd, g_mean_fw_ph) %>%
+  map(ggplotGrob)
+
+save_file <- file.path(fig_dir, "gwas_pheno_mean_and_linear_stability.jpg")
+ggsave(filename = save_file, plot = do.call("rbind", grobs), width = 9, height = 6)
+
+
+
+
+## Plot non-linear stability
+gwas_use <-  gwas_pheno_fw_use %>%
+  filter(coef == "non-linear") %>%
+  full_join(gwas_geno_mean_use, .) %>%
+  gather(test, q_value_neg_log10, -marker:-neg_log10_fdr10, -coef) %>%
+  mutate_at(vars(q_value_neg_log10, contains("neg_log10_fdr")), funs(if_else(test == "Stability", . * -1, .))) %>%
+  mutate(color = case_when(chrom %in% odd_chrom & test == "Mean" ~ "palette1",
+                           !chrom %in% odd_chrom & test == "Mean" ~ "palette2",
+                           chrom %in% odd_chrom & test == "Stability" ~ "palette3",
+                           !chrom %in% odd_chrom & test == "Stability" ~ "palette4"),
+         chrom = as.factor(chrom))
+
+# Create the combo plot
+## Create the common modifier
+g_mod <- list(
+  geom_hline(yintercept = 0),
+  geom_point(aes(col = color)),
+  geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")),
+  geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+  facet_grid(trait ~ chrom, switch = "x", scales = "free_x", space = "free_x"),
+  scale_linetype_discrete(guide = FALSE),
+  scale_color_manual(values = color_value, labels = c("Mean", "Mean", "Stability", "Stability"),
+                     guide = FALSE),
+  # ylab("-log(q)"),
+  # xlab("Position (Mbp)"),
+  # labs(title = "Genomewide Assocation Analyses"),
+  theme_manhattan()
+)
+
+
+## Plot GrainYield
+g_mean_fw_gy <- gwas_use %>%
+  filter(trait == "GrainYield") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +
+  ylim(c(-1.5, 1.5)) +
+  g_mod +
+  theme(axis.text.x = element_blank(),
+        strip.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title = element_blank())
+
+## Plot HeadingDate
+g_mean_fw_hd <- gwas_use %>%
+  filter(trait == "HeadingDate") %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10)) +
+  ylim(c(-7, 7)) +
+  g_mod +
+  ylab(expression(-log[10](italic(q)))) +
+  theme(axis.text.x = element_blank(),
+        strip.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank())
+
+## Plot PlantHeight
+g_mean_fw_ph <- gwas_use %>%
+  filter(trait == "PlantHeight") %>%
+  ggplot(aes(x = pos /  1000000, y = q_value_neg_log10)) +
+  ylim(c(-3.5, 3.5)) +
+  g_mod +
+  xlab("Position (Mbp)") +
+  theme(axis.title.y = element_blank())
+
+# Create grobs
+grobs <- list(g_mean_fw_gy, g_mean_fw_hd, g_mean_fw_ph) %>%
+  map(ggplotGrob)
+
+save_file <- file.path(fig_dir, "gwas_pheno_mean_and_nonlinear_stability.jpg")
+ggsave(filename = save_file, plot = do.call("rbind", grobs), width = 9, height = 6)
+
+
+```
 
 
 #### Significant associations
@@ -780,8 +836,33 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
     bind_cols(df, marker_geno_prop)
     
   })
+
+gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
+  ungroup() %>%
+  left_join(., snp_info) %>%
+  select(trait, coef, marker, chrom, pos, cM = cM_pos, alpha, q_value, af, AB:WA) %>%
+  mutate(coef = str_replace_all(coef, c("b" = "Linear Stability", "log_delta" = "Non-Linear Stability", 
+                                  "g" = "Genotype Mean")),
+         MAF = pmin(af, 1 - af)) %>%
+  rename_at(.vars = vars(trait:pos), .funs = str_to_title) %>%
+  select(Trait:cM, MAF, alpha:q_value, AB:WA) %>%
+  arrange(Trait, Coef, Chrom, Pos)
+         
+
+
+# Write a table
+save_file <- file.path(fig_dir, "significant_associations.csv")
+write_csv(x = gwas_mlmm_marker_toprint, path = save_file)
+
     
-    
+# Look at the heading date QTL on chromosome 5 (VrnH1?)
+gwas_mlmm_marker_prop %>% 
+  filter(trait == "HeadingDate", chrom == 5)
+
+# Look at chromosome 7 for plant height
+gwas_mlmm_marker_prop %>% 
+  filter(trait == "PlantHeight", chrom == 6)
+
   
 
 
@@ -1168,6 +1249,81 @@ ggsave(filename = save_file, plot = g_sig_interval, height = 7, width = 9)
 
 
 ```
+
+Create genomic ranges for each of the trait-coef combinations
+
+```{r sep.Granges}
+
+grange_sep <- sig_markers_grange_df %>% 
+  group_by(trait, coef) %>% 
+  do(Grange = GRanges(.)) %>%
+  ungroup()
+
+# Group by trait and find potential overlap between genotype mean intervals and
+# plasticity intervals
+grange_compare <- grange_sep %>% 
+  group_by(trait) %>% 
+  do({
+    df <- .
+    
+    # Data.frame of combinations
+    combn_df <- combn(x = df$coef, m = 2) %>%
+      t() %>%
+      as.data.frame() %>%
+      `colnames<-`(., c("coef1", "coef2")) %>%
+      map(~as.character(.))
+    
+    # Iterate over the combinations
+    compare_out <- map2(.x = combn_df$coef1, .y = combn_df$coef2, 
+                        function(c1, c2) {
+        grange1 <- subset(df, coef == c1)$Grange[[1]]
+        grange2 <- subset(df, coef == c2)$Grange[[1]]
+        
+        # Calculate the distance to neareast and add the grange information
+        dtn <- suppressWarnings(distanceToNearest(x = grange1, subject = grange2)) %>%
+          as_data_frame() %>% 
+          mutate(queryGrange = map(queryHits, ~grange1[.]), 
+                 subjectGrange = map(subjectHits, ~grange2[.]))
+        })
+    
+    # Return the comparisons
+    combn_df %>% 
+      as_data_frame() %>%
+      mutate(comparison = compare_out) })
+    
+
+# Look at the comparisons where overlap is present and determine the LD between
+# the SNP in those intervals
+grange_compare_LD <- grange_compare %>%
+  unnest() %>% 
+  filter(distance == 0) %>%
+  do({
+    
+    df <- .
+    
+    # Extract the markers
+    overlap_df_grange <- df %>% 
+      select(trait:coef2, contains("Grange")) %>%
+      gather(temp, coef, coef1, coef2) %>% 
+      gather(temp1, Grange, contains("Grange")) %>% 
+      filter(temp == "coef1" & temp1 == "queryGrange" | temp == "coef2" & temp1 == "subjectGrange") %>% 
+      select(-contains("temp")) %>% 
+      mutate(Grange = map(Grange, as.data.frame)) %>% 
+      unnest()
+    
+    # Return the LD
+    overlap_df_grange %>% 
+      select(trait, coef, chrom = seqnames, start, end, marker:group) %>% 
+      mutate(LD = cor(M[,overlap_df_grange$marker])[1,2]^2)
+      
+  })
+        
+grange_compare_LD %>% 
+  select(trait, coef, chrom, alpha, q_value, snp_pos, LD)
+
+
+```
+
 
 
 
