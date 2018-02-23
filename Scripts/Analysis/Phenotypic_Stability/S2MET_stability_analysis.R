@@ -16,24 +16,15 @@ library(qvalue)
 library(cowplot)
 library(patchwork)
 library(boot)
+library(rrBLUP)
+library(lme4qtl)
 
+# Repository directory
 repo_dir <- getwd()
 
 # Project and other directories
-source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
+source(file.path(repo_dir, "source.R"))
 
-tp_geno <- tp_geno_multi
-
-# Remove the environments in which the vp was only observed
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-  filter(line_name %in% tp_geno,
-         trait != "TestWeight") %>%
-  ungroup()
-
-# Number of environments and entries
-env <- pull(distinct(S2_MET_BLUEs_use, environment))
-n_env <- n_distinct(env)
-n_entries <- n_distinct(S2_MET_BLUEs_use$line_name)
 
 
 # Load fw data
@@ -129,7 +120,7 @@ g_mod <- list(
 g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq_trans %>%
   filter(term == "b") %>%
   ggplot(aes(x = value)) + 
-  labs(title = "Linear Stability") +
+  labs(title = expression("Linear Stability"~(b[i]))) +
   facet_wrap( ~ trait, ncol = 1) +
   scale_fill_brewer(palette = "Set2", guide = FALSE) +
   g_mod
@@ -139,7 +130,7 @@ g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq_trans %>%
 g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq_trans %>%
   filter(term == "log_delta") %>%
   ggplot(aes(x = value)) + 
-  labs(title = "Non-Linear Stability") +
+  labs(title = expression("Non-Linear Stability"~(ln(delta[i]^2)))) +
   scale_fill_brewer(palette = "Set2", guide = FALSE) +
   facet_wrap( ~ trait, ncol = 1, scales = "free_x") +
   g_mod
@@ -239,6 +230,13 @@ save_file <- file.path(fig_dir, "pheno_fw_b_example.jpg")
 ggsave(filename = save_file, plot = g_pheno_fw_b_example, width = 5, height = 8)
 
 
+# Combine plots
+g_pheno_fw_figure <- plot_grid(g_pheno_fw_b, g_pheno_fw_b_example, labels = c("A", "B"))
+
+save_file <- file.path(fig_dir, "pheno_fw_b_combined.jpg")
+ggsave(filename = save_file, plot = g_pheno_fw_figure, width = 10, height = 8)
+
+
 
 # Count the number of cross-overs per genotype
 
@@ -291,6 +289,15 @@ S2_MET_pheno_mean_fw_nCO %>%
             meanCO = mean(cross_over_count1)) %>% 
   summarize(mean = mean(meanCO))
 
+# Visualize
+S2_MET_pheno_mean_fw_nCO %>% 
+  group_by(trait, geno1) %>% 
+  summarize(nCO = sum(cross_over_count1), 
+            meanCO = mean(cross_over_count1)) %>% 
+  ggplot(aes(x = trait, y = meanCO)) + 
+  geom_boxplot() + 
+  theme_bw()
+
 
 ## Plot the relationship between the genotypic effect and the sensitivity
 
@@ -304,7 +311,7 @@ stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
     df <- .
     # Perform bootstrap
     boot_out <- df %>% 
-      bootstrap(n = 10000) %>% 
+      bootstrap(n = 1000) %>% 
       pull(strap) %>%
       map_dbl(~as.data.frame(.) %>% ungroup() %>% select(g, value) %>% cor(.) %>% .[1,2])
     
@@ -458,6 +465,60 @@ S2MET_pheno_sample_fw_tomodel <- S2MET_pheno_sample_fw %>%
 # Fit a fixed-effect model
 reliability_fit <- S2MET_pheno_sample_fw_tomodel %>% 
   filter(!is.infinite(value)) %>% 
-  group_by(trait, p) %>% 
+  # filter(iter %in% c(1:40)) %>%
+  group_by(trait, p, coef) %>% 
   do(fit = lm(value ~ line_name, .))
+
+## Summarize
+reliability_summ <- reliability_fit %>% 
+  ungroup() %>% 
+  mutate(anova = map(fit, ~tidy(anova(.)))) %>% 
+  unnest(anova) %>% 
+  group_by(trait, p, coef) %>% 
+  summarize(repeatability = meansq[1] / sum(meansq))
+
+# Plot
+reliability_summ %>% 
+  ggplot(aes(x = p, y = repeatability)) + 
+  geom_point() + 
+  facet_grid(coef~ trait) + 
+  theme_bw()
+
+
+
+## Calculate the proportion of stability variance due to genomewide markers
+# First calculate relationship matrix
+K <- A.mat(X = S2TP_imputed_multi_genos_mat, min.MAF = 0, max.missing = 1)
+
+# Gather and tidy
+S2_MET_pheno_fw_coef_tomodel <- S2_MET_pheno_fw_uniq_trans %>%
+  spread(term, value) %>% 
+  gather(coef, value, g, b, log_delta)
+
+# Now calculate heritability
+SNP_herit <- S2_MET_pheno_fw_coef_tomodel %>%
+  group_by(trait, coef) %>%
+  do({
+    df <- .
+    
+    df1 <- df %>% mutate(geno = line_name)
+
+    # Fit a model in which the random genetic effect due to SNPs and the random
+    # genetic effect non accounted for by SNPs are modeled
+    fit2 <- relmatLmer(value ~ (1|line_name) + (1|geno), df1,
+                       relmat = list(line_name = K))
+    
+    # Calculate the proportion of total phenotypic variation due to these sources
+    var_prop <- VarProp(fit2)
+    
+    data.frame(group = c("SNP_prop", "geno_prop"), 
+               prop = c(var_prop$prop[1], sum(var_prop$prop[1:2])),
+               stringsAsFactors = FALSE)
+    
+  })
+
+# Create a table
+SNP_herit %>% 
+  filter(coef != "g") %>% 
+  spread(group, prop)
 

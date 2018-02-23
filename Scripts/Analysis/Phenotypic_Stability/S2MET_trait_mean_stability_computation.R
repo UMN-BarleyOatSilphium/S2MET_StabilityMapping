@@ -16,22 +16,11 @@ library(broom)
 library(stringr)
 library(FW)
 
+# Repository directory
+repo_dir <- getwd()
+
 # Project and other directories
-source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
-
-tp_geno <- tp_geno_multi
-
-# Remove the environments in which only the vp was observed
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-  filter(line_name %in% tp_geno,
-         trait != "TestWeight")
-
-# How many environments?
-n_distinct(S2_MET_BLUEs_use$environment)
-# Per trait?
-S2_MET_BLUEs_use %>% 
-  group_by(trait) %>% 
-  summarize(n_env = n_distinct(environment))
+source(file.path(repo_dir, "source.R"))
 
 
 
@@ -80,11 +69,7 @@ calc_gh <- function(df) {
 # Also pull out the random effect of each environment
 S2_MET_pheno_mean <- S2_MET_BLUEs_use %>%
   group_by(trait) %>%
-  do({
-    # Extract the data.frame
-    df <- .
-    
-    calc_gh(df) })
+  do(calc_gh(.))
     
 # Ungroup
 S2_MET_pheno_mean <- ungroup(S2_MET_pheno_mean)
@@ -181,11 +166,7 @@ calc_stability <- function(df) {
 # Fit the model, then return df with or without outliers
 S2_MET_fw_fitted <- S2_MET_pheno_mean %>%
   group_by(trait, line_name) %>%
-  do({
-    # Grab the data
-    df <- .
-    
-    calc_stability(df = df) })
+  do(calc_stability(df = .))
 
 # Extract the original "outliers" dataset
 S2_MET_fw_fitted_outliers <- S2_MET_fw_fitted %>%
@@ -333,59 +314,4 @@ S2MET_pheno_sample_fw <- ungroup(S2MET_pheno_sample_fw)
 # Save the results
 save_file <- file.path(result_dir, "S2MET_pheno_fw_resampling.RData")
 save("S2MET_pheno_sample_fw", file = save_file)
-
-
-
-
-
-# ### Fit the environmental covariable version of the Finlay-Wilkinson Regression model
-# 
-# # Fit the model for the one-year and multi-year ECs
-# geno_stab_coef_oneyear_ec <- left_join(S2_MET_BLUEs_to_model, rename(one_year_env_df, h_ec = value), by = "environment") %>%
-#   group_by(trait, line_name, variable) %>%
-#   do({
-#     df <- .
-#     # Fit the model
-#     fit <- lm(value ~ h_ec, data = df)
-#     # Extract the coefficient table
-#     tidy_fit <- tidy(fit)
-#     data.frame(g = coef(fit)[1],
-#                b = coef(fit)[2], 
-#                b_std_error = subset(tidy_fit, term == "h_ec", std.error, drop = TRUE), 
-#                delta = mean(resid(fit)^2), row.names = NULL) 
-#     }) %>%
-#   gather(stability_term, estimate, -trait:-g, -b_std_error) %>%
-#   ungroup()
-# 
-# geno_stab_coef_multiyear_ec <- left_join(S2_MET_BLUEs_to_model, rename(multi_year_env_df, h_ec = value), by = "environment") %>% 
-#   group_by(trait, line_name, variable) %>%
-#   do({
-#     df <- .
-#     # Fit the model
-#     fit <- lm(value ~ h_ec, data = df)
-#     # Extract the coefficient table
-#     tidy_fit <- tidy(fit)
-#     data.frame(g = coef(fit)[1],
-#                b = coef(fit)[2], 
-#                b_std_error = subset(tidy_fit, term == "h_ec", std.error, drop = TRUE), 
-#                delta = mean(resid(fit)^2), row.names = NULL) 
-#   }) %>%
-#   gather(stability_term, estimate, -trait:-g, -b_std_error) %>%
-#   ungroup()
-# 
-# # Combine with the above FW results for genotype means in environments
-# S2_MET_ec_oneyear_fw <- S2_MET_pheno_fw %>% 
-#   select(., trait, environment, line_name, value, program) %>% 
-#   left_join(., geno_stab_coef_oneyear_ec, by = c("trait", "line_name")) %>%
-#   left_join(., rename(one_year_env_df, h_ec = value), by = c("environment", "variable"))
-# 
-# S2_MET_ec_multiyear_fw <- S2_MET_pheno_fw %>% 
-#   select(., trait, environment, line_name, value, program) %>% 
-#   left_join(., geno_stab_coef_multiyear_ec, by = c("trait", "line_name")) %>%
-#   left_join(., rename(multi_year_env_df, h_ec = value), by = c("environment", "variable"))
-# 
-# # Save  
-# save_file <- file.path(result_dir, "S2MET_ec_fw_regression_results.RData")
-# save("S2_MET_ec_oneyear_fw", "S2_MET_ec_multiyear_fw", file = save_file)
-
 

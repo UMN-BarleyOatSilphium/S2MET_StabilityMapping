@@ -22,11 +22,7 @@ library(neyhart)
 repo_dir <- getwd()
 
 # Project and other directories
-source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
-
-# Filter environments for those in which the TP was observed
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  filter(line_name %in% tp_geno)
+source(file.path(repo_dir, "source.R"))
 
 # Rename the marker matrix
 M <- S2TP_imputed_multi_genos_mat
@@ -137,7 +133,7 @@ trait_pop_str <- K_prcomp_df %>%
 ## Use a bootstrap to estimate confidence interval
 trait_pop_str_corr <- trait_pop_str %>% 
   group_by(trait, PC, measure) %>% 
-  do(gws::boot_cor(x = .$value, y = .$eigenvalue, boot.reps = 10000)) %>%
+  do(gws::boot_cor(x = .$value, y = .$eigenvalue, boot.reps = 1000)) %>%
   # Which ones are significant
   mutate(significant = !between(0, ci_lower, ci_upper),
          annotation = ifelse(significant, "*", ""))
@@ -189,28 +185,27 @@ save_file <- file.path(fig_dir, "population_structure_versus_nonlinear_stability
 ggsave(filename = save_file, plot = g_PC_v_delta, height = 4, width = 6)  
 
 
+
+
+
+
+### Mapping results
+
 ## Load the mapping results and adjust the p-values
 load(file.path(result_dir, "S2MET_pheno_fw_mean_gwas_results.RData"))
 
 # Load the genome annotation intersections
 load(file.path(result_dir, "snp_genome_annotation.RData"))
 
-gwas_pheno_mean_fw1 <- gwas_pheno_mean_fw %>% 
-  map_df(~mutate(.$scores, model = .$metadata$model)) %>%
-  filter(term == "main_effect") %>%
-  separate(trait, c("trait", "coef"), sep = "_", extra = "merge")
-
-## Adjust the p-values
-gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw1 %>%
-  group_by(., trait, coef, model) %>% 
-  mutate(p_adj = p.adjust(p_value, method = "fdr"),
-         q_value = qvalue(p = p_value)$qvalue,
-         local_fdr = qvalue(p = p_value)$lfdr,
+gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw %>%
+  group_by(trait, coef) %>%
+  mutate(p_adj = p.adjust(pvalue, method = "fdr"),
+         q_value = qvalue(p = pvalue)$qvalue,
+         local_fdr = qvalue(p = pvalue)$lfdr,
          neg_log10_fdr05 = -log10(0.05),
          neg_log10_fdr10 = -log10(0.10)) %>%
-  mutate_at(vars(p_value, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
+  mutate_at(vars(pvalue, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
   ungroup()
-
 
 
 #### Main Effect QTL
@@ -222,8 +217,10 @@ gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw1 %>%
 # Plot the density of the p-values
 g_pvalue_density <- gwas_pheno_mean_fw_adj %>% 
   filter(coef == "g") %>%
-  ggplot(aes(x = p_value, y = model, fill = model)) + 
-  geom_density_ridges(alpha = 0.75, lwd = 1) + 
+  # ggplot(aes(x = pvalue, y = model, fill = model)) + 
+  ggplot(aes(x = pvalue)) + 
+  # geom_density_ridges(alpha = 0.75, lwd = 1) + 
+  geom_histogram() + 
   facet_grid(~ trait) +
   xlim(c(0, 1)) +
   theme_bw()
@@ -248,7 +245,8 @@ g_add <- list(geom_point(),
 
 ## Just the G model
 g_man_Gmodel <- gwas_pheno_mean_fw_adj %>%
-  filter(coef == "g", model == "G") %>%
+  # filter(coef == "g", model == "G") %>%
+  filter(coef == "g") %>%
   mutate(chrom = as.factor(chrom)) %>%
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
@@ -278,7 +276,8 @@ g_add <- list(geom_point(),
 
 ## Only consider the G model
 g_man_Gonly <- gwas_pheno_mean_fw_adj %>%
-  filter(model == "G", coef != "g") %>%
+  # filter(model == "G", coef != "g") %>%
+  filter(coef != "g") %>%
   mutate(chrom = as.factor(chrom),
          coef = if_else(coef == "b", "Linear", "Non-Linear")) %>% 
   ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
@@ -296,14 +295,14 @@ ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 8)
 
 # Find the trait-markers that are not in the 'gwas_mlmm_Gmodel' df
 gwas_pheno_mean_fw_adj_nonsig <- gwas_pheno_mean_fw_adj %>% 
-  filter(model == "G") %>% 
+  # filter(model == "G") %>% 
   select(marker, trait, coef) %>% 
   dplyr::setdiff(., select(ungroup(gwas_mlmm_Gmodel), marker, trait, coef)) %>%
-  left_join(., filter(gwas_pheno_mean_fw_adj, model == "G")) %>%
+  # left_join(., filter(gwas_pheno_mean_fw_adj, model == "G")) %>%
+  left_join(., gwas_pheno_mean_fw_adj) %>%
   mutate(q_value_neg_log10 = 0) %>% 
-  select(trait, coef, marker, chrom, pos, estimate, p_value, q_value, q_value_neg_log10) %>% 
-  unnest() %>% 
-  dplyr::rename(alpha = estimate)
+  select(trait, coef, marker, chrom, pos, beta, pvalue, q_value, q_value_neg_log10) %>% 
+  dplyr::rename(alpha = beta)
 
 # Calculate the neg-log q values for the 'gwas_mlmm_Gmodel' df
 gwas_mlmm_adj <- gwas_mlmm_Gmodel %>% 
@@ -347,9 +346,8 @@ ggsave(filename = save_file, plot = g_man_stab, width = 9, height = 8)
 
 ## What are the numbers of significant marker-trait assocations for each trait and type?
 
-
 gwas_sig_snp_summ <- gwas_pheno_mean_fw_adj %>% 
-  filter(model == "G") %>% 
+  # filter(model == "G") %>% 
   group_by(trait, coef, chrom) %>% 
   summarize(n_sig_SNP = sum(q_value <= 0.05)) %>%
   mutate(type = "GWAS")
@@ -365,15 +363,14 @@ mlmm_sig_snp_summ <- gwas_mlmm_Gmodel %>%
 gwas_pheno_mean_fw_sig <- bind_rows(gwas_sig_snp_summ, mlmm_sig_snp_summ)
 
 
-
 ## Adjust the manhattan plots to show the markers that were declared significant 
 ## in the mlmm with different colors
 
 # Filter the GWAS results
 gwas_pheno_mean_fw_focus <- gwas_pheno_mean_fw_adj %>% 
-  filter(model == "G") %>% 
-  unnest() %>%
-  select(trait, coef, marker:pos, alpha = estimate, p_value, q_value)
+  # filter(model == "G") %>% 
+  # unnest() %>%
+  select(trait, coef, marker:pos, alpha = beta, pvalue, q_value)
 
 # Get the SNPs not in the mlmm df
 gwas_pheno_not_sig <- anti_join(gwas_pheno_mean_fw_focus, gwas_mlmm_Gmodel, 
@@ -469,12 +466,12 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
 gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
   ungroup() %>%
   left_join(., snp_info) %>%
-  select(trait, coef, marker, chrom, pos, cM = cM_pos, alpha, q_value, af, AB:WA) %>%
+  select(trait, coef, marker, chrom, pos, cM = cM_pos, alpha, q_value, R_sqr_snp, af, AB:WA) %>%
   mutate(coef = str_replace_all(coef, c("b" = "Linear Stability", "log_delta" = "Non-Linear Stability", 
                                   "g" = "Genotype Mean")),
          MAF = pmin(af, 1 - af)) %>%
   rename_at(.vars = vars(trait:pos), .funs = str_to_title) %>%
-  select(Trait:cM, MAF, alpha:q_value, AB:WA) %>%
+  select(Trait:cM, MAF, alpha:R_sqr_snp, AB:WA) %>%
   arrange(Trait, Coef, Chrom, Pos)
          
 

@@ -231,33 +231,6 @@ ggsave(filename = save_file, plot = g_mar_stab, height = 6.5, width = 9, dpi = 5
 
 
 
-## Determine the proportion of GxE variance ($V_{GE}$) that is explained by 
-## sensitive/stable markers vs not signficant markers
-
-# Load the results
-load(file.path(result_dir, "S2MET_pheno_mar_fw_varcomp_GrainYield.RData"))
-
-var_comp_prop <- var_comp_out$GrainYield %>% 
-  bind_rows() %>%
-  by_row(sum, .collate = "cols", .to = "tot_var") %>%
-  mutate_at(vars(-tot_var), funs(prop = . / tot_var))
-  
-# Test if the observations come from the same distribution
-var_comp_prop %>% 
-  summarize(ks_test = ks.test(x = gt_s_prop, gt_ns_prop)$p.value)
-  
-# Plot density plots for each type of marker
-var_comp_prop %>%
-  select(gt_s_prop, gt_ns_prop) %>%
-  gather(term, prop) %>%
-  ggplot(aes(x = prop, fill = term)) +
-  geom_density(alpha = 0.75) +
-  theme_bw()
-
-
-
-
-
 ## Gene Annotation
 
 # Look at gene annotation with relation to the different groups of SNPs. 
@@ -543,13 +516,58 @@ grange_combined_overlap_summ <- grange_combined_overlap_df1 %>%
 
 ## Contribution of markers to trait variation
 
+# Extract the unique stability coefficients
+# Then add the breeding program information
+S2_MET_pheno_fw_uniq <- S2_MET_pheno_mean_fw %>%
+  select(trait, line_name, g, b, delta) %>% 
+  distinct() %>%
+  left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), 
+            by = c("line_name" = "Line")) %>%
+  dplyr::rename(program = Program)
+
+## Log transform the non-linear stability estimates
+S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
+  group_by(trait) %>% 
+  mutate(log_delta = log(delta)) %>%
+  # Tidy
+  gather(coef, value, g, b, delta, log_delta) %>% 
+  filter(coef != "delta")
+
+
+## Determine the proportion of GxE variance ($V_{GE}$) that is explained by 
+## sensitive/stable markers vs not signficant markers
+
+# Load the results
+load(file.path(result_dir, "S2MET_pheno_mar_fw_varcomp_GrainYield.RData"))
+
+var_comp_prop <- var_comp_out$GrainYield %>% 
+  bind_rows() %>%
+  by_row(sum, .collate = "cols", .to = "tot_var") %>%
+  mutate_at(vars(-tot_var), funs(prop = . / tot_var))
+
+# Test if the observations come from the same distribution
+var_comp_prop %>% 
+  summarize(ks_test = ks.test(x = gt_s_prop, gt_ns_prop)$p.value)
+
+# Plot density plots for each type of marker
+var_comp_prop %>%
+  select(gt_s_prop, gt_ns_prop) %>%
+  gather(term, prop) %>%
+  ggplot(aes(x = prop, fill = term)) +
+  geom_density(alpha = 0.75) +
+  theme_bw()
+
+
+
+## Determine the proportion of variation in stability/mean that is accounted by
+## all markers, then marker subsets
 
 # Create the K matrix across all SNPs
 K <- A.mat(X = S2TP_imputed_multi_genos_mat, min.MAF = 0, max.missing = 1)
 
-## Estimate heritability by using the K matrix to model genotype effect (i.e. SNP heritability)
-S2_MET_fw_herit <- S2_MET_pheno_fw_uniq_trans %>% 
-  group_by(trait, term) %>%
+# Estimate the proportion of variation due to all SNPs
+S2_MET_mean_fw_varcomp <- S2_MET_pheno_fw_uniq_trans %>% 
+  group_by(trait, coef) %>%
   do({
     # Extract data
     df <- .
@@ -560,18 +578,132 @@ S2_MET_fw_herit <- S2_MET_pheno_fw_uniq_trans %>%
     # Fit the model
     fit <- relmatLmer(value ~ (1|snp), df1, relmat = list(snp = K))
     
-    # Heritability
-    herit_boot(object = fit, exp = "snp / (snp + Residual)", boot.reps = 100)
+    # Extract the proportion of variance attributed to snps and to residuals
+    VarProp(fit) %>% 
+      select(-contains("var"))
   })
 
-## Plot
-g_fw_herit <- S2_MET_fw_herit %>%
-  ggplot(aes(x = trait, y = heritability - bias, fill = term, group = term)) +
-  geom_col(position = "dodge") +
-  geom_col(aes(y = heritability), fill = "grey") +
-  geom_errorbar(aes(ymin = ci_lower, ymax = ci_upper), position = position_dodge(0.9),
-                width = 0.5) +
-  theme_bw()
+
+# Number of model fittings
+n_iter <- 100
+
+# Now for each trait, find the proportion of variation in the mean and stability
+# due to different marker groups
+S2_MET_mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
+  group_by(trait, coef) %>%
+  do({
+    
+    df <- .
+    
+    # What is the trait we are dealing with
+    tr <- unique(df$trait)
+    
+    # Copy the line_name column multiple times
+    df1 <- df %>% 
+      mutate(stab = line_name,
+             plas = line_name,
+             avg = line_name)
+    
+    # Extract the markers for the particular trait and separate by average/stable/plastic
+    marker_types <- S2_MET_marker_eff_pheno_fw_sig %>%
+      filter(trait == tr) %>% 
+      split(.$significance) %>% 
+      map("marker")
+    
+    # Use the plastic and stable markers to make relationship matrices
+    K_plas <- marker_types$Plastic %>% M[,.,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+    K_stab <- marker_types$Stable %>% M[,.,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+    
+    # Sample size
+    sample_size <- length(marker_types$Plastic)
+    
+    # Create random samples of the average markers
+    average_marker_samples <- rerun(.n = n_iter, sample(marker_types$Average, size = sample_size))
+    
+    ## Fit using sommer
+    y <- df1$value
+    X <- model.matrix(~ 1, df1)
+    Z_g <- model.matrix(~ -1 + line_name, df1) %>%
+      `colnames<-`(., colnames(K_stab))
+    
+    # Iterate over the samples
+    var_comp_out <- average_marker_samples %>%
+      map(function(marker_sample) {
+        
+        # Create a relationship matrix
+        K_avg <- M[,marker_sample,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+        
+        # Create a Z list
+        Z <- list(
+          stab = list(Z = Z_g, K = K_stab),
+          plas = list(Z = Z_g, K = K_plas),
+          avg = list(Z = Z_g, K = K_avg)
+        )
+        
+        fit <- sommer::mmer(Y = y, X = X, Z = Z, silent = TRUE)
+        
+        # Extract and compute variance components
+        fit$var.comp %>% 
+          map_df(~unname(.))
+        
+        
+        # # Fit the model
+        # fit <- relmatLmer(value ~ (1|stab) + (1|plas) + (1|avg), df1, 
+        #                   relmat = list(stab = K_stab, plas = K_plas, avg = K_avg))
+        # 
+        # # Return the variance components
+        # VarProp(fit) %>% 
+        #   select(-contains("var"))
+        
+      })
+    
+    
+    # Add the iteration number and output a data.frame
+    var_comp_out %>% 
+      list(., seq_along(.)) %>% 
+      pmap_df(~mutate(.x, iter = .y))
+    
+  })
+    
+# Summarize
+S2_MET_mean_fw_martype_varcom_summ <- S2_MET_mean_fw_martype_varcomp %>% 
+  mutate(total = stab + plas + avg + units) %>% 
+  mutate_at(vars(stab:units), funs(. / total)) %>%
+  select(-units:-total) %>% 
+  gather(marker_type, prop_var, stab:avg) %>%
+  ungroup()
+
+# Group and take the mean
+S2_MET_mean_fw_martype_varcom_mean <- S2_MET_mean_fw_martype_varcom_summ %>% 
+  group_by(trait, coef, marker_type) %>% 
+  summarize(mean_prop = mean(prop_var)) %>% 
+  spread(marker_type, mean_prop)
+
+## Save
+save_file <- file.path(result_dir, "S2MET_marker_stability_varcomp.RData")
+save("S2_MET_mean_fw_martype_varcomp", "S2_MET_mean_fw_varcomp", file = save_file)
 
 
+
+
+
+## Calculate the marker effects for mean and stability
+mean_stability_marker_effect <- S2_MET_pheno_fw_uniq_trans %>%
+  group_by(trait, coef) %>%
+  do({
+    
+    df <- .
+    y <- df$value
+    Z <- M
+    
+    fit <- mixed.solve(y = y, Z = Z)
+    fit$u %>% 
+      data.frame(marker = names(.), effect = ., row.names = NULL, stringsAsFactors = FALSE)
+    
+  })
+
+# Add allele frequency (the 1 allele)
+mean_stability_marker_effect1 <- left_join(mean_stability_marker_effect, af1)
+  
+# Find the relatioship between marker effect and allele frequency
 

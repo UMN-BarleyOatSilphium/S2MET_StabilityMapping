@@ -16,23 +16,16 @@ library(pbr)
 library(rrBLUP)
 library(ggridges)
 
+# Repository directory
+repo_dir <- getwd()
+
 # Project and other directories
-source("C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping/source.R")
-
-tp_geno <- tp_geno_multi
-
-load(file.path(geno_dir, "S2_genos_hmp.RData"))
-
-# Filter environments for those in which the TP was observed
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  filter(line_name %in% tp_geno,
-         trait != "TestWeight")
+source(file.path(repo_dir, "source.R"))
 
 
 ### Basic Summaries
 ### 
 ### Look at the number of lines per environment
-
 
 # Find the total number of possible line x environment combinations and find
 # the proportion that are observed for each trait
@@ -44,6 +37,12 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   # group_by(trait) %>%
   summarize(prop_obs = mean(observed)))
 
+## Number of total environments and number of environments per trait
+n_distinct(S2_MET_BLUEs_use$environment)
+
+S2_MET_BLUEs_use %>%
+  group_by(trait) %>%
+  summarize(n_env = n_distinct(environment))
 
 ## Interpretation: of the possible line x environment combinations in which at least one line was observed, the above is the proportion of the lines that were observed.
 
@@ -147,7 +146,7 @@ stage_two_lrt <- stage_two_model_fits %>%
 # Extract the full model and calculate heritability
 stage_two_herit <- stage_two_model_fits %>% 
   mutate(full_fit = map(fits, "full")) %>%
-  do(suppressWarnings(herit_boot(object = .$full_fit[[1]], n_e = .$n_e, n_r = .$n_r, boot.reps = 10,
+  do(suppressWarnings(herit_boot(object = .$full_fit[[1]], n_e = .$n_e, n_r = .$n_r, boot.reps = 100,
                        exp = "line_name / (line_name + (line_name:env / n_e) + (Residual / n_r))")))
     
 
@@ -161,7 +160,7 @@ g_herit <- stage_two_herit %>%
   ylab("Heritability") +
   xlab("Trait") +
   labs(title = "Broad-Sense Heritability",
-       caption = "Estimates have been corrected for bias and error bars reflect\na 95% confidence interval of 500 bootstrap replications.") +
+       caption = "Estimates have been corrected for bias and error bars reflect\na 95% confidence interval of 100 bootstrap replications.") +
   theme_bw()
 
 save_file <- file.path(fig_dir, "heritability.jpg")
@@ -179,6 +178,12 @@ prop_varcomp <- stage_two_model_fits %>%
   mutate(grp = str_replace_all(grp, c("line_name:env" = "GxE", "line_name" = "Genotype", "env" = "Environment")),
          grp = factor(grp, levels = c("Genotype", "GxE", "Environment", "Residual")),
          prop_vcov = vcov / sum(vcov))
+
+# Display nicer
+prop_varcomp %>% 
+  select(-vcov) %>% 
+  spread(grp, prop_vcov)
+
 
 # Plot
 g_prop_varcomp <- prop_varcomp %>%
