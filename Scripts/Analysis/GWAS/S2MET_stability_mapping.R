@@ -37,11 +37,9 @@ alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
 bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
-env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
 
 geno_dir <- bopa_geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
 pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
-env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
 
 
 # Other directories
@@ -57,14 +55,9 @@ result_dir <- file.path(proj_dir, "Results")
 # Load the genotypic data
 load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
 
-# Find the tp that are genotyped
-tp_geno <- row.names(S2TP_imputed_multi_genos_mat)
-
-
-# # Filter the genotype data and create a data.frame for use in GWAS
-# # Note 'select' can take a character vector as an argument.
-genos_use <- S2TP_imputed_multi_genos_hmp %>%
-  select(rs, chrom, pos, tp_geno)
+# Extract the SNP information for later use
+snp_info <- S2TP_imputed_multi_genos_hmp %>%
+  select(marker = rs, chrom)
 
 
 # Load the FW results
@@ -87,9 +80,9 @@ pheno_to_model <- S2_MET_pheno_mean_fw %>%
 
 ## Association analysis
 # Fit model chromosome-wise (G model)
-snps_by_chrom <- S2TP_imputed_multi_genos_hmp %>%
+snps_by_chrom <- snp_info %>%
   split(.$chrom) %>%
-  map("rs")
+  map("marker")
 
 # Marker matrices per chromosome
 M_chr <- snps_by_chrom %>% 
@@ -418,53 +411,68 @@ pheno_to_model_plei <- pheno_to_model %>%
   spread(coef, value) %>% 
   gather(stab_coef, value, b, log_delta)
 
+# Split up the data for iterations
+pheno_to_model_plei_split <- pheno_to_model_plei %>% 
+  split(list(.$trait, .$stab_coef))
 
-# For each trait and parameter, conduct an association test for each marker
-gwas_pheno_mean_fw_plei <- pheno_to_model_plei %>%
-  group_by(trait, stab_coef) %>%
-  do({
-    df <- .
+# Create an empty list to store results
+gwas_pheno_mean_fw_plei_out <- vector("list", length = length(pheno_to_model_plei_split)) %>%
+  set_names(., names(pheno_to_model_plei_split))
+
+
+# Split the chromosomes by the number of cores
+snps_by_core <- snp_info %>% 
+  mutate(core = sort(rep(seq(n_core), length.out = nrow(.)))) %>%
+  split(.$core)
+
+
+# Iterate over trait-stability combinations
+for (i in seq_along(pheno_to_model_plei_split)) {
+  
+  # Extract the data
+  df <- pheno_to_model_plei_split[[i]]
+  
+  # For each trait and parameter, conduct an association test for each marker
+  # Create a matrix of Y
+  Y <- df %>%
+    select(g, value) %>%
+    as.matrix() %>%
+    t() # Transpose for the function
     
-    # Create a matrix of Y
-    Y <- df %>%
-      select(g, value) %>%
-      as.matrix()
+  X_mu <- model.matrix(~ 1, df)
+  Z <- model.matrix(~ -1 + line_name, df) %>%
+    t()
+  
+  # Iterate over the markers split up by core
+  core_out <- mclapply(X = snps_by_core, FUN = function(marker_core) {
     
-    X_mu <- model.matrix(~ 1, df)
-    Z <- model.matrix(~ -1 + line_name, df)
-     
+    # Empty list for output
+    marker_core_out <- vector("list", length = nrow(marker_core))
     
-    # Iterate over the marker list and the K matrix list
-    fit_out <- pmap(list(M_chr, K_chr), function(.x, .y) {
+    # Iterate
+    for (j in seq(nrow(marker_core))) {
       
-      # Split markers by core
-      marker_core <- colnames(.x) %>% 
-        split(., sort(rep(seq(n_core), length.out = length(.))))
+      # Combine the snp with the mean
+      X <- cbind(X_mu, S2TP_imputed_multi_genos_mat[,marker_core$marker[j]])
       
-      # Iterate over cores
-      core_out <- mclapply(X = marker_core, FUN = function(snps) {
-        
-        # Apply over markers
-        apply(X = .x[,snps,drop = FALSE], MARGIN = 2, FUN = function(snp) {
-          
-          # Combine the snp with the mean
-          X <- cbind(X_mu, snp)
-          
-          # Fit
-          fit <- emmremlMultivariate(Y = t(Y), X = t(X), Z = t(Z), K = .y, varBhat = T)
-          data.frame(term = row.names(fit$Bhat), beta = fit$Bhat[,2], se = sqrt(fit$varBhat[3:4]),
-                     row.names = NULL, stringsAsFactors = FALSE)
-          
-        }) }, mc.cores = n_core) })
+      # Fit
+      fit <- emmremlMultivariate(Y = Y, X = t(X), Z = Z, K = K_chr[[marker_core$chrom[j]]], varBhat = T)
+      marker_core_out[[j]] <- data.frame(marker = marker_core$marker[j],
+        term = row.names(fit$Bhat), beta = fit$Bhat[,2], se = sqrt(fit$varBhat[3:4]),
+        row.names = NULL, stringsAsFactors = FALSE)
+      
+    }
     
-    # Re-arrange
-    fit_out %>% 
-      map_df(., ~map_df(., ~list(., names(.)) %>% pmap_df(~mutate(.x, marker = .y))) %>% 
-               select(marker, names(.)))
+    # Return the output
+    return(marker_core_out)
     
-  })
-
-
+  }, mc.cores = n_core)
+  
+  # Add the results to the list
+  gwas_pheno_mean_fw_plei_out[[i]] <- map_df(core_out, bind_rows)
+  
+}
+  
 ## Save the data
 save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_pleiotropy_results.RData")
-save("gwas_pheno_mean_fw_plei", file = save_file)
+save("gwas_pheno_mean_fw_plei_out", file = save_file)
