@@ -35,52 +35,35 @@ alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
 bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
 pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
-env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
 
 bopa_geno_dir <- geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
 pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
-env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
 
 
 # Other directories
-fig_dir <- file.path(proj_dir, "Figures/")
-map_dir <- file.path(proj_dir, "Mapping")
-entry_dir <- file.path(alt_proj_dir, "Plant_Materials")
-analysis_dir <- file.path(proj_dir, "Analysis")
+script_dir <- file.path(proj_dir, "Scripts/")
+analysis_dir <- file.path(script_dir, "Analysis")
+fig_dir <- file.path(script_dir, "Figures/")
+map_dir <- file.path(analysis_dir, "GWAS")
 result_dir <- file.path(proj_dir, "Results")
 
 
 # Load the phenotypic data
 load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 # Load the genotypic data
-# load(file.path(geno_dir, "S2_genos_mat.RData"))
-# load(file.path(geno_dir, "S2_genos_hmp.RData"))
 load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
-
-# Load an entry file
-entry_list <- read_excel(file.path(entry_dir, "S2MET_project_entries.xlsx"))
-
-
-# Grab the entry names that are not checks
-tp <- entry_list %>% 
-  filter(Class == "S2TP") %>% 
-  pull(Line)
-
-tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
-
 
 # Matrix of genotype data for all individuals
 # This must remain intact, and then will be subsetted below
-# M <- s2_imputed_mat[c(tp_geno, vp_geno),]
-M <- S2TP_imputed_multi_genos_mat[tp_geno,]
+M <- S2TP_imputed_multi_genos_mat
 
+# Get the marker names
 markers <- colnames(M)
 
 
 # Remove the environments in which the vp was only observed
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-  filter(trait != "TestWeight",
-         line_name %in% c(tp_geno)) %>%
+  filter(line_name %in% row.names(M)) %>%
   mutate(line_name = as.factor(line_name),
          environment = as.factor(environment))
 

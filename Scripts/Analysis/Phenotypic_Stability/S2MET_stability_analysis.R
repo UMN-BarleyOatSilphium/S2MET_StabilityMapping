@@ -61,44 +61,55 @@ trial_info %>%
 
 # Extract the unique stability coefficients
 # Then add the breeding program information
-S2_MET_pheno_fw_uniq <- S2_MET_pheno_mean_fw %>%
-  select(trait, line_name, g, b, delta) %>% 
-  distinct() %>%
+S2_MET_pheno_fw1 <- S2_MET_pheno_mean_fw %>%
   left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), 
             by = c("line_name" = "Line")) %>%
   dplyr::rename(program = Program)
 
 ## Log transform the non-linear stability estimates
-S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
+S2_MET_pheno_fw_trans <- S2_MET_pheno_fw1 %>%
   group_by(trait) %>% 
   mutate(log_delta = log(delta)) %>%
   # Tidy
-  gather(term, value, b, delta, log_delta) %>% 
+  gather(term, estimate, b, delta, log_delta) %>% 
   filter(term != "delta")
 
+# Remove potential outliers (visually)
+S2_MET_pheno_fw_trans_filter <- S2_MET_pheno_fw_trans %>%
+  # Remove 07MT-10 from grain protein linear stability
+  filter(!(trait == "GrainProtein" & line_name == "07MT-10" & term == "b")) %>%
+  # Remove 07AB-84 and 08AB-08 from heading date non-linear stability
+  filter(!(trait == "HeadingDate" & term == "log_delta" & estimate > 3)) %>%
+  # Remove 07MT-10 from TestWeight
+  filter(!(trait == "TestWeight" & line_name == "07MT-10"))
+  
+S2_MET_pheno_fw_use <- S2_MET_pheno_fw_trans_filter %>%
+  filter(trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
 
 #### Summary
 
 # Ranges and variances
 
 # What is the range of linear stability per trait?
-
-# Combine df and mark the population
-S2_MET_pheno_mean_fw %>%
+S2_MET_pheno_fw_use %>%
   group_by(trait) %>% 
   summarize_at(vars(h), funs(min, max)) %>% 
   mutate(range = max - min)
 
+# Extract the distinct combinations of line, trait, and stability
+S2_MET_pheno_fw_uniq <- S2_MET_pheno_fw_use %>%
+  distinct(trait, line_name, g, program, term, estimate)
+
 
 # What is the quartile coefficient of dispersion for each measure of stability?
 qcd <- function(x) {
-  quants <- quantile(x = x, probs = c(0.50, 0.75))
+  quants <- quantile(x = x, probs = c(0.50, 0.75), na.rm = TRUE)
   as.numeric(diff(quants) / sum(quants))
 }
 
-pheno_mean_fw_qcd <- S2_MET_pheno_fw_uniq_trans %>% 
+pheno_mean_fw_qcd <- S2_MET_pheno_fw_uniq %>% 
   group_by(trait, term) %>%
-  summarize(qcd = qcd(value))
+  summarize(qcd = qcd(estimate))
 
 # Plot
 (g_qcd <- pheno_mean_fw_qcd %>% 
@@ -117,9 +128,9 @@ g_mod <- list(
   theme(axis.title.y = element_blank()) )
 
 # Just plot linear stability
-g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq_trans %>%
+g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq %>%
   filter(term == "b") %>%
-  ggplot(aes(x = value)) + 
+  ggplot(aes(x = estimate)) + 
   labs(title = expression("Linear Stability"~(b[i]))) +
   facet_wrap( ~ trait, ncol = 1) +
   scale_fill_brewer(palette = "Set2", guide = FALSE) +
@@ -127,9 +138,9 @@ g_pheno_fw_dens_b <- S2_MET_pheno_fw_uniq_trans %>%
 
 
 # Just plot non-linear stability
-g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq_trans %>%
+g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq %>%
   filter(term == "log_delta") %>%
-  ggplot(aes(x = value)) + 
+  ggplot(aes(x = estimate)) + 
   labs(title = expression("Non-Linear Stability"~(ln(delta[i]^2)))) +
   scale_fill_brewer(palette = "Set2", guide = FALSE) +
   facet_wrap( ~ trait, ncol = 1, scales = "free_x") +
@@ -139,48 +150,16 @@ g_pheno_fw_dens_delta <- S2_MET_pheno_fw_uniq_trans %>%
 g_fw_dist <- g_pheno_fw_dens_b + g_pheno_fw_dens_delta
 
 save_file <- file.path(fig_dir, "stability_estimate_distriubtions.jpg")
-ggsave(filename = save_file, plot = g_fw_dist, height = 5.6, width = 5, dpi = 500)
+ggsave(filename = save_file, plot = g_fw_dist, height = 10, width = 5, dpi = 500)
 
 
-
-# There are some curiously high estimates of log_delta for HeadingDate. What is going on here?
-
-# Filter the outliers
-pheno_fw_outliers <- S2_MET_pheno_fw_uniq_trans %>% 
-  filter(term == "log_delta", trait == "HeadingDate", value > 3)
-
-# Extract the names of those lines
-outlier_lines <- pheno_fw_outliers$line_name
-
-# Look up the genotypic value
-outlier_original_pheno_fw <- S2_MET_pheno_mean_fw %>% 
-  filter(line_name %in% outlier_lines, trait == "HeadingDate") %>% 
-  distinct(environment, line_name, trait, value, g, h, b, delta)
-
-# Fit the regression models for these genotypes
-outlier_lm <- outlier_original_pheno_fw %>% 
-  group_by(line_name) %>% 
-  do({
-    df <- .
-    fit <- lm(value ~ h, data = df)
-    df %>% 
-      add_residuals(model = fit) %>%
-      mutate(stand_resid = resid / sd(resid)) })
-
-# Plot the regression lines for these genotypes
-outlier_original_pheno_fw %>% 
-  ggplot(aes(x = h, y = value, group = line_name)) + 
-  geom_point() + 
-  geom_text(data = subset(outlier_lm, abs(stand_resid) >= 2.5), aes(label = environment)) +
-  geom_smooth(method = "lm", se = FALSE) + 
-  facet_wrap(~ line_name) +
-  theme_bw()
 
 
 # Plot the stability estimates as lines against g_i vs h_j
 
 # Add the program information to the results
-S2_MET_pheno_mean_fw_toplot <- S2_MET_pheno_mean_fw %>% 
+S2_MET_pheno_mean_fw_toplot <- S2_MET_pheno_fw_use %>% 
+  spread(term, estimate) %>% 
   select(trait, environment, line_name, value, g, h, b) %>% 
   left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), by = c("line_name" = "Line")) %>%
   dplyr::rename(program = Program)
@@ -201,7 +180,7 @@ g_pheno_fw_b <- S2_MET_pheno_mean_fw_toplot %>%
         legend.background = element_rect(fill = "grey85", color = NA))
 
 save_file <- file.path(fig_dir, "pheno_fw_b.jpg")
-ggsave(filename = save_file, plot = g_pheno_fw_b, width = 5, height = 8)
+ggsave(filename = save_file, plot = g_pheno_fw_b, width = 5, height = 12)
 
 
 ## Subset genotypes to highlight different responses
@@ -304,7 +283,7 @@ S2_MET_pheno_mean_fw_nCO %>%
 ## First fit linear models to evaluate the relationship
 
 # Calculate the correlation between genotype mean and the stability estimate
-stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
+stability_mean_corr <- S2_MET_pheno_fw_use %>%
   group_by(trait, term) %>% 
   # Bootstrap the correlation
   do(boot = {
@@ -313,17 +292,17 @@ stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
     boot_out <- df %>% 
       bootstrap(n = 1000) %>% 
       pull(strap) %>%
-      map_dbl(~as.data.frame(.) %>% ungroup() %>% select(g, value) %>% cor(.) %>% .[1,2])
+      map_dbl(~as.data.frame(.) %>% ungroup() %>% select(g, estimate) %>% cor(.) %>% .[1,2])
     
     # Summarize and export
     data.frame(cor = boot_out) %>% 
       summarize(boot_mean = mean(cor), se = sd(cor), 
                 ci_lower = quantile(cor, 0.05 / 2), ci_upper = quantile(cor, 1 - (0.05 / 2))) }) %>%
   # Join with original data
-  left_join(S2_MET_pheno_fw_uniq_trans, .) %>%
+  left_join(S2_MET_pheno_fw_use, .) %>%
   # Calculate the base correlation and add a character annotation
   group_by(trait, term) %>% 
-  mutate(corr = cor(g, value, use = "complete.obs"),
+  mutate(corr = cor(g, estimate, use = "complete.obs"),
          corr = str_c("r = ", round(corr, 3))) %>% 
   unnest() %>%
   ungroup()
@@ -332,37 +311,14 @@ stability_mean_corr <- S2_MET_pheno_fw_uniq_trans %>%
 # Fit linear models
 stability_mean_lm <- stability_mean_corr %>% 
   group_by(trait, term) %>%
-  do(fit = lm(g ~ value, data = .))
+  do(fit = lm(g ~ estimate, data = .))
 
 # Tidy up
 stability_mean_lm_tidy <- stability_mean_lm %>%
   ungroup() %>%
   mutate(tidy_fit = map(fit, tidy)) %>%
   unnest(tidy_fit) %>% 
-  filter(term1 == "value")
-
-
-# Remove the HeadingDate delta outliers
-delta_outliers <- S2_MET_pheno_fw_uniq_trans %>% 
-  filter(trait == "HeadingDate", term == "log_delta", value >= 3)
-
-# Itersect and recalculate
-stability_mean_corr_nooutlier <- setdiff(S2_MET_pheno_fw_uniq_trans, delta_outliers) %>%
-  group_by(trait, term) %>% 
-  mutate(corr = cor(g, value, use = "complete.obs"),
-         corr = str_c("r = ", round(corr, 3)))
-
-# Fit linear models
-stability_mean_lm_nooutlier <- stability_mean_corr_nooutlier %>% 
-  do(fit = lm(g ~ value, data = .))
-
-# Tidy up
-stability_mean_lm_nooutlier %>%
-  ungroup() %>%
-  mutate(tidy_fit = map(fit, tidy)) %>%
-  unnest(tidy_fit) %>% 
-  filter(term1 == "value")
-
+  filter(term1 == "estimate")
 
 
 ## Looks like significant regression slopes for the relationship between genotype 
@@ -371,6 +327,9 @@ stability_mean_lm_nooutlier %>%
 
 # The relationship between genotype mean and $\delta$ is still significant after outlier removal
 
+# Extract the data to plot
+stability_mean_corr_toplot <- stability_mean_corr %>% 
+  distinct(trait, line_name, program, g, term, estimate, corr)
 
 # Create a list of plot additions
 g_add <- list(geom_point(),
@@ -383,18 +342,18 @@ g_add <- list(geom_point(),
               theme(legend.background = element_rect(fill = "grey85", color = NA)))
 
 # Plot just the linear stability
-g_linear_stability_and_mean <- stability_mean_corr %>%
+g_linear_stability_and_mean <- stability_mean_corr_toplot %>%
   filter(term == "b") %>%
-  ggplot(aes(x = g, y = value, col = program, group = FALSE)) +
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
   facet_wrap(~ trait, scales = "free_x", ncol = 1) +
   labs(title = "Linear Stability") +
   theme(legend.position = "right") +
   g_add
   
 # Plot just the non-linear stability
-g_nonlinear_stability_and_mean <- stability_mean_corr %>%
+g_nonlinear_stability_and_mean <- stability_mean_corr_toplot %>%
   filter(term == "log_delta") %>%
-  ggplot(aes(x = g, y = value, col = program, group = FALSE)) +
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
   facet_wrap(~ trait, scales = "free", ncol = 1) +
   labs(title = "Non-Linear Stability" ) +
   theme(legend.position = "right") +
@@ -418,36 +377,6 @@ g_plotgrid1 <- plot_grid(
 g_plotgrid2 <- ggdraw(add_sub(g_plotgrid1, "Genotype Mean", size = 12, hjust = 0.7))
 
 save_file <- file.path(fig_dir, "pheno_fw_stability_mean.jpg")
-ggsave(filename = save_file, plot = g_plotgrid2, width = 6, height = 6)
-
-
-## Plot without the outliers
-# Plot just the non-linear stability
-g_nonlinear_stability_and_mean <- stability_mean_corr_nooutlier %>%
-  filter(term == "log_delta") %>%
-  ggplot(aes(x = g, y = value, col = program, group = FALSE)) +
-  facet_wrap(~ trait, scales = "free", ncol = 1) +
-  labs(title = "Non-Linear Stability" ) +
-  theme(legend.position = "right") +
-  g_add
-
-# Plot grid
-# Remove the legend from each plot object. Also remove the y axis title from the right-hand plot
-g_plotgrid <- plot_grid(
-  g_linear_stability_and_mean + theme(legend.position="none", axis.title.x = element_blank()),
-  g_nonlinear_stability_and_mean + theme(legend.position="none", axis.title.x = element_blank()) + ylab(""),
-  align = "h",
-  labels = c("A", "B"))
-
-# Extract the legend from one of the plots and add it back in
-g_plotgrid1 <- plot_grid(
-  g_plotgrid, get_legend(g_linear_stability_and_mean), rel_widths = c(2, 0.3)
-)
-
-# Add a common x-axis legend.
-g_plotgrid2 <- ggdraw(add_sub(g_plotgrid1, "Genotype Mean", size = 12, hjust = 0.7))
-
-save_file <- file.path(fig_dir, "pheno_fw_stability_mean_nooutliers.jpg")
 ggsave(filename = save_file, plot = g_plotgrid2, width = 6, height = 6)
 
 
@@ -491,9 +420,10 @@ reliability_summ %>%
 K <- A.mat(X = S2TP_imputed_multi_genos_mat, min.MAF = 0, max.missing = 1)
 
 # Gather and tidy
-S2_MET_pheno_fw_coef_tomodel <- S2_MET_pheno_fw_uniq_trans %>%
-  spread(term, value) %>% 
-  gather(coef, value, g, b, log_delta)
+S2_MET_pheno_fw_coef_tomodel <- S2_MET_pheno_fw_use %>%
+  distinct(trait, line_name, g, term, estimate) %>%
+  spread(term, estimate) %>% 
+  gather(coef, estimate, g, b, log_delta)
 
 # Now calculate heritability
 SNP_herit <- S2_MET_pheno_fw_coef_tomodel %>%
@@ -505,7 +435,7 @@ SNP_herit <- S2_MET_pheno_fw_coef_tomodel %>%
 
     # Fit a model in which the random genetic effect due to SNPs and the random
     # genetic effect non accounted for by SNPs are modeled
-    fit2 <- relmatLmer(value ~ (1|line_name) + (1|geno), df1,
+    fit2 <- relmatLmer(estimate ~ (1|line_name) + (1|geno), df1,
                        relmat = list(line_name = K))
     
     # Calculate the proportion of total phenotypic variation due to these sources
@@ -519,6 +449,6 @@ SNP_herit <- S2_MET_pheno_fw_coef_tomodel %>%
 
 # Create a table
 SNP_herit %>% 
-  filter(coef != "g") %>% 
+  filter(coef != "g") %>%
   spread(group, prop)
 

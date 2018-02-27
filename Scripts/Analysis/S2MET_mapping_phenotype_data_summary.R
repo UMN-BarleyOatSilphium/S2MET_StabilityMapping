@@ -62,7 +62,6 @@ env_order <- S2_MET_BLUEs_use %>%
   unique()
 
 (g_met_dist <- S2_MET_BLUEs_use %>%
-  filter(trait != "TestWeight") %>%
   mutate(environment = parse_factor(environment, levels = env_order)) %>%
   ggplot(aes(x = value, y = environment, fill = environment)) +
   geom_density_ridges() +
@@ -168,7 +167,6 @@ ggsave(filename = save_file, plot = g_herit, height = 5, width = 4)
 
 
 # What is the proportion of each variance component to the total phenotypic variance?
-
 prop_varcomp <- stage_two_model_fits %>% 
   mutate(full_fit = map(fits, "full")) %>% 
   do(var_comp = as.data.frame(VarCorr(.$full_fit[[1]]))) %>% 
