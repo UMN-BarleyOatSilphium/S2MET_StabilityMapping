@@ -202,90 +202,112 @@ gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw %>%
   mutate(p_adj = p.adjust(pvalue, method = "fdr"),
          q_value = qvalue(p = pvalue)$qvalue,
          local_fdr = qvalue(p = pvalue)$lfdr,
-         neg_log10_fdr05 = -log10(0.05),
+         neg_log10_fdr05 = -log10(alpha),
          neg_log10_fdr10 = -log10(0.10)) %>%
   mutate_at(vars(pvalue, p_adj, q_value), funs(neg_log10 = -log10(.))) %>%
-  ungroup()
+  ungroup() %>%
+  mutate(plot_coef = str_replace_all(coef, coef_replace))
+  
+
+# Color scheme for manhattan plot
+color <- c("Bl" = umn_palette(n = 3)[3], "B" = "black", "G" = "grey75")
 
 
-#### Main Effect QTL
+## Common plot modifiers
+# QQ plot
+g_mod_qq <- list(
+  geom_ribbon(aes(x = p_exp_neg_log10, ymin = ci_upper, ymax = ci_lower), fill = "grey75",
+              inherit.aes = FALSE),
+  geom_abline(slope = 1, intercept = 0),
+  geom_point(),
+  facet_grid(trait ~ .),
+  ylab(expression(Observed~-log[10](italic(p)))),
+  xlab(expression(Expected~-log[10](italic(p)))),
+  theme_bw()
+)
 
-# This model was used to detect associations between loci and the genotypic mean of each trait.
+# Manhattan plot
+g_mod_man <- list(
+  geom_point(),
+  geom_hline(yintercept = -log10(alpha), lty = 2),
+  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+  scale_color_manual(values = color, guide = FALSE),
+  ylab("-log(q)"),
+  xlab("Position (Mbp)"),
+  theme_bw(),
+  theme_manhattan(),
+  theme(panel.border = element_blank())
+)
+
+
+#### Genotype mean QTL  
 
 # Load the data and plot results
 
-# Plot the density of the p-values
-g_pvalue_density <- gwas_pheno_mean_fw_adj %>% 
+## QQ Plot
+gwas_pheno_mean_fw_adj_qq <- gwas_pheno_mean_fw_adj %>% 
+  arrange(trait, coef, pvalue) %>%
+  group_by(trait, coef) %>%
+  mutate(p_exp = ppoints(n = n()), # Generate p values under null of no associations
+         p_exp_neg_log10 = -log10(p_exp), # Convert to -log10(p)
+         # Add a confidence interval based on the beta distribution (assumes independence of tests)
+         ci_lower = -log10(qbeta(p = (alpha / 2), shape1 = seq(n()), rev(seq(n())))),
+         ci_upper = -log10(qbeta(p = 1 - (alpha / 2), shape1 = seq(n()), rev(seq(n()))))) %>%
+  select(trait, coef, plot_coef, marker, p_exp_neg_log10, pvalue_neg_log10, ci_lower, ci_upper)
+
+g_mean_qq <- gwas_pheno_mean_fw_adj_qq %>% 
   filter(coef == "g") %>%
-  # ggplot(aes(x = pvalue, y = model, fill = model)) + 
-  ggplot(aes(x = pvalue)) + 
-  # geom_density_ridges(alpha = 0.75, lwd = 1) + 
-  geom_histogram() + 
-  facet_grid(~ trait) +
-  xlim(c(0, 1)) +
-  theme_bw()
+  ggplot(aes(x = p_exp_neg_log10, y = pvalue_neg_log10)) + 
+  labs(title = "Genotype Mean GWAS QQ Plot") +
+  g_mod_qq
+
+# Save
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_qq.jpg")
+ggsave(filename = save_file, plot = g_mean_qq, width = 4, height = 7)
 
 
-
-
-## Common plot layers for the manhattan plots
-g_add <- list(geom_point(),
-              geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")),
-              geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
-              scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7)),
-                                 guide = FALSE),
-              scale_linetype(guide = FALSE),
-              ylab("-log(q)"),
-              xlab("Position"),
-              labs(title = "Genomwide Assocation Analysis for Genotype Mean"),
-              theme_bw(),
-              theme_manhattan())
-
-
-
-## Just the G model
-g_man_Gmodel <- gwas_pheno_mean_fw_adj %>%
+## Manhattan plot for genotype mean
+g_mean_manhattan <- gwas_pheno_mean_fw_adj %>%
   # filter(coef == "g", model == "G") %>%
   filter(coef == "g") %>%
-  mutate(chrom = as.factor(chrom)) %>%
+  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G")) %>%
   # ggplot(aes(x = pos / 1000000, y = neg_log10_p_adj, group = chrom, col = chrom)) + 
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = color)) + 
   facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  g_add
+  labs(title = "Genotype Mean GWAS Manhattan Plot") +
+  g_mod_man
 
-save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan_Gmodel.jpg")
-ggsave(filename = save_file, plot = g_man_Gmodel, width = 9, height = 8)
+save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan.jpg")
+ggsave(filename = save_file, plot = g_mean_manhattan, width = 9, height = 8)
+
+
 
 
 #### Stability QTL
+## QQ plot
+g_stab_qq <- gwas_pheno_mean_fw_adj_qq %>% 
+  ungroup() %>%
+  filter(coef != "g") %>%
+  ggplot(aes(x = p_exp_neg_log10, y = pvalue_neg_log10)) + 
+  labs(title = "Phenotypic Stability GWAS QQ Plot") +
+  g_mod_qq +
+  facet_grid(trait ~ plot_coef)
+
+save_file <- file.path(fig_dir, "gwas_pheno_stability_qq.jpg")
+ggsave(filename = save_file, plot = g_stab_qq, width = 6, height = 7)
 
 
-# Manhattan plot
-# Common modifier
-g_add <- list(geom_point(),
-              geom_hline(aes(yintercept = neg_log10_fdr05, lty = "FDR 05%")),
-              geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
-              scale_color_manual(values = set_names(rep(c("black", "grey75"), length.out = 7), seq(1, 7)),
-                                 guide = FALSE),
-              scale_linetype(guide = FALSE),
-              ylab("-log(q)"),
-              xlab("Position"),
-              labs(title = "Genomwide Assocation Analysis for Phenotypic Stability"),
-              theme_manhattan())
-
-
-## Only consider the G model
-g_man_Gonly <- gwas_pheno_mean_fw_adj %>%
+## Manhattan plot
+g_stab_manhattan <- gwas_pheno_mean_fw_adj %>%
   # filter(model == "G", coef != "g") %>%
   filter(coef != "g") %>%
-  mutate(chrom = as.factor(chrom),
-         coef = if_else(coef == "b", "Linear", "Non-Linear")) %>% 
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
-  facet_grid(trait + coef ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  g_add
+  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G")) %>%
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = color)) + 
+  facet_grid(trait + plot_coef ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  g_mod_man
 
-save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_Gonly.jpg")
-ggsave(filename = save_file, plot = g_man_Gonly, width = 9, height = 8)
+save_file <- file.path(fig_dir, "gwas_pheno_stab_manhattan.jpg")
+ggsave(filename = save_file, plot = g_stab_manhattan, width = 9, height = 8)
 
 
 
@@ -306,23 +328,24 @@ gwas_pheno_mean_fw_adj_nonsig <- gwas_pheno_mean_fw_adj %>%
 
 # Calculate the neg-log q values for the 'gwas_mlmm_Gmodel' df
 gwas_mlmm_adj <- gwas_mlmm_Gmodel %>% 
-  ungroup() %>%
-  mutate(q_value_neg_log10 = -log10(q_value))
+  select(trait:pos, pvalue = p_value, q_value) %>%
+  group_by(trait, coef) %>%
+  mutate(q_value_neg_log10 = -log10(q_value)) %>%
+  ungroup()
 
 # Combine with the significant markers
 gwas_pheno_mean_fw_adj_mlmm <- bind_rows(gwas_pheno_mean_fw_adj_nonsig, gwas_mlmm_adj) %>%
-  select(-se) %>%
-  mutate(neg_log10_fdr05 = -log10(0.05),
-         neg_log10_fdr10 = -log10(0.10))
+  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G"),
+         plot_coef = str_replace_all(coef, coef_replace))
 
 
 # Plot the results of genotypic mean
 g_man_g <- gwas_pheno_mean_fw_adj_mlmm %>%
   filter(coef == "g") %>%
   mutate(chrom = as.factor(chrom)) %>% 
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = color)) + 
   facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  g_add
+  g_mod_man
 
 # Save
 save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan_mlmm.jpg")
@@ -331,11 +354,9 @@ ggsave(filename = save_file, plot = g_man_g, width = 9, height = 8)
 # Plot the results of stability
 g_man_stab <- gwas_pheno_mean_fw_adj_mlmm %>%
   filter(coef != "g") %>%
-  mutate(chrom = as.factor(chrom),
-         coef = if_else(coef == "b", "Linear", "Non-Linear")) %>% 
-  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = chrom)) + 
-  facet_grid(trait + coef ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  g_add
+  ggplot(aes(x = pos / 1000000, y = q_value_neg_log10, group = chrom, col = color)) + 
+  facet_grid(trait + plot_coef ~ chrom, switch = "x", scales = "free", space = "free_x") +
+  g_mod_man
 
 # Save
 save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_mlmm.jpg")
@@ -343,24 +364,6 @@ ggsave(filename = save_file, plot = g_man_stab, width = 9, height = 8)
 
 
 
-
-## What are the numbers of significant marker-trait assocations for each trait and type?
-
-gwas_sig_snp_summ <- gwas_pheno_mean_fw_adj %>% 
-  # filter(model == "G") %>% 
-  group_by(trait, coef, chrom) %>% 
-  summarize(n_sig_SNP = sum(q_value <= 0.05)) %>%
-  mutate(type = "GWAS")
-
-mlmm_sig_snp_summ <- gwas_mlmm_Gmodel %>% 
-  ungroup() %>% 
-  complete(trait, coef, chrom) %>% 
-  group_by(trait, coef, chrom) %>% 
-  summarize(n_sig_SNP = sum(q_value <= 0.05, na.rm = T)) %>%
-  mutate(type = "MLMM")
-
-# Combine with the multi-locus mixed model results
-gwas_pheno_mean_fw_sig <- bind_rows(gwas_sig_snp_summ, mlmm_sig_snp_summ)
 
 
 ## Adjust the manhattan plots to show the markers that were declared significant 
@@ -384,27 +387,20 @@ gwas_results_toplot <- gwas_mlmm_Gmodel %>%
   mutate(significant = TRUE) %>%
   bind_rows(., gwas_pheno_not_sig) %>%
   mutate(neg_log_qvalue = -log10(q_value),
-         coef = case_when(coef == "g" ~ "Genotype Mean",
-                          coef == "b" ~ "Linear Stability",
-                          coef == "log_delta" ~ "Non-Linear Stability"), 
-         coef = parse_factor(coef, levels = c("Genotype Mean", "Linear Stability", "Non-Linear Stability")),
+         plot_coef = str_replace_all(coef, coef_replace), 
+         plot_coef = parse_factor(plot_coef, levels = c("Genotype Mean", "Linear Stability", 
+                                                        "Non-Linear Stability")),
          color = case_when(chrom %in% seq(1, 7, by = 2) & !significant ~ "B",
                            !chrom %in% seq(1, 7, by = 2) & !significant ~ "G",
                            TRUE ~ "Bl"))
 
-# Color scheme
-color <- c("Bl" = umn_palette(n = 3)[3], "B" = "black", "G" = "grey75")
 
 ## Plot
 g_gwas_complete_plot <- gwas_results_toplot %>% 
-  ggplot(aes(x = pos / 1000000, y = neg_log_qvalue, color = color)) + 
+  ggplot(aes(x = pos / 1000000, y = neg_log_qvalue, group = chrom,color = color)) + 
   geom_point() + 
-  geom_hline(yintercept = -log10(0.05), lty = 2) + 
-  scale_color_manual(values = color, guide = FALSE) +
-  ylab(expression(-log[10]~(italic(q)))) +
-  xlab("Position (Mbp)") + 
-  facet_grid(trait + coef ~ chrom, scales = "free", space = "free_x", switch = "x") + 
-  theme_manhattan() + theme(panel.border = element_blank())
+  g_mod_man +
+  facet_grid(trait + plot_coef ~ chrom, switch = "x", scales = "free", space = "free_x")
 
 # Save this
 save_file <- file.path(fig_dir, "gwas_manhattan_complete.jpg")
@@ -415,10 +411,37 @@ ggsave(filename = save_file, plot = g_gwas_complete_plot, width = 9, height = 12
 
 
 
+
+
 #### Significant associations
 
-# Look at the significant markers and assess the effect size, minor allele frequency, etc.
+## What are the numbers of significant marker-trait assocations for each trait and type?
+gwas_sig_snp_summ <- gwas_pheno_mean_fw_adj %>% 
+  # filter(model == "G") %>% 
+  group_by(trait, coef, chrom) %>% 
+  summarize(n_sig_SNP = sum(q_value <= alpha)) %>%
+  mutate(type = "GWAS")
 
+mlmm_sig_snp_summ <- gwas_mlmm_Gmodel %>% 
+  select(trait:pos, q_value) %>%
+  ungroup() %>%
+  complete(trait, coef, chrom) %>%
+  group_by(trait, coef, chrom) %>% 
+  summarize(n_sig_SNP = sum(q_value <= alpha, na.rm = T)) %>%
+  mutate(type = "MLMM")
+
+# Combine with the multi-locus mixed model results
+gwas_pheno_mean_fw_sig <- bind_rows(gwas_sig_snp_summ, mlmm_sig_snp_summ)
+
+# Sumarize
+gwas_pheno_mean_fw_sig %>% 
+  group_by(trait, coef, type) %>% 
+  summarize(n_sig_SNP = sum(n_sig_SNP)) %>% 
+  spread(type, n_sig_SNP)
+
+
+
+# Look at the significant markers and assess the effect size, minor allele frequency, etc.
 
 # Calculate the allele frequency of the 1 allele
 af1 <- {colMeans(M + 1) / 2} %>%
@@ -427,8 +450,7 @@ af1 <- {colMeans(M + 1) / 2} %>%
 # Combine the minor allele frequency information
 gwas_mlmm_marker_info <- gwas_mlmm_Gmodel %>% 
   ungroup() %>%
-  left_join(., af1) %>%
-  mutate(allele_count = af * nrow(M))
+  left_join(., af1)
 
 
 
@@ -467,13 +489,12 @@ gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
   ungroup() %>%
   left_join(., snp_info) %>%
   select(trait, coef, marker, chrom, pos, cM = cM_pos, alpha, q_value, R_sqr_snp, af, AB:WA) %>%
-  mutate(coef = str_replace_all(coef, c("b" = "Linear Stability", "log_delta" = "Non-Linear Stability", 
-                                  "g" = "Genotype Mean")),
+  mutate(coef = str_replace_all(coef, coef_replace),
          MAF = pmin(af, 1 - af)) %>%
   rename_at(.vars = vars(trait:pos), .funs = str_to_title) %>%
   select(Trait:cM, MAF, alpha:R_sqr_snp, AB:WA) %>%
   arrange(Trait, Coef, Chrom, Pos)
-         
+
 
 
 # Write a table
@@ -645,28 +666,28 @@ ggsave(filename = save_file, plot = g_resample_combined, width = 8, height = 5)
 # Sort and display
 resample_snp_detect_count_max <- resample_snp_detect_count %>%
   filter(times_detected == max(times_detected))
-  
+
 
 # Common plot modifier
 g_mod <- list(geom_point(),
-  geom_segment(data = barley_lengths, aes(x = 0, y = 0, xend = 0, yend = length / 1000000), 
-               inherit.aes = FALSE, size = 2, lineend = "round", col = "grey70") ,
-  ylab("Position (Mbp)") ,
-  xlab("Chromosome"),
-  xlim(c(-2, 2)) , 
-  facet_grid(~ chrom, switch = "x") , 
-  scale_shape_manual(values = c("Recovered SNPs" = 1, "New SNPs" = 0), name = "Association\nType"), 
-  scale_size_discrete(name = "Probability of\nDetecting SNP"),
-  scale_color_discrete(name = "Stability\nType"),
-  scale_y_reverse() , 
-  theme_bw() , 
-  theme(panel.grid = element_blank(), 
-        panel.border = element_blank(), 
-        # panel.spacing.x = unit(1, units = "cm"),
-        axis.text.x = element_blank(), 
-        axis.title.x = element_blank(), 
-        axis.ticks.x = element_blank(),
-        strip.background = element_blank()) )
+              geom_segment(data = barley_lengths, aes(x = 0, y = 0, xend = 0, yend = length / 1000000), 
+                           inherit.aes = FALSE, size = 2, lineend = "round", col = "grey70") ,
+              ylab("Position (Mbp)") ,
+              xlab("Chromosome"),
+              xlim(c(-2, 2)) , 
+              facet_grid(~ chrom, switch = "x") , 
+              scale_shape_manual(values = c("Recovered SNPs" = 1, "New SNPs" = 0), name = "Association\nType"), 
+              scale_size_discrete(name = "Probability of\nDetecting SNP"),
+              scale_color_discrete(name = "Stability\nType"),
+              scale_y_reverse() , 
+              theme_bw() , 
+              theme(panel.grid = element_blank(), 
+                    panel.border = element_blank(), 
+                    # panel.spacing.x = unit(1, units = "cm"),
+                    axis.text.x = element_blank(), 
+                    axis.title.x = element_blank(), 
+                    axis.ticks.x = element_blank(),
+                    strip.background = element_blank()) )
 
 
 # Create a data.frame to plot
@@ -706,6 +727,94 @@ ggsave(filename = save_file, plot = g_resample_ph, width = 10, height = 7, dpi =
 
 save_file <- file.path(fig_dir, "resample_count_gy.jpg")
 ggsave(filename = save_file, plot = g_resample_gy, width = 10, height = 7, dpi = 1000)
+
+
+
+
+### Test for pleiotropy
+
+# Load the results
+load(file.path(result_dir, "/S2MET_pheno_fw_gwas_pleiotropy_results.RData"))
+
+## Tidy up the data
+gwas_pheno_mean_fw_plei <- gwas_pheno_mean_fw_plei_out %>%
+  list(., names(.)) %>%
+  pmap_df(~mutate(.x, trait = .y)) %>%
+  separate(trait, c("trait", "stab_coef"), sep = "\\.") %>%
+  mutate(term = if_else(term == "g", term, stab_coef)) %>%
+  select(marker, trait, term, stab_coef, beta, se)
+
+## The test for pleiotropy is a union-intersection test
+## For each marker, there are two betas: beta_g and beta_stability,
+## where beta_g is the marker effect for the genotype mean and beta_stability
+## is the marker effect for phenotypic stability.
+## 
+## H0: beta_g == 0 or beta_stability == 0
+## HA: beta_g != 0 and beta_stability != 0
+## 
+## We can use the maximum p-value as the test - if this p-value is less
+## than a threshold alpha, the null hypothesis of no pleiotropy can be rejected.
+## 
+
+# Calculate test statistics and p-values
+gwas_pheno_mean_fw_plei_test <- gwas_pheno_mean_fw_plei %>% 
+  mutate(statistic = (beta^2) / (se^2), 
+         pvalue = pchisq(q = statistic, df = 1, lower.tail = FALSE))
+
+# Summarize the maximum p-value
+gwas_pheno_mean_fw_plei_max_adj <- gwas_pheno_mean_fw_plei_test %>% 
+  group_by(marker, trait, stab_coef) %>% 
+  summarize(pvalue_max = max(pvalue)) %>%
+  group_by(trait, stab_coef) %>%
+  mutate(pvalue_adj = p.adjust(pvalue_max, "fdr"),
+         qvalue = qvalue(pvalue_max)$qvalue) %>%
+  ungroup()
+
+# Try a different approach where pvalue are corrected beforehand
+gwas_pheno_mean_fw_plei_adj <- gwas_pheno_mean_fw_plei_test %>% 
+  group_by(trait, term, stab_coef) %>% 
+  mutate(pvalue_adj = p.adjust(pvalue, "fdr"),
+         qvalue = qvalue(pvalue)$qvalue) %>%
+  group_by(marker, trait, stab_coef) %>%
+  summarize_at(vars(pvalue:qvalue), max) %>%
+  ungroup()
+
+## Add SNP information
+gwas_pheno_mean_fw_plei_toplot <- gwas_pheno_mean_fw_plei_adj %>%
+  full_join(., snp_info, by = "marker") %>%
+  select(marker, chrom:cM_pos, names(.)) %>%
+  arrange(trait, stab_coef, chrom, pos) %>%
+  mutate(
+    stab_coef = case_when(stab_coef == "b" ~ "Linear Stability",
+                          stab_coef == "log_delta" ~ "Non-Linear Stability"), 
+    stab_coef = parse_factor(stab_coef, levels = c("Linear Stability", "Non-Linear Stability")),
+    color = if_else(chrom %in% seq(1, 7, 2), "B", "G"))
+
+# Labeller function
+label_coef <- function(x) str_c("Genotype Mean\n", x)
+
+# Plot
+g_gwas_plei <- gwas_pheno_mean_fw_plei_toplot %>%
+  ggplot(aes(x = pos / 1000000, y = -log10(qvalue), color = color)) + 
+  geom_point() + 
+  geom_hline(yintercept = -log10(alpha), lty = 2) + 
+  scale_color_manual(values = color, guide = FALSE) +
+  ylab(expression(-log[10]~(italic(q)))) +
+  xlab("Position (Mbp)") + 
+  facet_grid(trait + stab_coef ~ chrom, scales = "free", space = "free_x", switch = "x",
+             labeller = labeller(stab_coef = label_coef)) + 
+  theme_manhattan() + 
+  theme(panel.border = element_blank())
+
+# Save
+save_file <- file.path(fig_dir, "gwas_plei_manhattan.jpg")
+ggsave(filename = save_file, plot = g_gwas_plei, height = 9, width = 9)
+
+
+
+
+
+
 
 
 
@@ -770,7 +879,7 @@ snp_clust <- function(grange, LD, wind.size, LD.threshold) {
              stringsAsFactors = FALSE)
   
 }
-  
+
 # LD threshold for grouping markers
 LD_threshold <- 0.80
 # Window size for genomic region
@@ -801,7 +910,7 @@ sig_markers_groups <- sig_markers_GRange %>%
       grange$group <- "group1"
       
     } else {
-    
+      
       # Calculate LD
       LD <- cor(M[,grange$marker])^2
       
@@ -898,21 +1007,21 @@ grange_compare <- grange_sep %>%
     # Iterate over the combinations
     compare_out <- map2(.x = combn_df$coef1, .y = combn_df$coef2, 
                         function(c1, c2) {
-        grange1 <- subset(df, coef == c1)$Grange[[1]]
-        grange2 <- subset(df, coef == c2)$Grange[[1]]
-        
-        # Calculate the distance to neareast and add the grange information
-        dtn <- suppressWarnings(distanceToNearest(x = grange1, subject = grange2)) %>%
-          as_data_frame() %>% 
-          mutate(queryGrange = map(queryHits, ~grange1[.]), 
-                 subjectGrange = map(subjectHits, ~grange2[.]))
-        })
+                          grange1 <- subset(df, coef == c1)$Grange[[1]]
+                          grange2 <- subset(df, coef == c2)$Grange[[1]]
+                          
+                          # Calculate the distance to neareast and add the grange information
+                          dtn <- suppressWarnings(distanceToNearest(x = grange1, subject = grange2)) %>%
+                            as_data_frame() %>% 
+                            mutate(queryGrange = map(queryHits, ~grange1[.]), 
+                                   subjectGrange = map(subjectHits, ~grange2[.]))
+                        })
     
     # Return the comparisons
     combn_df %>% 
       as_data_frame() %>%
       mutate(comparison = compare_out) })
-    
+
 
 # Look at the comparisons where overlap is present and determine the LD between
 # the SNP in those intervals
@@ -937,9 +1046,9 @@ grange_compare_LD <- grange_compare %>%
     overlap_df_grange %>% 
       select(trait, coef, chrom = seqnames, start, end, marker:group) %>% 
       mutate(LD = cor(M[,overlap_df_grange$marker])[1,2]^2)
-      
+    
   })
-        
+
 grange_compare_LD %>% 
   select(trait, coef, chrom, alpha, q_value, snp_pos, LD)
 
@@ -1025,7 +1134,7 @@ find_overlaps <- function(q, s) {
     data_frame(hits = list(NA), query_hits = list(NA), subject_hits = list(NA),
                query_length = as.integer(NA), subject_length = as.integer(NA),
                query_hits_n = as.integer(NA), subject_hits_n = as.integer(NA))
-               
+    
     
   } else {
     # Find overlaps
@@ -1048,7 +1157,7 @@ interval_overlaps <- sig_intervals %>%
          linear_stability_mar_linear_stability_overlap = list(linear_stability, linear_marker_stability) %>% pmap(find_overlaps),
          linear_stability_mar_linear_plasticity_overlap = list(linear_stability, linear_marker_plasticity) %>% pmap(find_overlaps),
          nonlinear_stability_mar_nonlinear_stability_overlap = list(`non-linear_stability`, `non-linear_marker_plasticity`) %>% pmap(find_overlaps) )
-    
+
 # Extract the data.frame results
 interval_overlaps_df <- interval_overlaps %>% 
   select(trait, contains("overlap")) %>% 
@@ -1059,4 +1168,10 @@ interval_overlaps_df <- interval_overlaps %>%
          prop_subject_hits = subject_hits_n / subject_length)
 
 interval_overlaps_df %>% select(trait, overlap, query_hits_n:prop_subject_hits)
+
+
+
+
+
+
 

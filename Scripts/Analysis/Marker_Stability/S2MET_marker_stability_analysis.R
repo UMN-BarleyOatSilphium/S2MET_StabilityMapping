@@ -48,7 +48,7 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
   filter(line_name %in% c(tp_geno)) %>%
   droplevels()
 
-M <- S2TP_imputed_multi_genos_mat[tp_geno,]
+M <- S2TP_imputed_multi_genos_mat
 
 
 
@@ -198,16 +198,8 @@ S2_MET_marker_mean_fw_tidy %>%
   facet_wrap(~ coef, scales = "free_y") +
   theme_bw()
 
-# Calculate the mean stability per group
-S2_MET_marker_eff_pheno_fw_sig %>% 
-  group_by(trait, significance) %>% 
-  summarize(mean = mean(estimate)) %>% 
-  spread(significance, mean)
 
-
-
-# Plot the stability estimates across the genome with the empirical threshold
-
+## Plot the stability estimates across the genome with the empirical threshold
 # Color theme
 colors <- c("black", umn_palette(n = 4)[-c(1:2)]) %>%
   set_names(c("Average", "Plastic", "Stable"))
@@ -683,27 +675,4 @@ S2_MET_mean_fw_martype_varcom_mean <- S2_MET_mean_fw_martype_varcom_summ %>%
 save_file <- file.path(result_dir, "S2MET_marker_stability_varcomp.RData")
 save("S2_MET_mean_fw_martype_varcomp", "S2_MET_mean_fw_varcomp", file = save_file)
 
-
-
-
-
-## Calculate the marker effects for mean and stability
-mean_stability_marker_effect <- S2_MET_pheno_fw_uniq_trans %>%
-  group_by(trait, coef) %>%
-  do({
-    
-    df <- .
-    y <- df$value
-    Z <- M
-    
-    fit <- mixed.solve(y = y, Z = Z)
-    fit$u %>% 
-      data.frame(marker = names(.), effect = ., row.names = NULL, stringsAsFactors = FALSE)
-    
-  })
-
-# Add allele frequency (the 1 allele)
-mean_stability_marker_effect1 <- left_join(mean_stability_marker_effect, af1)
-  
-# Find the relatioship between marker effect and allele frequency
 

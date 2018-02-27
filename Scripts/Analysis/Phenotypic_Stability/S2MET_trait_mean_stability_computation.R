@@ -267,7 +267,7 @@ S2_MET_pheno_tomodel <- S2_MET_pheno_mean_fw %>%
 # Vector of proportion of environments
 p_env <- seq(0.2, 0.8, by = 0.2)
 # Number of bootstrap iterations
-n_iter <- 250
+n_iter <- 100
 
 # Iterate over the proportion of environments to sample
 # Create bootstrapping replicates

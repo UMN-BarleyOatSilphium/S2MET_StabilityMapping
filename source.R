@@ -49,7 +49,8 @@ entries <- entry_list %>%
 
 # Filter environments for those in which the TP was observed
 S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  filter(line_name %in% tp_geno)
+  filter(line_name %in% tp_geno,
+         trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
 
 # Read in the trial metadata
 trial_info <- read_csv(file = file.path(pheno_dir, "trial_metadata.csv"))
