@@ -429,6 +429,9 @@ snps_by_core <- snp_info %>%
 # Iterate over trait-stability combinations
 for (i in seq_along(pheno_to_model_plei_split)) {
   
+  # Print a message
+  print(str_c("Running GWAS for trait-stability: ", names(pheno_to_model_plei_split)[i])) 
+ 
   # Extract the data
   df <- pheno_to_model_plei_split[[i]]
   

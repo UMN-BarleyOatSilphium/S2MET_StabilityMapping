@@ -99,7 +99,7 @@ S2_MET_marker_fw_sig <- S2_MET_marker_mean_fw_tidy %>%
 # Number of model fittings
 n_iter <- 100
 # Detect cores
-n_cores <- detectCores()
+n_cores <- 2
 
 
 ## Calculate relationship matrices
