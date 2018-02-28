@@ -1,0 +1,119 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"plant height","SCRI_RS_124040","chrUNK",460,"","",2.2831505356864
+"plant height","SCRI_RS_225532","chr6H",143256754,"","",2.2831505356864
+"plant height","SCRI_RS_150519","chr2H",766082209,"","",1.7567072165467
+"plant height","12_30344","chr7H",180474019,"","",1.7374368284543
+"plant height","BK_16","chr2H",29124351,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.730378805195
+"plant height","BK_14","chr2H",29127039,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.7069150075387
+"plant height","BK_12","chr2H",29125791,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.7062589526212
+"plant height","12_30872","chr2H",29124597,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.7058024082179
+"plant height","11_10256","chr7H",217287328,"","",1.6700591679065
+"plant height","11_21509","chr6H",415952337,"","",1.6311664773879
+"plant height","SCRI_RS_198370","chrUNK",2260,"","",1.6255298172836
+"plant height","SCRI_RS_173914","chr7H",340745498,"","",1.6185970806182
+"plant height","BK_15","chr2H",29127449,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.6084797999401
+"plant height","12_30871","chr2H",29127021,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.5626104128302
+"plant height","SCRI_RS_128706","chr3H",197445741,"MLOC_10540","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0UFR6]",1.5592849704192
+"plant height","SCRI_RS_230959","chr7H",8003657,"","",1.5346921498163
+"plant height","11_21070","chr4H",18337769,"MLOC_76824","gene, protein_coding, Peptidyl-prolyl cis-trans isomerase  [Source:UniProtKB/TrEMBL;Acc:M0Z4F9]",1.5255215885814
+"plant height","12_31120","chr7H",176885969,"","",1.5213949079307
+"plant height","11_20422","chr4H",18759288,"","",1.5128474230792
+"plant height","12_10777","chr2H",26199616,"MLOC_55450","gene, protein_coding, 2-oxoacid dehydrogenases acyltransferase family protein [Source:Projected from Arabidopsis thaliana (AT3G06850) TAIR;Acc:AT3G06850]",1.4947299304537
+"plant height","12_30870","chr2H",29126143,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.4868020978744
+"plant height","11_20885","chr7H",176154907,"","",1.4806565667163
+"plant height","11_20302","chr4H",16669632,"","",1.4738037458585
+"plant height","11_21528","chr7H",49445658,"","",1.4730538972066
+"plant height","SCRI_RS_236580","chr7H",34402129,"","",1.4702381406413
+"plant height","11_20777","chr4H",19930065,"","",1.4590988569465
+"plant height","SCRI_RS_160602","chr7H",34820934,"","",1.4447346638562
+"plant height","SCRI_RS_56","chrUn",81723429,"","",1.4434078057046
+"plant height","11_10064","chr6H",15802022,"","",1.4415862637527
+"plant height","11_10821","chr3H",633085996,"","",1.4299381115658
+"plant height","11_10094","chr5H",579653238,"","",1.4280984368378
+"plant height","11_10868","chr6H",16876562,"","",1.4171261701151
+"plant height","11_11495","chr7H",10416399,"","",1.4155775696002
+"plant height","SCRI_RS_137464","chr6H",374867096,"","",1.4120753427955
+"plant height","12_11253","chr6H",404557293,"","",1.3997530235736
+"plant height","11_10882","chr6H",34582877,"","",1.3888023602914
+"plant height","11_21418","chr4H",19183790,"","",1.3713941083798
+"plant height","11_20109","chr4H",19753671,"","",1.3693928979169
+"plant height","11_20636","chr6H",499364199,"","",1.3687348726045
+"plant height","SCRI_RS_175756","chr7H",7759980,"","",1.3643974572056
+"plant height","12_11386","chr6H",437328632,"","",1.3481060716291
+"plant height","11_20192","chr7H",33043618,"","",1.3426911653334
+"plant height","11_10127","chr5H",505799623,"","",1.3420652506659
+"plant height","11_21469","chr6H",498089634,"","",1.3411096754907
+"plant height","11_11329","chr6H",501893886,"","",1.3389236455701
+"plant height","SCRI_RS_221609","chr1H",367456204,"MLOC_70229","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0YKH2]",1.3380330702669
+"plant height","SCRI_RS_152642","chrUNK",1140,"","",1.3362332784747
+"plant height","SCRI_RS_215080","chr2H",46150175,"MLOC_74565","gene, protein_coding, potassium transporter 2 [Source:Projected from Arabidopsis thaliana (AT2G40540) TAIR;Acc:AT2G40540]",1.3249709763511
+"plant height","11_20680","chr4H",19087562,"MLOC_43140","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0W3S3]",1.31938931747
+"plant height","SCRI_RS_221886","chr2H",655481306,"","",1.3037343746879
+"plant height","12_31368","chr5H",379059639,"","",1.3018910189703
+"plant height","12_30329","chr7H",26188987,"","",1.3015867907107
+"plant height","12_31011","chr3H",462699422,"","",1.3015828675987
+"plant height","SCRI_RS_204810","chr1H",367826176,"MLOC_73100","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0YUF6]",1.3001484689178
+"plant height","11_20247","chrUNK",130,"","",1.2979682234951
+"plant height","12_10979","chr7H",48001348,"","",1.2963362603264
+"plant height","11_20646","chr5H",636606382,"","",1.2947895246188
+"plant height","SCRI_RS_157444","chr5H",9733786,"","",1.2942979708293
+"plant height","11_11067","chr6H",404560107,"","",1.2915960935615
+"plant height","SCRI_RS_200033","chr2H",712500709,"MLOC_56464","gene, protein_coding, Predicted protein; Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:F2DJZ5]",1.2909680289548
+"plant height","SCRI_RS_124549","chr6H",567208338,"","",1.2869084735698
+"plant height","SCRI_RS_182326","chrUNK",1350,"","",1.2860341095964
+"plant height","11_20287","chr6H",481001771,"","",1.2841530472503
+"plant height","11_21521","chr6H",343390,"","",1.2841029972072
+"plant height","11_20629","chr5H",581323626,"","",1.2838655818401
+"plant height","11_21348","chr3H",582486771,"","",1.2838460032626
+"plant height","11_10926","chr3H",434842337,"MLOC_31807","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0VJX0]",1.2825860086513
+"plant height","SCRI_RS_231790","chrUNK",1940,"","",1.2821725323161
+"plant height","11_10744","chr1H",18807356,"MLOC_57526","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0X6Z9]",1.2820759596593
+"plant height","SCRI_RS_141081","chr3H",73433445,"MLOC_67455","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0YB36]",1.278042496852
+"plant height","SCRI_RS_164251","chr7H",228408241,"","",1.2760791112616
+"plant height","11_11509","chr1H",554277483,"","",1.2734716098673
+"plant height","11_10208","chr4H",2789843,"","",1.2689542955061
+"plant height","12_31280","chrUn",248068738,"","",1.2683232124431
+"plant height","11_10631","chr3H",660938022,"","",1.2679162811618
+"plant height","11_20053","chr6H",512159550,"","",1.263672819885
+"plant height","11_10012","chr2H",219489966,"","",1.2620135109457
+"plant height","SCRI_RS_222698","chr5H",585875971,"","",1.2573699460679
+"plant height","11_10270","chr6H",407357254,"","",1.2545990244888
+"plant height","11_21266","chr3H",666091295,"","",1.2535503632829
+"plant height","SCRI_RS_182648","chr6H",461432514,"","",1.2441355972052
+"plant height","SCRI_RS_207030","chr4H",44247146,"","",1.2383618948243
+"plant height","11_10964","chr6H",428615244,"","",1.2320061885519
+"plant height","11_10760","chr1H",23815813,"MLOC_65638","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0Y4I6]",1.2316831606171
+"plant height","11_20603","chr1H",553490762,"","",1.2241338544969
+"plant height","12_30797","chr7H",617916935,"","",1.2237059250408
+"plant height","11_10793","chr4H",45245669,"MLOC_47250","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0WB58]",1.2226865590921
+"plant height","SCRI_RS_173164","chrUn",9762189,"MLOC_75519","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0Z1Q7]",1.2208395482587
+"plant height","12_30350","chr1H",368821886,"","",1.2204156478514
+"plant height","SCRI_RS_128336","chr3H",687549675,"MLOC_12826","gene, protein_coding, Vacuolar protein sorting 55 (VPS55) family protein [Source:Projected from Arabidopsis thaliana (AT3G11530) TAIR;Acc:AT3G11530]",1.2151573292058
+"plant height","11_20722","chr7H",19656144,"","",1.214096264876
+"plant height","SCRI_RS_128491","chr3H",373322670,"MLOC_4508","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0W8V5]",1.2086549240103
+"plant height","SCRI_RS_162838","chr3H",507320214,"","",1.2078053141422
+"plant height","11_21175","chr2H",677845247,"MLOC_38318","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0VXU3]",1.2021607242421
+"plant height","11_10419","chr1H",4153868,"","",1.1993613695504
+"plant height","SCRI_RS_223885","chr2H",701038247,"","",1.192442666477
+"plant height","12_31211","chr7H",451634037,"","",1.1867816937746
+"plant height","11_21339","chrUn",191449960,"","",1.1819307887402
+"plant height","12_31289","chr6H",502168189,"","",1.1801557322342
+"plant height","SCRI_RS_169596","chr5H",556291232,"","",1.1792279464723
+"plant height","SCRI_RS_236446","chrUn",66233141,"","",1.1787659687834
+"plant height","SCRI_RS_197817","chr5H",44082992,"","",1.1753646227296
+"plant height","SCRI_RS_153154","chrUNK",910,"","",1.1667788999977
+"plant height","SCRI_RS_11114","chr4H",616249270,"","",1.1615533089765
+"plant height","11_20266","chrUn",95056833,"","",1.1578331203116
+"plant height","SCRI_RS_157974","chr4H",639947991,"","",1.1575099494392
+"plant height","SCRI_RS_213333","chr7H",24062475,"","",1.1505035922472
+"plant height","SCRI_RS_169325","chrUn",41587407,"","",1.1499281297275
+"plant height","SCRI_RS_237689","chr7H",3848309,"","",1.1492641029169
+"plant height","12_10487","chr2H",742811663,"MLOC_65621","gene, protein_coding, Predicted protein; Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:F2E3M1]",1.1437546581509
+"plant height","SCRI_RS_181727","chr7H",527758417,"","",1.1359797473966
+"plant height","11_11459","chr6H",509042302,"","",1.1354493076866
+"plant height","11_21256","chr6H",509626192,"","",1.1278789827258
+"plant height","11_21181","chr2H",631832715,"","",1.1239957120307
+"plant height","SCRI_RS_214796","chr3H",345391718,"MLOC_40295","gene, protein_coding, Predicted protein; Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:F2DE83]",1.0775052948961
+"plant height","SCRI_RS_142438","chr3H",620661980,"","",1.0742748030521
+"plant height","SCRI_RS_162836","chr6H",565626975,"","",1.0264837279412
+"plant height","SCRI_RS_238070","chr5H",590273037,"","",0.97153670821378

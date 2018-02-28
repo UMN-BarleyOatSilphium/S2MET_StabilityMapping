@@ -17,6 +17,7 @@ pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
 script_dir <- file.path(proj_dir, "Scripts/")
 analysis_dir <- file.path(script_dir, "Analysis")
 fig_dir <- file.path(script_dir, "Figures/")
+data_dir <- file.path(proj_dir, "Data")
 
 map_dir <- file.path(analysis_dir, "GWAS")
 result_dir <- file.path(proj_dir, "Results")
@@ -27,7 +28,7 @@ load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
 load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
 
 # Load an entry file
-entry_list <- read_excel(file.path(proj_dir, "S2MET_project_entries.xlsx"))
+entry_list <- read_excel(file.path(data_dir, "S2MET_project_entries.xlsx"))
 
 
 # Grab the entry names that are not checks
