@@ -1,0 +1,109 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"grain yield","11_21259","chr3H",48467899,"","",2.1251661111887
+"grain yield","SCRI_RS_3336","chrUNK",2790,"","",1.8196034624904
+"grain yield","12_30870","chr2H",29126143,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.7412122549832
+"grain yield","12_30872","chr2H",29124597,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.6260783226811
+"grain yield","SCRI_RS_133026","chr7H",530981943,"","",1.617896323661
+"grain yield","SCRI_RS_219581","chr7H",534010525,"","",1.6131029002369
+"grain yield","11_21390","chr5H",564846729,"","",1.5958357950967
+"grain yield","SCRI_RS_229585","chr7H",523658014,"","",1.5878757841646
+"grain yield","SCRI_RS_7523","chrUNK",2880,"","",1.5859444786522
+"grain yield","SCRI_RS_231912","chrUNK",2640,"","",1.5604078947827
+"grain yield","SCRI_RS_122512","chr7H",522444718,"","",1.5509225633102
+"grain yield","SCRI_RS_207238","chr7H",528585294,"","",1.534304895852
+"grain yield","SCRI_RS_181725","chr4H",595795292,"MLOC_72094","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0YRM3]",1.5229306298627
+"grain yield","SCRI_RS_230083","chr7H",520952853,"","",1.5127524128686
+"grain yield","SCRI_RS_103902","chr7H",521506516,"","",1.4937996149233
+"grain yield","SCRI_RS_204771","chr7H",521707430,"","",1.4896217966805
+"grain yield","11_20568","chr5H",617780015,"","",1.4689183571811
+"grain yield","11_10283","chr3H",694263172,"MLOC_55183","gene, protein_coding, Predicted protein; Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:F2CWF9]",1.4659240661736
+"grain yield","SCRI_RS_181154","chr7H",521772846,"","",1.4566345615834
+"grain yield","SCRI_RS_143118","chr7H",521771595,"","",1.4414067416802
+"grain yield","12_30871","chr2H",29127021,"MLOC_81154","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBT3]",1.4288557479021
+"grain yield","11_20023","chr3H",617763235,"","",1.4177782981274
+"grain yield","12_10777","chr2H",26199616,"MLOC_55450","gene, protein_coding, 2-oxoacid dehydrogenases acyltransferase family protein [Source:Projected from Arabidopsis thaliana (AT3G06850) TAIR;Acc:AT3G06850]",1.4099243299685
+"grain yield","12_20345","chr3H",694227911,"","",1.4033750749744
+"grain yield","12_10982","chr7H",488307674,"","",1.3946042641237
+"grain yield","SCRI_RS_190352","chr7H",518163653,"","",1.3840809933361
+"grain yield","11_11448","chr5H",600139654,"","",1.3821449567148
+"grain yield","11_20236","chr5H",509768671,"","",1.3756619425265
+"grain yield","12_10125","chr7H",489497799,"","",1.3687210012405
+"grain yield","11_11405","chr4H",54542552,"MLOC_56654","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0X389]",1.3664653693396
+"grain yield","11_20356","chr3H",55590274,"MLOC_64514","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0XZV6]",1.3651044670291
+"grain yield","12_30790","chr7H",496253471,"","",1.3631137932393
+"grain yield","11_21212","chr3H",617339425,"MLOC_81053","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZBL4]",1.3504678858753
+"grain yield","11_21161","chr3H",617523850,"MLOC_51882","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0WIN4]",1.3439739237453
+"grain yield","12_30135","chr3H",695935673,"MLOC_55103","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0WVZ7]",1.3418157526382
+"grain yield","12_30999","chr7H",528801086,"","",1.3361062183774
+"grain yield","12_30880","chr7H",67729137,"","",1.3354515032679
+"grain yield","12_30199","chr7H",522445562,"","",1.3320189210269
+"grain yield","12_30505","chr1H",471473363,"","",1.3306561438489
+"grain yield","11_20896","chr7H",521711088,"","",1.3302232969151
+"grain yield","11_10303","chr7H",532185376,"","",1.328080855487
+"grain yield","12_30864","chr4H",23604127,"MLOC_81684","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0ZCP6]",1.326191023209
+"grain yield","11_10095","chr5H",601142082,"","",1.3261138275635
+"grain yield","12_30854","chr5H",559462764,"","",1.317585059769
+"grain yield","12_30064","chr3H",54793358,"MLOC_70777","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0YMD5]",1.313398532723
+"grain yield","11_20042","chrUn",113178429,"","",1.3098323920093
+"grain yield","12_30106","chr2H",727956635,"MLOC_47637","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0WBJ7]",1.3093154956237
+"grain yield","12_30793","chr4H",15668942,"MLOC_74006","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0YX79]",1.3089671871384
+"grain yield","11_20188","chr5H",599123281,"","",1.3069215545716
+"grain yield","11_11080","chr5H",598917589,"","",1.3039607959603
+"grain yield","11_10069","chr7H",492206525,"","",1.3020032594586
+"grain yield","12_20685","chr7H",549645656,"","",1.2972601803682
+"grain yield","12_30605","chr4H",461460469,"MLOC_58281","gene, protein_coding, Predicted protein; Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:F2DLQ1]",1.2906214740088
+"grain yield","11_10050","chr7H",78305253,"","",1.287822927904
+"grain yield","12_10696","chr7H",62559292,"","",1.2864079092941
+"grain yield","11_11114","chr4H",459813388,"MLOC_79172","gene, protein_coding, Uncharacterized protein  [Source:UniProtKB/TrEMBL;Acc:M0Z8T3]",1.2857865576402
+"grain yield","11_11445","chr7H",505361481,"","",1.2846674949965
+"grain yield","12_30645","chr7H",460352713,"","",1.2803477689289
+"grain yield","12_31452","chr7H",141857069,"","",1.2754907430121
+"grain yield","11_20880","chr7H",509844383,"","",1.2720457223863
+"grain yield","11_21265","chr2H",34864969,"","",1.2485163448263
+"grain yield","12_11437","chr7H",554017857,"","",1.2473959167041
+"grain yield","11_21241","chr5H",600459885,"","",1.2439635570145
+"grain yield","12_10089","chr7H",524390486,"","",1.2424009239173
+"grain yield","11_10531","chr7H",502239891,"","",1.2343046707134
+"grain yield","12_30997","chr7H",130414063,"","",1.229751176576
+"grain yield","11_20671","chr7H",95639213,"","",1.2287703611491
+"grain yield","12_31054","chrUNK",130,"","",1.2273531618402
+"grain yield","11_21138","chrUNK",70,"","",1.2261519069489
+"grain yield","12_30639","chrUn",103945094,"","",1.2215412426294
+"grain yield","11_11014","chr7H",67727614,"","",1.2185702328016
+"grain yield","12_30998","chr7H",509844516,"","",1.2164174665355
+"grain yield","11_10143","chr7H",537951420,"","",1.2151686216679
+"grain yield","12_10655","chr7H",218524405,"","",1.2054377560803
+"grain yield","11_10783","chr5H",598250952,"","",1.2031915280828
+"grain yield","11_11219","chr7H",440745784,"","",1.2027336377523
+"grain yield","12_31055","chr7H",428681743,"","",1.2025751547836
+"grain yield","12_30595","chr7H",202235859,"","",1.1987294674514
+"grain yield","11_20195","chr7H",111292841,"","",1.1974283098495
+"grain yield","11_10700","chr7H",428682740,"","",1.1967066892507
+"grain yield","12_30344","chr7H",180474019,"","",1.1959351368794
+"grain yield","11_11348","chr7H",93153567,"","",1.1955769709285
+"grain yield","11_10705","chr5H",597797164,"","",1.1910392055827
+"grain yield","11_20885","chr7H",176154907,"","",1.1895938417959
+"grain yield","12_10605","chrUn",103838756,"","",1.1886301923312
+"grain yield","12_30574","chr7H",435465480,"","",1.1882896491297
+"grain yield","11_20897","chr5H",657884383,"","",1.1829077520625
+"grain yield","11_10534","chr7H",448912368,"","",1.17768647645
+"grain yield","12_10369","chr7H",457219384,"","",1.1765173422332
+"grain yield","12_30475","chr7H",430903967,"","",1.1745385263449
+"grain yield","11_20460","chr7H",440882500,"","",1.1720648176595
+"grain yield","12_30346","chrUn",88362635,"","",1.1636050496248
+"grain yield","12_10581","chr7H",444623640,"","",1.1614230504397
+"grain yield","12_11146","chr7H",430314726,"","",1.156351201663
+"grain yield","12_11499","chr7H",498937414,"","",1.1553370941453
+"grain yield","12_30589","chr7H",449173785,"","",1.1532521413437
+"grain yield","11_20349","chr7H",516840406,"","",1.1490362495587
+"grain yield","12_31441","chr7H",93121008,"","",1.1486842143587
+"grain yield","11_11461","chr7H",483574783,"","",1.1468427583778
+"grain yield","12_30879","chr7H",67729209,"","",1.1380827028306
+"grain yield","11_20750","chr7H",82213270,"","",1.1310819693887
+"grain yield","11_10721","chr7H",75226809,"","",1.1261454248419
+"grain yield","12_31120","chr7H",176885969,"","",1.1247095711728
+"grain yield","12_10657","chr7H",82213134,"","",1.1211043785641
+"grain yield","12_31513","chr7H",475182581,"","",1.1208682872649
+"grain yield","12_11257","chr7H",114751411,"","",1.108736366493
+"grain yield","12_30565","chr7H",481655599,"","",1.1052072334884
+"grain yield","12_21115","chr7H",471268170,"","",1.0483373379236

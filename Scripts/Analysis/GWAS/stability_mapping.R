@@ -385,8 +385,8 @@ marker_assoc <- function(data, M_chr, K_chr) {
     map_df(~list(., names(.)) %>% pmap_df(~mutate(.x, marker = .y))) %>%
     mutate(statistic = (beta^2) / (se^2),
            pvalue = pchisq(q = statistic, df = 1, lower.tail = FALSE), 
-           qvalue = qvalue(p = pvalue)$qvalue) %>% 
-    filter(qvalue <= 0.1)
+           padj = p.adjust(p = pvalue, method = "fdr")) %>% 
+    filter(padj <= 0.1)
   
 }
 

@@ -485,21 +485,18 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
     
   })
 
-gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
+gwas_mlmm_marker <- gwas_mlmm_marker_prop %>%
   ungroup() %>%
   left_join(., snp_info) %>%
   select(trait, coef, marker, chrom, pos, cM = cM_pos, alpha, q_value, R_sqr_snp, af, AB:WA) %>%
   mutate(coef = str_replace_all(coef, coef_replace),
          MAF = pmin(af, 1 - af)) %>%
-  rename_at(.vars = vars(trait:pos), .funs = str_to_title) %>%
-  select(Trait:cM, MAF, alpha:R_sqr_snp, AB:WA) %>%
-  arrange(Trait, Coef, Chrom, Pos)
+  select(trait:cM, MAF, alpha:R_sqr_snp, AB:WA) %>%
+  arrange(trait, coef, chrom, pos)
 
-
-
-# Write a table
-save_file <- file.path(fig_dir, "significant_associations.csv")
-write_csv(x = gwas_mlmm_marker_toprint, path = save_file)
+## Write the data
+save_file <- file.path(result_dir, "gwas_mlmm_marker_associations.RData")
+save("gwas_mlmm_marker", file = save_file)
 
 
 
@@ -518,8 +515,7 @@ resample_gwas_sig_out1 <- resample_gwas_sig_out %>%
 
 ## Filter the original GWAS results for the stability QTL and the G model
 gwas_sig_fw <- gwas_pheno_mean_fw_adj %>% 
-  filter(model == "G", 
-         coef != "g", 
+  filter(coef != "g", 
          q_value <= alpha)
 
 # Iterate over the resampling results and find the signficant loci at alpha
