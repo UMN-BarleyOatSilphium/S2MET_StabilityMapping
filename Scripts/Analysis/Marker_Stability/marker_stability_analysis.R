@@ -55,19 +55,6 @@ M <- S2TP_imputed_multi_genos_mat
 
 ## Manage the mxe data and convert to a tidy data.frame
 
-# # Tidy up
-# marker_by_environment <- mxe_list %>%
-#   map(~map_df(., ~list(., names(.)) %>% pmap_df(~mutate(.x, marker = .y)))) %>%
-#   list(., names(.)) %>%
-#   pmap_df(~mutate(.x, trait = .y)) %>%
-#   as_data_frame() %>%
-#   select(trait, marker, names(.))
-# 
-# # Rename
-# mxe_df <- marker_by_environment %>% 
-#   mutate(environment = str_extract(term, "[A-Z]{3}[0-9]{2}")) %>%
-#   select(trait, marker, environment, estimate)
-
 mxe_df <- marker_by_env %>% 
   unnest(marker_effect) %>% 
   ungroup()
@@ -506,7 +493,7 @@ grange_combined_overlap_summ <- grange_combined_overlap_df1 %>%
 
 
 
-## Contribution of markers to trait variation
+### Contribution of markers to trait variation
 
 # Extract the unique stability coefficients
 # Then add the breeding program information
@@ -526,28 +513,7 @@ S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
   filter(coef != "delta")
 
 
-## Determine the proportion of GxE variance ($V_{GE}$) that is explained by 
-## sensitive/stable markers vs not signficant markers
 
-# Load the results
-load(file.path(result_dir, "S2MET_pheno_mar_fw_varcomp_GrainYield.RData"))
-
-var_comp_prop <- var_comp_out$GrainYield %>% 
-  bind_rows() %>%
-  by_row(sum, .collate = "cols", .to = "tot_var") %>%
-  mutate_at(vars(-tot_var), funs(prop = . / tot_var))
-
-# Test if the observations come from the same distribution
-var_comp_prop %>% 
-  summarize(ks_test = ks.test(x = gt_s_prop, gt_ns_prop)$p.value)
-
-# Plot density plots for each type of marker
-var_comp_prop %>%
-  select(gt_s_prop, gt_ns_prop) %>%
-  gather(term, prop) %>%
-  ggplot(aes(x = prop, fill = term)) +
-  geom_density(alpha = 0.75) +
-  theme_bw()
 
 
 
@@ -575,6 +541,12 @@ S2_MET_mean_fw_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
       select(-contains("var"))
   })
 
+# Remove extra data
+mean_fw_varcomp <- S2_MET_mean_fw_varcomp %>%
+  filter(grp == "snp") %>%
+  select(trait, coef, prop) %>%
+  ungroup()
+
 
 # Number of model fittings
 n_iter <- 100
@@ -589,12 +561,6 @@ S2_MET_mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
     
     # What is the trait we are dealing with
     tr <- unique(df$trait)
-    
-    # Copy the line_name column multiple times
-    df1 <- df %>% 
-      mutate(stab = line_name,
-             plas = line_name,
-             avg = line_name)
     
     # Extract the markers for the particular trait and separate by average/stable/plastic
     marker_types <- S2_MET_marker_eff_pheno_fw_sig %>%
@@ -613,9 +579,9 @@ S2_MET_mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
     average_marker_samples <- rerun(.n = n_iter, sample(marker_types$Average, size = sample_size))
     
     ## Fit using sommer
-    y <- df1$value
-    X <- model.matrix(~ 1, df1)
-    Z_g <- model.matrix(~ -1 + line_name, df1) %>%
+    y <- df$value
+    X <- model.matrix(~ 1, df)
+    Z_g <- model.matrix(~ -1 + line_name, df) %>%
       `colnames<-`(., colnames(K_stab))
     
     # Iterate over the samples
@@ -638,14 +604,74 @@ S2_MET_mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
         fit$var.comp %>% 
           map_df(~unname(.))
         
+      })
+    
+    
+    # Add the iteration number and output a data.frame
+    var_comp_out %>% 
+      list(., seq_along(.)) %>% 
+      pmap_df(~mutate(.x, iter = .y))
+    
+  })
+
+
+## The results from mapping suggest that stable and sensitive markers reside in 
+## similar locations (or some overlap exists). This suggest that these markers may
+## tag the same region. If this is true, we would expect a combination of stable
+## and plastic markers to not explain much more of the variation as either
+## one. Below we test that
+
+S2_MET_mean_fw_comb_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
+  group_by(trait, coef) %>%
+  do({
+    
+    df <- .
+    
+    # What is the trait we are dealing with
+    tr <- unique(df$trait)
+    
+    # Extract the markers for the particular trait and separate by average/stable/plastic
+    marker_types <- S2_MET_marker_eff_pheno_fw_sig %>%
+      filter(trait == tr) %>% 
+      split(.$significance) %>% 
+      map("marker")
+    
+    # Sample size
+    sample_size <- length(marker_types$Plastic)
+    
+    # Create random samples of the average markers
+    average_marker_samples <- rerun(.n = n_iter, sample(marker_types$Average, size = sample_size))
+    # Create random samples of a 50-50 mix of stable and plastic markers
+    mix_marker_samples <- rerun(.n = n_iter, c(sample(marker_types$Plastic, size = sample_size / 2), 
+                                               sample(marker_types$Stable, size = sample_size / 2)))
+    
+    ## Fit using sommer
+    mf <- model.frame(value ~ line_name, df)
+    y <- model.response(mf)
+    X <- model.matrix(~ 1, mf)
+    Z_g <- model.matrix(~ -1 + line_name, mf) %>%
+      `colnames<-`(., mf$line_name)
+    
+    # Iterate over the samples
+    var_comp_out <- list(average_marker_samples, mix_marker_samples) %>%
+      pmap(function(avg_sample, mix_sample) {
         
-        # # Fit the model
-        # fit <- relmatLmer(value ~ (1|stab) + (1|plas) + (1|avg), df1, 
-        #                   relmat = list(stab = K_stab, plas = K_plas, avg = K_avg))
-        # 
-        # # Return the variance components
-        # VarProp(fit) %>% 
-        #   select(-contains("var"))
+        # Create a relationship matrix
+        K_avg <- M[,avg_sample,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+        # Create mixed relationship matrix
+        K_mix <- M[,mix_sample,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+        
+        # Create a Z list
+        Z <- list(
+          mix = list(Z = Z_g, K = K_mix),
+          avg = list(Z = Z_g, K = K_avg)
+        )
+        
+        fit <- sommer::mmer(Y = y, X = X, Z = Z, silent = TRUE)
+        
+        # Extract and compute variance components
+        fit$var.comp %>% 
+          map_df(~unname(.))
         
       })
     
@@ -656,23 +682,63 @@ S2_MET_mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
       pmap_df(~mutate(.x, iter = .y))
     
   })
-    
-# Summarize
-S2_MET_mean_fw_martype_varcom_summ <- S2_MET_mean_fw_martype_varcomp %>% 
-  mutate(total = stab + plas + avg + units) %>% 
-  mutate_at(vars(stab:units), funs(. / total)) %>%
+
+
+
+
+## Summarize
+# Separate variance components for stable, plastic, and average markers
+S2_MET_mean_fw_martype_varcomp_summ <- S2_MET_mean_fw_martype_varcomp %>% 
+  mutate(total = stab + plas + avg + units,
+         stab_plas = stab + plas) %>% # Add stab + plas together
+  mutate_at(vars(stab:units, stab_plas), funs(. / total)) %>%
   select(-units:-total) %>% 
-  gather(marker_type, prop_var, stab:avg) %>%
+  gather(marker_type, prop_var, stab:avg, stab_plas) %>%
   ungroup()
 
-# Group and take the mean
-S2_MET_mean_fw_martype_varcom_mean <- S2_MET_mean_fw_martype_varcom_summ %>% 
+
+# Separate variance components for 50/50 stable/plastic markers and average markers
+S2_MET_mean_fw_comb_martype_varcomp_summ <- S2_MET_mean_fw_comb_martype_varcomp %>% 
+  mutate(total = mix + avg + units) %>% 
+  mutate_at(vars(mix:units), funs(. / total)) %>%
+  select(-units:-total) %>% 
+  gather(marker_type, prop_var, mix:avg) %>%
+  ungroup()
+
+
+# Combine
+mean_stability_martype_varcomp <- bind_rows(
+  S2_MET_mean_fw_martype_varcomp_summ,
+  filter(S2_MET_mean_fw_comb_martype_varcomp_summ, marker_type == "mix")) %>%
+  # Convert factors
+  mutate(marker_type = parse_factor(marker_type, levels = c("avg", "plas", "stab",  "stab_plas", "mix")))
+
+
+# Group and take the mean and sd 
+# Output in a table format            
+mean_stability_martype_varcomp_table <- mean_stability_martype_varcomp %>% 
   group_by(trait, coef, marker_type) %>% 
-  summarize(mean_prop = mean(prop_var)) %>% 
-  spread(marker_type, mean_prop)
+  summarize_at(vars(prop_var), funs(mean, sd)) %>%
+  mutate_at(vars(mean, sd), funs(round(., 3))) %>% 
+  mutate(temp = str_c(mean, " (", sd, ")")) %>% 
+  select(-mean, -sd) %>% 
+  spread(marker_type, temp)
+
+# Plot as a boxplot
+mean_stability_martype_varcomp %>% 
+  mutate(coef = str_replace_all(coef, c("b" = "Linear Stability", "log_delta" = "Non-Linear Stability", 
+                                    "g" = "Genotype Mean")),
+         coef = parse_factor(coef, levels = c("Linear Stability", "Non-Linear Stability", "Genotype Mean"))) %>%
+  ggplot(aes(x = coef, y = prop_var, color = marker_type)) + 
+  geom_boxplot(width = 1) + 
+  facet_grid(trait ~ .) +
+  theme_bw()
+
+
+
 
 ## Save
 save_file <- file.path(result_dir, "S2MET_marker_stability_varcomp.RData")
-save("S2_MET_mean_fw_martype_varcomp", "S2_MET_mean_fw_varcomp", file = save_file)
+save("mean_fw_varcomp", "mean_stability_martype_varcomp", file = save_file)
 
 

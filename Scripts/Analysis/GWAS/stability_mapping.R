@@ -78,6 +78,9 @@ pheno_to_model <- S2_MET_pheno_mean_fw %>%
 
 
 ## Association analysis
+# Significance threshold
+alpha <- 0.05
+
 # Fit model chromosome-wise (G model)
 snps_by_chrom <- snp_info %>%
   split(.$chrom) %>%
@@ -171,8 +174,8 @@ K_chr <- snps_by_chrom %>%
 #   se <- fit$beta.SE[-1]
 #   # Perform hypothesis test
 #   chisq <- alpha^2 / se^2
-#   p_value <- pchisq(q = chisq, df = 1, lower.tail = FALSE)
-#   q_value <- p.adjust(p = p_value, method = "BH")
+#   pvalue <- pchisq(q = chisq, df = 1, lower.tail = FALSE)
+#   qvalue <- p.adjust(p = p_value, method = "BH")
 # 
 #   # Create an empty vector
 #   R_sqr_ind <- numeric(ncol(X) - 1)
@@ -193,7 +196,7 @@ K_chr <- snps_by_chrom %>%
 #   R_sqr_adj <- R_sqr - ((1 - R_sqr) * (p / (n - p - 1)))
 # 
 #   # Return a list and a data.frame
-#   data.frame(marker = names(alpha), alpha, se, p_value, q_value, R_sqr_snp = R_sqr_ind,
+#   data.frame(marker = names(alpha), alpha, se, pvalue, qvalue, R_sqr_snp = R_sqr_ind,
 #              R_sqr = R_sqr, R_sqr_adj = R_sqr_adj, stringsAsFactors = FALSE)
 # 
 # }
@@ -274,7 +277,7 @@ K_chr <- snps_by_chrom %>%
 #       }
 # 
 #       # Are any qvalues greater than the significance threshold?
-#       nonsig <- fit_out$q_value > sig_cutoff
+#       nonsig <- fit_out$qvalue > sig_cutoff
 # 
 #     } # End of while loop
 # 
@@ -327,9 +330,24 @@ K_chr <- snps_by_chrom %>%
 #   })
 # 
 # 
+# # Adjust the p-values
+# gwas_pheno_mean_fw_adj <- gwas_pheno_mean_fw %>%
+#   group_by(trait, coef) %>%
+#   mutate(padj = p.adjust(pvalue, method = "fdr"),
+#          qvalue = qvalue(p = pvalue)$qvalue,
+#          local_fdr = qvalue(p = pvalue)$lfdr,
+#          neg_log10_fdr05 = -log10(alpha),
+#          neg_log10_fdr10 = -log10(0.10)) %>%
+#   mutate_at(vars(pvalue, padj, qvalue), funs(neg_log10 = -log10(.))) %>%
+#   ungroup() %>%
+#   mutate(plot_coef = str_replace_all(coef, coef_replace))
+# 
+# 
+# 
 # # Save this data
 # save_file <- file.path(result_dir, "S2MET_pheno_fw_mean_gwas_results.RData")
-# save("gwas_pheno_mean_fw", "gwas_mlmm_Gmodel", "gwas_mlmm_final_model", file = save_file)
+# save("gwas_pheno_mean_fw", "gwas_pheno_mean_fw_adj", "gwas_mlmm_Gmodel",
+#      "gwas_mlmm_final_model", file = save_file)
 # 
 # 
 # 
