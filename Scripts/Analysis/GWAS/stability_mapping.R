@@ -78,9 +78,7 @@ pheno_to_model <- S2_MET_pheno_mean_fw %>%
   distinct(line_name, trait, g, b, delta) %>% 
   mutate(log_delta = log(delta)) %>%
   select(-delta) %>%
-  gather(coef, value, g, b, log_delta) %>%
-  filter(trait == tr) # Filter for the trait given in the argument 
-
+  gather(coef, value, g, b, log_delta)
 
 ## Association analysis
 # Fit model chromosome-wise (G model)
