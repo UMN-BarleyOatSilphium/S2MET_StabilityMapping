@@ -20,10 +20,6 @@ package_dir <- NULL
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
 
-source("/panfs/roc/home/smithkp/neyha001/R/my_packages/pbr/R/gwas.R")
-source("/panfs/roc/home/smithkp/neyha001/R/my_packages/pbr/R/gwas_support.R")
-
-
 
 # Load all packages
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
@@ -375,6 +371,7 @@ resample_phenos_use <- S2MET_pheno_sample_fw %>%
 # Assign cores
 resample_phenos_use_list <- resample_phenos_use %>%
   ungroup() %>%
+  filter(trait == tr) %>% # Subset the trait specified in the argument
   mutate(core = sort(rep(seq(n_core), length.out = nrow(.)))) %>%
   split(.$core)
 
@@ -439,7 +436,7 @@ resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, FUN = function(p
 
 
 # Save the results
-save_file <- file.path(result_dir, "S2MET_pheno_fw_gwas_resample_results.RData")
+save_file <- file.path(result_dir, str_c("S2MET_pheno_fw_gwas_resample_results_", tr, ".RData"))
 save("resample_gwas_sig_out", file = save_file)
 
 
