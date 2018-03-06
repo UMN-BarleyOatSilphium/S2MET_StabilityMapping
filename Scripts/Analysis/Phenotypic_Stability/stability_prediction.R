@@ -142,34 +142,6 @@ cv_results_all <- cv_parts %>%
               
 
 
-# Now use different marker sets
-marker_stability_sets <- S2_MET_marker_fw_sig %>% 
-  group_by(trait, significance) %>% 
-  do(K = A.mat(X = M[,.$marker, drop = FALSE], min.MAF = 0, max.missing = 1))
-
-# Combine
-cv_parts_marker_sets <- full_join(cv_parts, marker_stability_sets, by = "trait")
-
-# Run the cross-validation
-cv_results_marker_sets <- cv_parts_marker_sets %>%
-  group_by(trait, coef, significance) %>%
-  do({
-    flds <- .$folds[[1]]
-    K_use <- .$K[[1]]
-    
-    map_df(flds, ~rowwise(.) %>% do(predict_RR(train = .$train, test = .$test, K = K_use)) %>% 
-              ungroup() %>% mutate(acc = cor(value, pred_value)) %>%
-              distinct(trait, coef,  acc)) })
-
-
-# Combine the data.frames
-cv_results <- bind_rows(
-  ungroup(cv_results_all) %>% mutate(significance = "all_markers"),
-  ungroup(cv_results_marker_sets)
-)
-
-
-
 ## Randomly subset the same number of markers for creating relationship matrices
 # Then run 50 k-fold CV replications per marker sample - average
 # Repeat this 100 times
@@ -184,13 +156,24 @@ S2_MET_marker_fw_nest <- S2_MET_marker_fw_sig %>%
   bind_rows(., S2_MET_marker_fw_sig %>% group_by(trait) %>% 
               nest(marker) %>% mutate(significance = "all"))
 
+# Combine the stable and sensitive markers into a group called "mix"
+marker_mix_nest <- S2_MET_marker_fw_nest %>% 
+  filter(significance %in% c("stable", "sensitive")) %>% 
+  group_by(trait) %>% 
+  do(data = bind_rows(.$data)) %>%
+  ungroup() %>%
+  mutate(significance = "mixed")
+
+# Combine
+S2_MET_marker_fw_nest_use <- bind_rows(S2_MET_marker_fw_nest, marker_mix_nest)
+
 # Find the minimum number of markers
-min_markers <- S2_MET_marker_fw_nest$data %>% 
+min_markers <- S2_MET_marker_fw_nest_use$data %>% 
   map_dbl(~nrow(.)) %>% 
   min()
 
 # Make random samples of the markers
-S2_MET_marker_fw_samples <- S2_MET_marker_fw_nest %>% 
+S2_MET_marker_fw_samples <- S2_MET_marker_fw_nest_use %>% 
   group_by(trait, significance) %>%
   do(data_frame(rep = seq(n_samples), sample = rerun(.n = n_samples, sample_n(.$data[[1]], size = min_markers))))
 
