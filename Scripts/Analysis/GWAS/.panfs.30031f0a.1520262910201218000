@@ -400,8 +400,6 @@ marker_assoc <- function(data, M_chr, K_chr) {
 
 # Parallelize
 resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, FUN = function(pheno_model) {
-
-#pheno_model <- resample_phenos_use_list[[1]]
   
   # Map over the data
   data_list <- pheno_model$data
