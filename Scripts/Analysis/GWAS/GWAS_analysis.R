@@ -36,9 +36,6 @@ tp_entry_list <- entry_list %>%
 alpha <- 0.05
 
 
-# Color scheme for manhattan plot
-color <- c(set_names(umn_palette(n = 4)[3:4], "Bl", "Or"), "B" = "black", "G" = "grey75")
-
 
 
 ### Population Structure

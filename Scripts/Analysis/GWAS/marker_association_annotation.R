@@ -1,17 +1,21 @@
 ## Annotate GWAS results
 ## 
 ## This script will include code for doing the following:
-## 1. Find overlap between associations for the mean and stability
-## 2. Find overlap between associations detected in our analysis versus
+## 1. Look at the LD pattern surrounding significant associations
+## 2. Find overlap between associations for the mean and stability
+## 3. Find overlap between associations detected in our analysis versus
 ## results from previous analyses
-## 3. Look at the LD pattern surrounding significant associations
 ## 4. Generate examples of overlap and nearby gene annotations.
+
+
 ## 
 
 # Load some packages
 library(tidyverse)
 library(readxl)
 library(GenomicRanges)
+library(neyhart)
+library(cowplot)
 
 # Directory containing the project repository
 repo_dir <- getwd()
@@ -19,12 +23,132 @@ repo_dir <- getwd()
 # Project and other directories
 source(file.path(repo_dir, "source.R"))
 
-# Load the genome annotation intersections
+# Load the genome annotation data
 load(file.path(result_dir, "snp_genome_annotation.RData"))
+# Read in the significant markers identified in our analysis
+load(file.path(result_dir, "gwas_adjusted_significant_results.RData"))
 
+# Add a window of 5 Mbp to either side of the significant markers
+window <- 5e6
+
+# Create a marker matrix M
+M <- S2TP_imputed_multi_genos_mat
+
+# Data frame of SNP information (pos, chrom, etc)
+snp_info <- S2TP_imputed_multi_genos_hmp %>% 
+  select(marker = rs, chrom, pos, cM_pos)
+
+
+### First examine the LD structure around significant markers
+
+# Gather significant markers and create a GRange object
+gwas_sig_mar_grange <- gwas_mlmm_marker_info %>%
+  # Add twice the window to complement the other overlapping procedures
+  mutate(start = pos - (2 * window), end = pos + (2 * window)) %>%
+  makeGRangesFromDataFrame(., keep.extra.columns = TRUE)
+
+# Gather all markers and create a Grange object
+all_marker_grange <- snp_info %>% 
+  select(marker, chrom, start = pos, cM_pos) %>% 
+  mutate(end = start) %>% 
+  makeGRangesFromDataFrame(keep.extra.columns = T)
+
+# For each significant marker, find the markers within the interval
+gwas_sig_mar_overlap <- findOverlaps(query = gwas_sig_mar_grange, subject = all_marker_grange) %>%
+  as.data.frame() %>% 
+  split(.$queryHit) %>% 
+  map(~list(query_marker = unique(gwas_sig_mar_grange[.$queryHits]$marker), 
+            subject_marker = all_marker_grange[.$subjectHits]$marker))
+
+# Now for each query marker, find the LD between that marker and the subject markers
+gwas_sig_mar_overlap_LD <- gwas_sig_mar_overlap %>% 
+  map(function(mars) M[,c(mars$query_marker, mars$subject_marker)] %>% 
+        {cor(.)^2} %>% .[mars$query_marker, mars$subject_marker,drop = FALSE]) %>%
+  map_df(~data.frame(query_marker = row.names(.), subject_marker = colnames(.), LD = c(.)))
+
+# Get the positions of these SNPS
+gwas_sig_mar_overlap_LD_pos <- gwas_sig_mar_overlap_LD %>% 
+  left_join(., snp_info, by = c("query_marker" = "marker")) %>% 
+  select(chrom, query_marker, query_pos = pos, subject_marker, LD) %>% 
+  left_join(., snp_info, by = c("subject_marker" = "marker")) %>% 
+  select(chrom = chrom.x, query_marker:subject_marker, subject_marker_pos = pos, LD)
+
+# Filter out the same markers
+gwas_sig_mar_overlap_LD_pos1 <- gwas_sig_mar_overlap_LD_pos %>%
+  filter(query_marker != subject_marker)
+
+# Plot
+g_sig_mar_LD <- gwas_sig_mar_overlap_LD_pos1 %>%
+  filter(query_marker == unique(.$query_marker)) %>% 
+  ggplot(aes(x = subject_marker_pos / 1e6, y = LD)) +
+  geom_point() + 
+  geom_vline(aes(xintercept = query_pos / 1e6)) + 
+  facet_wrap(~ query_marker, scales = "free_x")
+
+
+
+### Next determine the significant markers for the mean per se that overlap with
+### those for stability
+
+# Split the significant marker Grange by trait
+# If the trait does not have at least one coefficient, return NULL
+# Reset the window so it isn't twice the size
+gwas_sig_mar_grange_split <- gwas_sig_mar_grange %>% 
+  `start<-`(., value = .$pos - window) %>% 
+  `end<-`(., value = .$pos + window) %>%
+  as.data.frame() %>%
+  split(.$trait)
+
+gwas_sig_mar_grange_split1 <- gwas_sig_mar_grange_split[map_dbl(gwas_sig_mar_grange_split, ~n_distinct(.$coef)) > 1]
+
+## Now we are only looking at heading date and plant height
+# Split by coefficient
+gwas_sig_mar_grange_split2 <- gwas_sig_mar_grange_split1 %>%
+  map(~split(., .$coef) %>% map(makeGRangesFromDataFrame, keep.extra.columns = T))
+
+# For each trait, iterate over the non-mean per se list and find overlaps with the mean per se list
+gwas_sig_mar_grange_overlap <- gwas_sig_mar_grange_split2 %>%
+  map_df(function(trait_gr) {
+    query_coef <- "g"
+    subject_coef <- setdiff(names(trait_gr), query_coef)
+    
+    # Iterate over the stability coefficients
+    hits <- map(subject_coef, ~mergeByOverlaps(query = trait_gr[[query_coef]], subject = trait_gr[[.]]))
+    
+    # Use the hits to find the overlapping markers
+    hits %>% 
+      map_df(~as.list(.) %>% as.data.frame(.) %>% 
+               select(trait, chrom = trait_gr..query_coef...seqnames, mps_marker = marker,
+                      mps_marker_pos = pos, mps_alpha = alpha, stab_coef = coef.1,
+                      stab_marker = marker.1,stab_marker_pos = pos.1, stab_alpha = alpha.1))
+  })
+
+## Which is the minor allele?
+af <- colMeans(M + 1) / 2
+
+## What is the LD between these marker pairs?
+gwas_sig_mar_grange_overlap %>% 
+  left_join(x = ., y = select(gwas_sig_mar_overlap_LD_pos1, query_marker, subject_marker, LD), 
+            by = c("mps_marker" = "query_marker", "stab_marker" = "subject_marker")) %>%
+  mutate(mps_marker_af = af[mps_marker], stab_marker_af = af[stab_marker])
+
+
+
+
+
+
+
+### Check the significant markers for overlap with loci previously associated with
+### the mean per se of agronomic traits
 
 # Read in the QTL metadata files that were downloaded from T3
 qtl_meta <- map_df(list.files(data_dir, pattern = "meta", full.names = TRUE), read_csv)
+# Read in association data from Pauli2014 and Wang2012
+bcap_association <- read_csv(file.path(data_dir, "BCAP_association_qtl.csv")) %>%
+  mutate(position = parse_number(position)) %>%
+  select(trait, marker, chrom = chromosome, position, gene:feature, reference) %>%
+  filter(trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
+
 
 # Rename the traits
 qtl_meta_df <- qtl_meta %>%
@@ -39,29 +163,30 @@ qtl_meta_use <- qtl_meta_df %>%
   select(trait, marker, chrom, position, gene, feature) %>%
   arrange(trait, chrom, position)
 
-# Read in the significant markers identified in our analysis
-load(file.path(result_dir, "gwas_mlmm_marker_associations.RData"))
+# Combine data
+qtl_meta_use1 <- bind_rows(qtl_meta_use, bcap_association)
+
+
 
 ## Create GRanges for each marker data.frame
-qtl_meta_grange <- qtl_meta_use %>%
+qtl_meta_grange <- qtl_meta_use1 %>%
   split(.$trait) %>%
   map(~makeGRangesFromDataFrame(., keep.extra.columns = TRUE, start.field = "position", 
                                 end.field = "position"))
 
 
 
+# Use the window from above to find previously-identified markers that coincide with
+# those discovered in our anaylsis.
 
-
-# Add a window of 5 Mbp to either side of the significant markers
-window <- 5000000
-
-gwas_mlmm_grange <- gwas_mlmm_marker %>%
+# Create a GRange per trait
+gwas_mlmm_grange <- gwas_mlmm_marker_info %>% 
   mutate(start = pos - window, end = pos + window) %>%
   split(.$trait) %>%
   map(~makeGRangesFromDataFrame(., keep.extra.columns = TRUE))
 
 ## For each trait, see how many of the markers detected in our analysis overlap
-## with those on T3
+## with those previously detected in the germplasm?
 gwas_markers_overlap <- list(gwas_mlmm_grange, qtl_meta_grange) %>%
   pmap_df(function(gwas, t3) {
     overlaps <- findOverlaps(query = gwas, subject = t3)
@@ -77,58 +202,204 @@ gwas_markers_overlap <- list(gwas_mlmm_grange, qtl_meta_grange) %>%
     
     # Sort and remove superfluous columns
     bind_rows(overlap_data, non_overlap_data) %>%
-      select(trait, coef, marker, chrom = seqnames, pos, start, end, MAF:WA, 
-             qtl_marker = marker1, qtl_pos = start1, gene, feature) %>% 
+      select(trait, coef, marker, chrom = seqnames, pos, start, end, alpha, qvalue, R_sqr_snp, af, 
+             qtl_marker = marker1, qtl_pos = start1, reference) %>% 
       arrange(trait, coef, chrom, pos)
-
+    
     
   })
 
+## Convert af to MAF and parse the coefficients
+gwas_markers_overlap_toprint <- gwas_markers_overlap %>%
+  mutate(coef = str_replace_all(coef, coef_replace),
+         MAF = pmin(af, 1 - af)) %>% 
+  select(trait:qvalue, MAF, names(.)) %>%
+  arrange(trait, coef, chrom, pos)
+
+
 ## Write to a table
 save_file <- file.path(fig_dir, "gwas_significant_associations.csv")
-write_csv(x = gwas_markers_overlap, path = save_file)
+write_csv(x = gwas_markers_overlap_toprint, path = save_file)
 
-
+## Re-annotate by hand
 # Read in the annotated excel file
-gwas_markers_overlap <- read_excel(path = file.path(fig_dir, "Main_Figures/gwas_significant_associations.xlsx"),
-                                   na = c("NA")) %>%
-  mutate(qtl_pos = parse_number(qtl_pos))
+gwas_markers_overlap <- file.path(fig_dir, "gwas_significant_associations_annotated.xlsx") %>%
+  read_excel(na = c("NA")) %>% 
+  rename_all(str_to_lower) %>% 
+  dplyr::rename(coef = character, chrom = chromosome)
+  
 
-# Number of associations per trait
 
-
-
-## Count the number of overlaps per significant GWAS marker
-gwas_markers_overlap_count <- gwas_markers_overlap %>% 
+## Summarize this table into a condensed version for the main manuscript
+gwas_markers_overlap_summ <- gwas_markers_overlap %>%
   group_by(trait, coef, marker) %>% 
-  summarize(n_overlap = sum(!is.na(source)))
+  summarize(overlapped = any(!is.na(coincidentcharacter)), ref = list(reference)) %>%
+  summarize(n_overlap = sum(overlapped), n_mar = n(), ref = list(ref)) %>% 
+  ungroup() %>%
+  mutate(ref = map_chr(ref, ~unlist(.) %>% str_split(";") %>% unlist() %>% 
+                            str_trim() %>% unique() %>% na.omit() %>% str_c(collapse = "; "))) %>%
+  dplyr::rename(Trait = trait, Character = coef, `Coincident Markers` = n_overlap,
+         `Total Markers` = n_mar, References = ref)
 
-## Summarize overlaps per trait-coef combination
-gwas_markers_overlap_count %>% 
-  summarize(count_overlap = sum(n_overlap > 0),
-            prop_overlap = mean(n_overlap > 0))
-
-gwas_markers_overlap_count %>% 
-  ungroup() %>% 
-  filter(coef != "Genotype Mean") %>%   
-  summarize(count_overlap = sum(n_overlap > 0),
-            prop_overlap = mean(n_overlap > 0))
+## Write this
+save_file <- file.path(fig_dir, "gwas_sig_marker_annotated_summary.csv")
+write_csv(x = gwas_markers_overlap_summ, path = save_file)
 
 
-# What proportion of markers associated with stability overlapped with previous
-# main-effect QTL?
-# 
 
-# Average distance of overlapping markers with the closest overlapping QTL
-gwas_markers_overlap %>% 
-  # Calculate the distance from the GWAS marker to the QTL marker
-  mutate(marker_qtl_distance = abs(pos - qtl_pos)) %>%
+
+### Summary statistics
+# Number of associations per trait-coef pair
+# Also show the distinct chromosomes
+gwas_markers_overlap %>%
+  group_by(trait, coef) %>%
+  nest(marker, chrom) %>%
+  mutate(n_association = map_int(data, ~n_distinct(.$marker)),
+         chrom = map(data, ~unique(.$chrom))) %>%
+  select(-data) %>% 
+  as.data.frame()
+
+## How many markers overlapped with previous associations?
+## Calculate by trait and coefficient
+gwas_markers_overlap %>%
   group_by(trait, coef, marker) %>% 
-  summarize(marker_qtl_distance = min(marker_qtl_distance)) %>%
-  summarize(mean_distance = mean(marker_qtl_distance, na.rm = TRUE))
+  summarize(overlapped = any(!is.na(coincidentcharacter))) %>% 
+  summarize(n_overlap = sum(overlapped), prop_overlapped = n_overlap / n())
+
+## Quick notes
+# 3 / 8 HD linear stability QTL overlapped with genotype mean QTL
+# 5 / 8 HD genotype mean QTL overlapped with stability QTL
+
+## What is the mean amount of variation explained by markers influencing stability
+## that overlapped with mean per se versus not overlapped?
+gwas_markers_overlap_rsqr <- gwas_markers_overlap %>% 
+  group_by(trait, coef, marker) %>%
+  mutate(overlapped = any(!is.na(coincidentcharacter))) %>% 
+  distinct(trait, coef, marker, alpha, `r^2`, overlapped) %>% 
+  group_by(trait, coef, overlapped) %>% 
+  summarize(n_mar = n(), R_sqr_snp_mean = mean(`r^2`),
+            R_sqr_snp = list(`r^2`))
+
+
+gwas_markers_overlap_rsqr_test <-gwas_markers_overlap_rsqr %>% 
+  do(rank_sum_test = {
+    df <- .
+    if (nrow(df) > 1) {
+      wilcox.test(x = df$R_sqr_snp[[1]], y = df$R_sqr_snp[[2]])
+    } else {
+      NA
+    }
+  })
+    
 
 
 
+
+### Visualize the overlaps
+# Using the overlaps in the above analysis, visualize the overlaps by comparing plots
+
+# Function to label y axis
+y_lab <- function(x) format(x, nsmall = 1)
+
+## First show the manhattan plots with annotation
+# Manhanttan plot modifier
+g_mod_man <- list(
+  geom_point(),
+  geom_hline(yintercept = -log10(0.05), lty = 2),
+  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+  scale_color_manual(values = color, guide = FALSE),
+  scale_y_continuous(labels = y_lab),
+  ylab(expression(-log[10](italic(q)))),
+  xlab("Position (Mbp)"),
+  theme_bw(),
+  theme_manhattan(),
+  theme(panel.border = element_blank())
+)
+
+## Replace the data in the 'gwas_pheno_mean_fw_adj' data frame with the data in the 
+## 'gwas_mlmm_marker_info' data frame if markers are in the 'gwas_mlmm_marker_info'
+## data.frame
+gwas_marker_sig <- gwas_mlmm_marker_info %>%
+  select(trait, coef, marker, chrom) %>%
+  mutate(color = "Bl")
+
+gwas_marker_notsig <- gwas_pheno_mean_fw_adj %>%
+  select(trait, coef, marker, chrom) %>%
+  dplyr::setdiff(., select(gwas_marker_sig, -color)) %>%
+  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G"))
+
+## Replace data
+gwas_results_toplot <- bind_rows(
+  left_join(gwas_marker_notsig, gwas_pheno_mean_fw_adj) %>% 
+    select(trait, coef, marker, chrom, pos, beta, pvalue, qvalue, color),
+  left_join(gwas_marker_sig, gwas_mlmm_marker_info) %>% 
+    select(trait, coef, marker, chrom, pos, beta = alpha, pvalue, qvalue, color)
+) %>%
+  mutate(qvalue_neg_log10 = -log10(qvalue),
+         coef = str_replace_all(coef, coef_replace))
+
+
+
+## Iterate over traits to create the completed manhattan plot
+for (tr in unique(gwas_results_toplot$trait)) {
+
+  # Subset the qtl meta data
+  qtl_meta_use1_tr <- qtl_meta_use1 %>% 
+    filter(trait == tr) %>% 
+    select(trait:chrom, pos = position) %>% 
+    distinct()
+  
+  ## First construct the manhattan plot
+  g_man <- gwas_results_toplot %>%
+    filter(trait == tr) %>%
+    ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10, group = chrom, col = color)) + 
+    facet_grid(coef ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+    g_mod_man + 
+    ylab(expression(-log[10](italic(q))~'for single-trait')) +
+    labs(title = tr) +
+    theme(strip.background.x = element_blank(),
+          strip.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank())
+  
+  # Next construct the pleiotropy plot
+  g_man_plei <- gwas_pheno_mean_fw_plei_toplot %>%
+    filter(trait == tr) %>%
+    ggplot(aes(x = pos / 1000000, y = -log10(qvalue), color = color)) +
+    facet_grid(stab_coef ~ chrom, switch = "x", scales = "free_x", space = "free_x") +
+    g_mod_man +
+    ylab(expression(atop(-log[10](italic(q))~'for pleiotropy', 'with Genotype Mean'))) +
+    theme(strip.background.x = element_blank(),
+          strip.text.x = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_blank(),
+          axis.title.x = element_blank())
+  
+  # Next construct the annotation plot
+  g_ann <- snp_info %>%
+    ggplot(aes(x = pos / 1e6, y = 0)) +  # Need to use the snp data to get the x-axes aligned
+    geom_point(color = "white") + 
+    # geom_text_repel(size = 2, ) +
+    geom_segment(data = qtl_meta_use1_tr, lwd = 5, 
+                 mapping = aes(x = (pos - 1e6) / 1e6, xend = (pos + 1e6) / 1e6, y = 0, yend = 0)) +
+    xlab("Position (Mbp)") + 
+    facet_grid(. ~ chrom, switch = "x", scales = "free", space = "free_x") +
+    theme_manhattan() +
+    theme(panel.border = element_blank(),
+          axis.text.y = element_blank(),
+          axis.title.y = element_blank(),
+          axis.ticks.y = element_blank())
+    
+  ## Combine
+  g_man_ann <- plot_grid(g_man, g_man_plei, g_ann, ncol = 1, rel_heights = c(1, 2/3, 0.25), 
+                         align = "hv", axis = "lr", labels = c("A", "B", "C"))
+
+  # Save
+  save_file <- file.path(fig_dir, str_c("gwas_manhattan_complete_annotated_", tr, ".jpg"))
+  ggsave(filename = save_file, plot = g_man_ann, width = 9, height = 10, dpi = 1000)
+  
+}
 
 
 
@@ -137,7 +408,6 @@ gwas_markers_overlap %>%
 ### To show more closely the coincidence of heading date mean per se associations
 ### and linear stability associations, create a combine plot with the results for
 ### mean per se, the results for linear stability, and the pleiotropy results
-
 
 
 # Function to label y axis
@@ -150,8 +420,8 @@ g_mod_man <- list(
   scale_color_manual(values = color, guide = FALSE),
   ylab(expression(-log[10](italic(q)))),
   theme_bw(),
-  theme_manhattan(),
   theme(panel.border = element_blank(),
+        panel.grid = element_blank(),
         axis.text.x = element_blank(),
         axis.ticks.x = element_blank(),
         axis.title.x = element_blank(),
@@ -160,493 +430,203 @@ g_mod_man <- list(
 
 
 ### Example for heading date
+tr <- "HeadingDate"
+chr <- 5
+start <- 580e6
+end <- 620e6
 
 # Extract the results for mean per se and linear stability
 gwas_hd_example <- gwas_pheno_mean_fw_adj %>% 
-  filter(trait == "HeadingDate", coef %in% c("g", "b"), chrom == 5, between(pos, 575000000, 625000000))
+  filter(trait == tr, coef %in% c("g", "b"), 
+         chrom == chr, between(pos, start, end))
 
-# First plot the results for mean per se
-g_hd_example_mean <- gwas_hd_example %>% 
-  filter(coef == "g") %>% 
-  ggplot(aes(x = pos / 1000000, y = -log10(q_value))) + 
-  g_mod_man +
-  ylab(expression(log[10](italic(q))~'for mean'~italic(per~se)))
-
-# Second plot the results for linear stability
-g_hd_example_fw <- gwas_hd_example %>% 
-  filter(coef == "b") %>% ggplot(aes(x = pos / 1000000, y = log10(q_value))) + 
-  g_mod_man +
-  ylab(expression(log[10](italic(q))~'for linear stability'))
-
-# Plot gene annotations
+# Extract the gene annotations
 gene_annotations <- snp_info_grange_overlap$genes %>% 
   as.data.frame() %>% 
   select(chrom = 1, gene_start = ..start, gene_end = ..end, gene_id) %>% 
   mutate(chrom = parse_number(chrom)) %>% 
-  filter(chrom == 5, between(gene_start, 575000000, 625000000), 
-         between(gene_end, 575000000, 625000000)) %>% 
+  filter(chrom == chr, between(gene_start, start, end), 
+         between(gene_end, start, end)) %>% 
   distinct()
+
+## Data.frame for signficant BOPA hits for heading date
+qtl_meta_use_hd <- qtl_meta_use1 %>% 
+  filter(trait == tr, chrom == chr, between(position, start, end)) %>%
+  mutate(gene_start = position, gene_end = position) %>%
+  select(chrom, gene_start, gene_end, gene_id = marker)
 
 # Data.frame for Vrn1
 vrn1_data <- data.frame(chrom = 5, gene_start = 599135017, gene_end = 599147377, gene_id = "Vrn-H1")
 
-g_hd_annotations <- gene_annotations %>% 
+
+
+# First plot the results for mean per se
+g_hd_example_mean <- gwas_hd_example %>% 
+  filter(coef == "g") %>% 
+  ggplot(aes(x = pos / 1000000, y = -log10(qvalue))) + 
+  g_mod_man +
+  ylab(expression(-log[10](italic(q))~'for mean'~italic(per~se))) +
+  labs(title = tr) + 
+  theme(plot.margin = unit(c(0, 0, 0, 0), units = "cm"),
+        plot.title = element_text(hjust = 0.5))
+
+# Second plot the results for linear stability
+g_hd_example_fw <- gwas_hd_example %>% 
+  filter(coef == "b") %>% ggplot(aes(x = pos / 1000000, y = log10(qvalue))) + 
+  g_mod_man +
+  ylab(expression(log[10](italic(q))~'for linear stability'))  +
+  theme(plot.margin = unit(c(0, 0, 0, 0), units = "cm"))
+
+
+g_hd_annotations <- gene_annotations %>%
+# g_hd_annotations <- gene_annotations_use %>% 
   ggplot(aes(x = gene_start / 1000000, xend = gene_end / 1000000, y = 0, yend = 0)) + 
-  geom_segment(lwd = 5) + 
+  geom_segment(lwd = 5, color = "white") + # Change color to white to hide
   # Add VRN-H1
-  geom_segment(data = vrn1_data, 
+  geom_segment(data = vrn1_data,
                aes(x = (gene_start - 100000) / 1000000, xend = (gene_end + 100000) / 1000000,
-                   y = 0.1, yend = 0.1), inherit.aes = T, lwd = 5) + 
-  geom_label(data = vrn1_data, aes(label = gene_id, y = 0.1), inherit.aes = T, vjust = 1.5, fontface = "italic") +
+                   y = 1, yend = 1), inherit.aes = T, lwd = 5, color = color[2]) +
+  geom_text(data = vrn1_data, aes(label = gene_id, y = 1), inherit.aes = T, vjust = 2, fontface = "italic") +
+  # Add significant QTL
+  geom_segment(data = qtl_meta_use_hd,
+               aes(x = (gene_start - 100000) / 1000000, xend = (gene_end + 100000) / 1000000,
+                   y = 0.5, yend = 0.5), inherit.aes = T, lwd = 5, color = color[1]) +
+  # geom_text(data = qtl_meta_use_hd, aes(label = gene_id, y = 0.5), inherit.aes = T, vjust = 2, 
+  #           check_overlap = T, size = 3, hjust = "inward") +
   xlab("Position on Chromosome 5 (Mbp)") +
+  ylim(c(0, 1)) +
   theme_bw() +
   theme(axis.line.x = element_line(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks.y = element_blank(),
         panel.border = element_blank(),
-        panel.grid = element_blank())
+        panel.grid = element_blank(),
+        plot.margin = unit(c(0, 0.5, 0, 0.5), units = "cm"))
 
 # 
-# ## Subset the pleiotropy results
-# g_hd_example_plei <- gwas_pheno_mean_fw_plei_toplot %>% 
-#   filter(trait == "HeadingDate", stab_coef == "Linear Stability", chrom == 5, 
-#          between(pos, 575000000, 625000000)) %>%
-#   ggplot(aes(x = pos / 1000000, y = -log10(qvalue), color = color)) + 
-#   xlab("Position on Chromosome 5 (Mbp)") +
-#   g_mod_man +
-#   theme(axis.text.x = element_text(),
-#         axis.ticks.x = element_line(),
-#         axis.line.x = element_line(),
-#         axis.title.x = element_text())
+## Subset the pleiotropy results
+g_hd_example_plei <- gwas_pheno_mean_fw_plei_toplot %>%
+  filter(trait == tr, stab_coef == "Linear Stability", chrom == chr,
+         between(pos, start, end)) %>%
+  ggplot(aes(x = pos / 1000000, y = -log10(qvalue))) +
+  g_mod_man +
+  ylab(expression(-log[10](italic(q))~'for pleiotropy')) +
+  theme(panel.border = element_rect(fill = "transparent"),
+        axis.text.x = element_text(),
+        axis.ticks.x = element_line(),
+        axis.line.x = element_line())
 
 
 # Combine
-hd_example_combine <- plot_grid(g_hd_example_mean, g_hd_annotations, g_hd_example_fw, 
-                                ncol = 1, align = "hv", 
-                                rel_heights = c(0.5, 0.2, 0.5))
+hd_example_combine <- plot_grid(
+  g_hd_example_mean, g_hd_annotations, g_hd_example_fw, 
+  g_hd_example_plei,
+  ncol = 1, align = "hv", 
+  rel_heights = c(1, 0.4, 1, 0.4))
 
 ## Save
-save_file <- file.path(fig_dir, "hd_annotation_example.jpg")
-ggsave(filename = save_file, plot = hd_example_combine, width = 6, height = 8, dpi = 1000)
+save_file <- file.path(fig_dir, "hd_gwas_annotation_example.jpg")
+ggsave(filename = save_file, plot = hd_example_combine, width = 6, height = 10, dpi = 1000)
+
+
 
 
 
 ## Plot the example for height
 tr <- "PlantHeight"
-chr <- 7
-start <- 615e6
-end <- 625e6
+chr <- 6
+start <- 0
+end <- 20e6
 
 # Extract the results for mean per se and linear stability
 gwas_ph_example <- gwas_pheno_mean_fw_adj %>% 
   filter(trait == tr, coef %in% c("g", "b"), chrom == chr, between(pos, start, end))
 
+## Data.frame for signficant BOPA hits for height
+qtl_meta_use_ph <- qtl_meta_use1 %>% 
+  filter(trait == tr, chrom == chr, between(position, start, end)) %>%
+  mutate(gene_start = position, gene_end = position) %>%
+  select(chrom, gene_start, gene_end, gene_id = marker)
+
+
 # First plot the results for mean per se
 g_ph_example_mean <- gwas_ph_example %>% 
   filter(coef == "g") %>% 
-  ggplot(aes(x = pos / 1000000, y = -log10(q_value))) + 
+  ggplot(aes(x = pos / 1000000, y = -log10(qvalue))) + 
   g_mod_man +
-  ylab(expression(log[10](italic(q))~'for mean'~italic(per~se)))
+  ylab(expression(-log[10](italic(q))~'for mean'~italic(per~se))) +
+  labs(title = tr) + 
+  theme(plot.margin = unit(c(0, 0, 0, 0), units = "cm"),
+        plot.title = element_text(hjust = 0.5))
 
 # Second plot the results for linear stability
 g_ph_example_fw <- gwas_ph_example %>% 
-  filter(coef == "b") %>% ggplot(aes(x = pos / 1000000, y = log10(q_value))) + 
+  filter(coef == "b") %>% ggplot(aes(x = pos / 1000000, y = log10(qvalue))) + 
   g_mod_man +
-  ylab(expression(log[10](italic(q))~'for linear stability'))
+  ylab(expression(log[10](italic(q))~'for linear stability'))  +
+  theme(plot.margin = unit(c(0, 0, 0, 0), units = "cm"))
 
 gene_annotations <- snp_info_grange_overlap$genes %>% 
   as.data.frame() %>% 
   select(chrom = 1, gene_start = ..start, gene_end = ..end, gene_id) %>% 
   mutate(chrom = parse_number(chrom)) %>% 
-  filter(chrom == chr, between(gene_start, start, end), between(gene_end, start, end)) %>% 
+  filter(chrom == chr, between(gene_start, start, end), 
+         between(gene_end, start, end)) %>% 
   distinct()
 
 # Add annotation
 g_ph_annotations <- gene_annotations %>% 
-  ggplot(aes(x = gene_start / 1000000, xend = gene_end / 1000000, y = 0, yend = 0)) + 
-  geom_segment(lwd = 5) + 
-  # # Add VRN-H1
-  # geom_segment(data = vrn1_data, 
-  #              aes(x = (gene_start - 100000) / 1000000, xend = (gene_end + 100000) / 1000000,
-  #                  y = 0.1, yend = 0.1), inherit.aes = T, lwd = 5) + 
-  # geom_label(data = vrn1_data, aes(label = gene_id, y = 0.1), inherit.aes = T, vjust = 1.5, fontface = "italic") +
-  xlab("Position on Chromosome 5 (Mbp)") +
+ggplot(aes(x = gene_start / 1000000, xend = gene_end / 1000000, y = 0, yend = 0)) + 
+  geom_segment(lwd = 5, color = "white") + # Change color to white to hide
+  # Add significant QTL
+  geom_segment(data = qtl_meta_use_ph,
+               aes(x = (gene_start - 100000) / 1000000, xend = (gene_end + 100000) / 1000000,
+                   y = 0.5, yend = 0.5), inherit.aes = T, lwd = 5, color = color[1]) +
+  # geom_text(data = qtl_meta_use_ph, aes(label = gene_id, y = 0.5), inherit.aes = T, vjust = 2, 
+  #           check_overlap = T, size = 3, hjust = "inward") +
+  xlab("Position on Chromosome 7 (Mbp)") +
+  ylim(c(0, 1)) +
   theme_bw() +
   theme(axis.line.x = element_line(),
         axis.text.y = element_blank(),
         axis.title.y = element_blank(),
         axis.ticks.y = element_blank(),
         panel.border = element_blank(),
-        panel.grid = element_blank())
+        panel.grid = element_blank(),
+        plot.margin = unit(c(0, 0.5, 0, 0.5), units = "cm"))
+
+## Subset the pleiotropy results
+g_ph_example_plei <- gwas_pheno_mean_fw_plei_toplot %>%
+  filter(trait == tr, stab_coef == "Linear Stability", chrom == chr,
+         between(pos, start, end)) %>%
+  ggplot(aes(x = pos / 1000000, y = -log10(qvalue))) +
+  g_mod_man +
+  ylab(expression(-log[10](italic(q))~'for pleiotropy')) +
+  theme(panel.border = element_rect(fill = "transparent"),
+        axis.text.x = element_text(),
+        axis.ticks.x = element_line(),
+        axis.line.x = element_line())
+
 
 # Combine
-ph_example_combine <- plot_grid(g_ph_example_mean, g_ph_annotations, g_ph_example_fw, 
-                                ncol = 1, align = "hv", 
-                                rel_heights = c(0.5, 0.2, 0.5))
+ph_example_combine <- plot_grid(
+  g_ph_example_mean, g_ph_annotations, g_ph_example_fw, 
+  g_ph_example_plei,
+  ncol = 1, align = "hv", 
+  rel_heights = c(1, 0.4, 1, 0.4))
 
+## Save
+save_file <- file.path(fig_dir, "ph_gwas_annotation_example.jpg")
+ggsave(filename = save_file, plot = ph_example_combine, width = 6, height = 10, dpi = 1000)
 
 
 
+## Combine the heading date and plant height plots
+hd_ph_example_combine <- plot_grid(hd_example_combine, ph_example_combine, ncol = 2,
+                                   align = "hv", labels = c("A", "B"))
 
-
-
-
-
-
-#### Intervals around significant associations
-
-# Group significant SNPs for each trait that are within 5 Mbp and in high LD ($r^2 \ge 0.80$). 
-
-
-## Write a function that uses distance and LD to group SNPs
-snp_clust <- function(grange, LD, wind.size, LD.threshold) {
-  
-  # Grab the SNP positions
-  pos <- start(grange)
-  # Grab the marker names
-  mar_names <- names(grange)
-  
-  # Start some vectors
-  dist_list <- LD_list <- vector("numeric", length(grange))
-  
-  # Start a distance group and LD group count
-  dist_group <- LD_group <- 1
-  
-  # Add the first SNP to group 1
-  dist_list[1] <- LD_list[1] <- dist_group
-  
-  # Start the snp counter
-  i = 2
-  # Iterate over the markers in order
-  while (i <= length(grange)) {
-    
-    # Is marker i within the window size of the previous marker?
-    window <- c(pos[i] - wind.size, pos[i] + wind.size)
-    is_within <- between(pos[i - 1], left = window[1], right = window[2])
-    
-    # If so, add this marker to the dist group of the previous
-    if (is_within) {
-      dist_list[i] <- dist_group
-    } else {
-      dist_group <- dist_group + 1
-      dist_list[i] <- dist_group
-    }
-    
-    i_dist_group <- setdiff(which(dist_list == dist_group), i)
-    # Is marker i within the LD cutoff of any of the markers in the same distance group?
-    is_in_LD <- any(LD[i, i_dist_group] >= LD.threshold)
-    
-    # If so, add this marker to the LD group of the previous
-    if (is_in_LD) {
-      LD_list[i] <- LD_group
-    } else {
-      LD_group <- LD_group + 1
-      LD_list[i] <- LD_group
-    }
-    
-    # enumerate i
-    i <- i + 1
-    
-  }
-  
-  # Group
-  data.frame(marker = mar_names, group = as.numeric(as.factor(dist_list + LD_list)), 
-             stringsAsFactors = FALSE)
-  
-}
-
-# LD threshold for grouping markers
-LD_threshold <- 0.80
-# Window size for genomic region
-# Note that half of this value will be used for overlaps
-wind_size <- 10000000
-
-# Create GRanges objects
-sig_markers_GRange <- gwas_mlmm_Gmodel %>%
-  ungroup() %>%
-  mutate(snp_pos = pos) %>%
-  group_by(trait, coef, chrom) %>%
-  do(grange = {
-    df <- . 
-    makeGRangesFromDataFrame(
-      df = df, keep.extra.columns = TRUE, ignore.strand = TRUE, seqnames.field = "chrom", 
-      start.field = "pos", end.field = "pos") %>% 
-      `ranges<-`(., value = IRanges(start = start(.) - (wind_size / 2), end = end(.) + (wind_size / 2))) })
-
-# Calculate LD between all markers for each group,
-# then use the LD to cluster markers
-sig_markers_groups <- sig_markers_GRange %>% 
-  group_by(trait, coef, chrom) %>%
-  do(grange = {
-    grange <- .$grange[[1]]
-    
-    # If only one SNP, return a regular data.frame
-    if (length(grange) == 1) {
-      grange$group <- "group1"
-      
-    } else {
-      
-      # Calculate LD
-      LD <- cor(M[,grange$marker])^2
-      
-      # Add names to the grange
-      names(grange) <- grange$marker
-      
-      # Cluster
-      groups <- snp_clust(grange = grange, LD = LD, wind.size = wind_size, LD.threshold = LD_threshold)
-      grange$group <- str_c("group", groups$group)
-    }
-    
-    grange
-  })
-
-# Combine the data
-sig_markers_grange_df <- sig_markers_groups$grange %>% 
-  map_df(as.data.frame) %>% 
-  as_data_frame() %>%
-  dplyr::rename(chrom = seqnames)
-
-# Save this
-save_file <- file.path(result_dir, "S2MET_gwas_sig_loci.RData")
-save("sig_markers_grange_df", file = save_file)
-
-
-
-
-
-
-# Summarize the number of significant markers and intervals
-
-## Summarize the number of significant markers and the number of sgnificant intervals
-sig_summary <- sig_markers_grange_df %>% 
-  group_by(trait, coef, chrom) %>% 
-  summarize(SNP = n_distinct(marker), Interval = n_distinct(group)) %>% 
-  summarize_at(vars(SNP, Interval), sum)
-
-# Translator for coefficient
-coef_repl <- function(x) {
-  case_when(x == "log_delta" ~ "Non-Linear Stability",
-            x == "g" ~ "Genotype Mean", 
-            x == "b" ~ "Linear Stability")
-}
-
-## Plot the intervals
-# First change the coefficient to a factor and create y axis 
-g_sig_interval <- sig_markers_grange_df %>% 
-  mutate(coef = parse_factor(coef, levels = c("g", "b", "log_delta")),
-         y_coef = as.numeric(coef) / 2) %>% 
-  ggplot() + 
-  geom_segment(aes(x = y_coef, xend = y_coef, y = start / 1000000, 
-                   yend = end / 1000000, col = coef), size = 3) + 
-  geom_segment(data = barley_lengths, aes(x = 0, y = 0, xend = 0, yend = length / 1000000), 
-               inherit.aes = FALSE, size = 2, lineend = "round", col = "grey70") + 
-  ylab("Position (Mbp)") +
-  xlim(c(-1, 2)) +
-  facet_grid(trait ~ chrom, switch = "x") + 
-  scale_y_reverse() +
-  theme_bw() +
-  theme(panel.grid = element_blank(), 
-        panel.border = element_blank(), 
-        panel.spacing.y = unit(0.5, units = "cm"),
-        axis.text.x = element_blank(), 
-        axis.title.x = element_blank(), 
-        axis.ticks.x = element_blank(),
-        strip.background = element_blank())
-
-save_file <- file.path(fig_dir, "significant_loci_intervals.jpg")
-ggsave(filename = save_file, plot = g_sig_interval, height = 7, width = 9)
-
-
-
-# Create genomic ranges for each of the trait-coef combinations
-
-grange_sep <- sig_markers_grange_df %>% 
-  group_by(trait, coef) %>% 
-  do(Grange = GRanges(.)) %>%
-  ungroup()
-
-# Group by trait and find potential overlap between genotype mean intervals and
-# plasticity intervals
-grange_compare <- grange_sep %>% 
-  group_by(trait) %>% 
-  do({
-    df <- .
-    
-    # Data.frame of combinations
-    combn_df <- combn(x = df$coef, m = 2) %>%
-      t() %>%
-      as.data.frame() %>%
-      `colnames<-`(., c("coef1", "coef2")) %>%
-      map(~as.character(.))
-    
-    # Iterate over the combinations
-    compare_out <- map2(.x = combn_df$coef1, .y = combn_df$coef2, 
-                        function(c1, c2) {
-                          grange1 <- subset(df, coef == c1)$Grange[[1]]
-                          grange2 <- subset(df, coef == c2)$Grange[[1]]
-                          
-                          # Calculate the distance to neareast and add the grange information
-                          dtn <- suppressWarnings(distanceToNearest(x = grange1, subject = grange2)) %>%
-                            as_data_frame() %>% 
-                            mutate(queryGrange = map(queryHits, ~grange1[.]), 
-                                   subjectGrange = map(subjectHits, ~grange2[.]))
-                        })
-    
-    # Return the comparisons
-    combn_df %>% 
-      as_data_frame() %>%
-      mutate(comparison = compare_out) })
-
-
-# Look at the comparisons where overlap is present and determine the LD between
-# the SNP in those intervals
-grange_compare_LD <- grange_compare %>%
-  unnest() %>% 
-  filter(distance == 0) %>%
-  do({
-    
-    df <- .
-    
-    # Extract the markers
-    overlap_df_grange <- df %>% 
-      select(trait:coef2, contains("Grange")) %>%
-      gather(temp, coef, coef1, coef2) %>% 
-      gather(temp1, Grange, contains("Grange")) %>% 
-      filter(temp == "coef1" & temp1 == "queryGrange" | temp == "coef2" & temp1 == "subjectGrange") %>% 
-      select(-contains("temp")) %>% 
-      mutate(Grange = map(Grange, as.data.frame)) %>% 
-      unnest()
-    
-    # Return the LD
-    overlap_df_grange %>% 
-      select(trait, coef, chrom = seqnames, start, end, marker:group) %>% 
-      mutate(LD = cor(M[,overlap_df_grange$marker])[1,2]^2)
-    
-  })
-
-grange_compare_LD %>% 
-  select(trait, coef, chrom, alpha, q_value, snp_pos, LD)
-
-
-
-
-## For each of the significant intervals, plot the LD of those markers with nearby markers within 10 Mbp
-
-# In each group, select the marker with the highest p-value
-sig_markers_grange_df_select <- sig_markers_grange_df %>% 
-  group_by(trait, coef, chrom, group) %>% 
-  filter(p_value == min(p_value))
-
-# Calculate LD across all markers on each chromosome
-snp_LD <- snp_info %>% 
-  split(.$chrom) %>% 
-  map("marker") %>% 
-  map(~cor(M[,.])^2)
-
-# Iterate over each marker and calculate the LD between that marker
-# and all nearby markers within the interval
-sig_markers_grange_df_select_LD <- sig_markers_grange_df_select %>%
-  group_by(trait, coef, marker) %>%
-  do({
-    df <- .
-    
-    nearby_markers <- snp_info %>% 
-      filter(chrom == df$chrom, between(pos, left = df$start, right = df$end),
-             marker != df$marker)
-    
-    # Extract LD
-    df_LD <- snp_LD[[df$chrom]][df$marker, nearby_markers$marker]
-    
-    # Add the LD to the nearby markers and return
-    to_return <- nearby_markers %>% 
-      mutate(LD = df_LD) 
-    
-    df %>% 
-      select(chrom, snp_pos, alpha:q_value) %>% 
-      mutate(snp_LD = list(to_return)) })
-
-# Plot the significant marker and the LD of the surrounding markers
-g_sig_marker_LD <- sig_markers_grange_df_select_LD %>% 
-  unnest() %>% 
-  ggplot() + 
-  geom_point(aes(x = pos / 1000000, y = LD)) + 
-  geom_vline(aes(xintercept = snp_pos / 1000000)) + 
-  ylab(expression(r^2)) + 
-  xlab("Position (Mbp)") + 
-  ylim(c(0,1)) +
-  facet_wrap_paginate(~ trait + coef + marker, nrow = 3, ncol = 3, scales = "free_x")
-
-# Iterate over the pages and save
-
-
-
-
-
-
-
-## Window overlap
-## 
-## First find the overlap between mean and stability and quantify
-## Then find the overlap between stability and marker effect stability
-
-# Convert the mean and stability intervals into GRanges
-sig_intervals <- sig_loci_df_intervals %>% 
-  droplevels() %>% 
-  mutate(seqnames = str_c("chr", .$chrom, "H")) %>%
-  distinct(trait, assoc_test, interval_start, interval_end, seqnames) %>%
-  group_by(assoc_test, trait) %>% 
-  do(range = GRanges(seqnames = .$seqnames, ranges = IRanges(start = .$interval_start, end = .$interval_end))) %>%
-  select(trait, names(.)) %>%
-  spread(assoc_test, range)
-
-
-
-# Write a function that takes two lists of Ranges and finds the overlaps
-# and number of overlaps
-find_overlaps <- function(q, s) {
-  # If null, return NA
-  if (is.null(q) | is.null(s)) {
-    data_frame(hits = list(NA), query_hits = list(NA), subject_hits = list(NA),
-               query_length = as.integer(NA), subject_length = as.integer(NA),
-               query_hits_n = as.integer(NA), subject_hits_n = as.integer(NA))
-    
-    
-  } else {
-    # Find overlaps
-    hits <- suppressWarnings(findOverlaps(query = q, subject = s))
-    # Data frame of query and subject hits, lengths, number
-    data_frame(hits = list(hits)) %>% 
-      mutate(query_hits = map(hits, ~q[queryHits(.),]), 
-             subject_hits = map(hits, ~s[subjectHits(.),]),
-             query_length = length(q), subject_length = length(s)) %>% 
-      mutate_at(vars(contains("_hits")), funs(n = map_dbl(., length)))
-  }
-}
-
-
-
-# For each trait, find the overlaps between mean and stability
-interval_overlaps <- sig_intervals %>% 
-  mutate(mean_linear_stability_overlap = list(main_effect_mean, linear_stability) %>% pmap(find_overlaps),
-         mean_nonlinear_stability_overlap = list(main_effect_mean, `non-linear_stability`) %>% pmap(find_overlaps),
-         linear_stability_mar_linear_stability_overlap = list(linear_stability, linear_marker_stability) %>% pmap(find_overlaps),
-         linear_stability_mar_linear_plasticity_overlap = list(linear_stability, linear_marker_plasticity) %>% pmap(find_overlaps),
-         nonlinear_stability_mar_nonlinear_stability_overlap = list(`non-linear_stability`, `non-linear_marker_plasticity`) %>% pmap(find_overlaps) )
-
-# Extract the data.frame results
-interval_overlaps_df <- interval_overlaps %>% 
-  select(trait, contains("overlap")) %>% 
-  gather(overlap, data, -trait) %>% 
-  unnest() %>% 
-  # Calculate proportions
-  mutate(prop_query_hits = query_hits_n / query_length,
-         prop_subject_hits = subject_hits_n / subject_length)
-
-interval_overlaps_df %>% select(trait, overlap, query_hits_n:prop_subject_hits)
-
-
-
-
-
+# Save
+save_file <- file.path(fig_dir, "hd_ph_gwas_annotation_example.jpg")
+ggsave(filename = save_file, plot = hd_ph_example_combine, width = 10, height = 10, dpi = 1000)
 

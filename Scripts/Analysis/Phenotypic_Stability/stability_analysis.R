@@ -8,7 +8,6 @@ library(lme4)
 library(broom)
 library(stringr)
 library(modelr)
-# library(FW)
 library(ggridges)
 library(ggforce)
 library(pbr)
@@ -447,8 +446,20 @@ SNP_herit <- S2_MET_pheno_fw_coef_tomodel %>%
     
   })
 
-# Create a table
-SNP_herit %>% 
-  filter(coef != "g") %>%
+# Create a table, then save it
+SNP_herit_table <- SNP_herit %>% 
+  ungroup() %>% 
+  mutate(coef = str_replace_all(coef, coef_replace), 
+         group = if_else(group == "SNP_prop", "Markers", "Total Genetic"), 
+         prop = round(prop, 4)) %>% 
   spread(group, prop)
+
+# Write
+write_csv(x = SNP_herit_table, path = file.path(result_dir, "pheno_SNP_herit.csv"))
+
+
+
+
+
+
 

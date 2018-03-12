@@ -59,3 +59,9 @@ trial_info <- read_csv(file = file.path(pheno_dir, "trial_metadata.csv"))
 # Character vector for replacing stability/mean variable symbols with full name
 coef_replace <- c("b" = "Linear Stability", "log_delta" = "Non-Linear Stability",
                   "g" = "Genotype Mean")
+
+
+# Color scheme for manhattan plot
+color <- c(set_names(umn_palette(n = 4)[3:4], "Bl", "Or"), "B" = "black", "G" = "grey75")
+
+
