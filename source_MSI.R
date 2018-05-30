@@ -16,7 +16,7 @@ invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir
 proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/QTLMapping/S2MET_Mapping/"
 alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
 
-geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
+geno_dir <- bopa_geno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
 pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
 
 
