@@ -2,24 +2,39 @@
 ## 
 ## 
 
+## Load commonly used libraries
+library(tidyverse)
+library(readxl)
+library(rrBLUP)
+
+# Load personal libraries
+library(neyhart)
+
+
 # Project and other directories
 proj_dir <- repo_dir
-alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
+alt_proj_dir <- "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/S2MET"
 
 # Geno, pheno, and enviro data
-geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
+geno_dir <-  "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
 # geno_dir <- 
-bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
+bopa_geno_dir <- "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
 # bopa_geno_dir <- 
-pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
+pheno_dir <- file.path(alt_proj_dir, "Data/")
+
+######
+# MSI Source starts here
+######
+
+# Source the project functions
+source(file.path(proj_dir, "source_functions.R"))
 
 # Other directories
 script_dir <- file.path(proj_dir, "Scripts/")
-analysis_dir <- file.path(script_dir, "Analysis")
-fig_dir <- file.path(script_dir, "Figures/")
+fig_dir <- file.path(proj_dir, "Figures/")
 data_dir <- file.path(proj_dir, "Data")
 
-map_dir <- file.path(analysis_dir, "GWAS")
+map_dir <- file.path(script_dir, "GWAS")
 result_dir <- file.path(proj_dir, "Results")
 
 # Load the phenotypic data
@@ -57,7 +72,8 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 trial_info <- read_csv(file = file.path(pheno_dir, "trial_metadata.csv"))
 
 # Character vector for replacing stability/mean variable symbols with full name
-coef_replace <- c("b" = "Linear Stability", "log_delta" = "Non-Linear Stability",
+coef_replace <- c("b" = "Linear Stability",
+                  "log_delta" = "Non-Linear Stability", 
                   "g" = "Genotype Mean")
 
 

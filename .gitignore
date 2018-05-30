@@ -1,7 +1,8 @@
 packrat/lib*/
 .Rproj.user
 Results/*
-Scripts/Figures/
+Figures/*
+Summaries/*
 *.e*
 *.o*
 *Rplots.pdf
