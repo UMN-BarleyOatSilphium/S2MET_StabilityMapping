@@ -1,6 +1,6 @@
 ## Analysis of GWAS results
 ## 
-## This notebook will outline the analysis of GWAS mapping procedures using the S2MET data to
+## This script will outline the analysis of GWAS mapping procedures using the S2MET data to
 ## identify marker-trait associations for the mean per se of traits and phenotypic stability
 ## This script also includes code for generating figures related to this analysis
 ## 
@@ -51,7 +51,7 @@ K_prcomp <- prcomp(K)
 # Tidy, calculate lambda, then add program information
 K_prcomp_df <- tidy(K_prcomp) %>%
   mutate(PC = str_c("PC", PC)) %>%
-  dplyr::rename(line_name = row) %>%
+  rename(line_name = row) %>%
   left_join(entry_list, by = c("line_name" = "Line"))
 
 # Extract lambda and calculate variance explained
@@ -98,10 +98,8 @@ g_pop_str <- df_combined %>%
         legend.position = c(0.8, 0.8))
 
 # Save this
-save_file <- file.path(fig_dir, "population_structure.jpg")
-# Publication name
-save_file <- file.path(fig_dir, "SupplementaryFigure1.jpg")
-ggsave(filename = save_file, plot = g_pop_str, width = 5, height = 5)
+ggsave(filename = "population_structure.jpg", plot = g_pop_str, path = fig_dir,
+       width = 5, height = 5, dpi = 1000)
 
 
 
@@ -110,10 +108,10 @@ ggsave(filename = save_file, plot = g_pop_str, width = 5, height = 5)
 ## How is population structure correlated with the traits?
 
 # Load the genotype means and FW regression results
-load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData"))
+load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 
 # Transform the delta statistic to log-delta
-S2_MET_pheno_mean_fw_trans <- S2_MET_pheno_mean_fw %>% 
+pheno_mean_fw_trans <- S2_MET_pheno_mean_fw %>% 
   distinct(trait, line_name, g, b, delta) %>% 
   mutate(log_delta = log(delta)) %>%
   select(-delta)
@@ -123,7 +121,7 @@ S2_MET_pheno_mean_fw_trans <- S2_MET_pheno_mean_fw %>%
 trait_pop_str <- K_prcomp_df %>% 
   filter(PC %in% c("PC1", "PC2", "PC3")) %>% 
   select(line_name, program = Program, PC, eigenvalue = value) %>%
-  left_join(., S2_MET_pheno_mean_fw_trans) %>%
+  left_join(., pheno_mean_fw_trans) %>%
   gather(measure, value, g:log_delta)
 
 
@@ -131,7 +129,7 @@ trait_pop_str <- K_prcomp_df %>%
 ## Use a bootstrap to estimate confidence interval
 trait_pop_str_corr <- trait_pop_str %>% 
   group_by(trait, PC, measure) %>% 
-  do(gws::boot_cor(x = .$value, y = .$eigenvalue, boot.reps = 1000)) %>%
+  do(bootstrap(x = .$value, y = .$eigenvalue, fun = "cor", boot.reps = 10000)) %>%
   # Which ones are significant
   mutate(significant = !between(0, ci_lower, ci_upper),
          annotation = ifelse(significant, "*", ""))
@@ -173,121 +171,21 @@ g_PC_v_delta <- trait_pop_str1 %>%
   g_mod
 
 # Save
-save_file <- file.path(fig_dir, "population_structure_versus_mean.jpg")
-ggsave(filename = save_file, plot = g_PC_v_mean, height = 4, width = 6)  
+ggsave(filename = "population_structure_versus_mean.jpg", plot = g_PC_v_mean,
+       path = fig_dir, height = 4, width = 6, dpi = 1000)  
 
-save_file <- file.path(fig_dir, "population_structure_versus_linear_stability.jpg")
-ggsave(filename = save_file, plot = g_PC_v_b, height = 4, width = 6)  
+ggsave(filename = "population_structure_versus_linear_stability.jpg", plot = g_PC_v_b,
+       path = fig_dir, height = 4, width = 6, dpi = 1000)  
 
-save_file <- file.path(fig_dir, "population_structure_versus_nonlinear_stability.jpg")
-ggsave(filename = save_file, plot = g_PC_v_delta, height = 4, width = 6)  
-
+ggsave(filename = "population_structure_versus_nonlinear_stability.jpg", plot = g_PC_v_delta,
+       path = fig_dir, height = 4, width = 6, dpi = 1000)  
 
 
 
 ### Association Results - Genomewide Scan
 
 ## Load the results of the genomewide scan
-load(file.path(result_dir, "S2MET_pheno_fw_mean_gwas_results.RData"))
-
-
-## Common plot modifiers
-# QQ plot
-g_mod_qq <- list(
-  geom_ribbon(aes(x = p_exp_neg_log10, ymin = ci_upper, ymax = ci_lower), fill = "grey75",
-              inherit.aes = FALSE),
-  geom_abline(slope = 1, intercept = 0),
-  geom_point(),
-  facet_grid(trait ~ .),
-  ylab(expression(Observed~-log[10](italic(p)))),
-  xlab(expression(Expected~-log[10](italic(p)))),
-  theme_bw()
-)
-
-# Manhattan plot
-g_mod_man <- list(
-  geom_point(),
-  geom_hline(yintercept = -log10(alpha), lty = 2),
-  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
-  scale_color_manual(values = color, guide = FALSE),
-  ylab(expression(-log[10](italic(q)))),
-  xlab("Position (Mbp)"),
-  theme_bw(),
-  theme_manhattan(),
-  theme(panel.border = element_blank())
-)
-
-
-#### Mean *per se* genomewide scan  ####
-
-## QQ Plot
-gwas_pheno_mean_fw_adj_qq <- gwas_pheno_mean_fw_adj %>% 
-  arrange(trait, coef, pvalue) %>%
-  group_by(trait, coef) %>%
-  mutate(p_exp = ppoints(n = n()), # Generate p values under null of no associations
-         p_exp_neg_log10 = -log10(p_exp), # Convert to -log10(p)
-         # Add a confidence interval based on the beta distribution (assumes independence of tests)
-         ci_lower = -log10(qbeta(p = (alpha / 2), shape1 = seq(n()), rev(seq(n())))),
-         ci_upper = -log10(qbeta(p = 1 - (alpha / 2), shape1 = seq(n()), rev(seq(n()))))) %>%
-  select(trait, coef, plot_coef, marker, p_exp_neg_log10, pvalue_neg_log10, ci_lower, ci_upper)
-
-g_mean_qq <- gwas_pheno_mean_fw_adj_qq %>% 
-  filter(coef == "g") %>%
-  ggplot(aes(x = p_exp_neg_log10, y = pvalue_neg_log10)) + 
-  labs(title = "Genotype Mean GWAS QQ Plot") +
-  g_mod_qq
-
-# Save
-save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_qq.jpg")
-ggsave(filename = save_file, plot = g_mean_qq, width = 4, height = 7, dpi = 1000)
-
-
-
-
-## Manhattan plot
-g_mean_manhattan <- gwas_pheno_mean_fw_adj %>%
-  filter(coef == "g") %>%
-  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G")) %>%
-  ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10, group = chrom, col = color)) + 
-  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  labs(title = expression('Genomewide Scan for Mean'~italic('Per Se'))) +
-  g_mod_man
-
-save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan.jpg")
-ggsave(filename = save_file, plot = g_mean_manhattan, width = 9, height = 6, dpi = 1000)
-
-
-
-
-
-#### Stability QTL
-## QQ plot
-g_stab_qq <- gwas_pheno_mean_fw_adj_qq %>% 
-  ungroup() %>%
-  filter(coef != "g") %>%
-  ggplot(aes(x = p_exp_neg_log10, y = pvalue_neg_log10)) + 
-  labs(title = "Phenotypic Stability GWAS QQ Plot") +
-  g_mod_qq +
-  facet_grid(trait ~ plot_coef)
-
-save_file <- file.path(fig_dir, "gwas_pheno_stability_qq.jpg")
-ggsave(filename = save_file, plot = g_stab_qq, width = 6, height = 7, dpi = 1000)
-
-
-## Manhattan plot
-g_stab_manhattan <- gwas_pheno_mean_fw_adj %>%
-  # filter(model == "G", coef != "g") %>%
-  filter(coef != "g") %>%
-  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G")) %>%
-  ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10, group = chrom, col = color)) + 
-  facet_grid(trait + plot_coef ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  labs(title = 'Genomewide Scan for Phenotypic Stability') +
-  g_mod_man
-
-save_file <- file.path(fig_dir, "gwas_pheno_stab_manhattan.jpg")
-ggsave(filename = save_file, plot = g_stab_manhattan, width = 9, height = 9, dpi = 1000)
-
-
+load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 
 
 

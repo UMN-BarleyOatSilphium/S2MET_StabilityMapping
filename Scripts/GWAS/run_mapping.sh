@@ -12,5 +12,5 @@ cd /panfs/roc/groups/6/smithkp/neyha001/QTLMapping/S2MET_Mapping/Scripts/GWAS
 #module load R/3.4.0
 module load R/3.2.0_intel_mkl
 
-# Pleiotropy GWAS
-Rscript pleiotropy_mapping.R
+# Resampling GWAS
+Rscript stability_mapping_resampling.R

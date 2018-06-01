@@ -20,9 +20,9 @@ snp_info <- S2TP_imputed_multi_genos_hmp %>%
 
 
 # Load the FW results
-load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData"))
+load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 # Load the FW sampling results
-load(file.path(result_dir, "S2MET_pheno_fw_resampling.RData"))
+load(file.path(result_dir, "pheno_fw_resampling.RData"))
 
 
 ## Association analysis
@@ -319,54 +319,16 @@ save("gwas_pheno_mean_fw_tidy_adj", "gwas_adj_sig", "gwas_mlmm_model",
 
 
 
+## Load the data
+load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 
-### Mapping using resampling estimates of stability ###
-
-
-## Use the FW resampling data to determine the robustness of the mapping results
-# Tidy up for splitting by cores
-resample_phenos_use <- S2MET_pheno_sample_fw %>%
-  # Convert delta to log_delta
-  mutate(log_delta = log(delta)) %>% 
-  # Tidy
-  select(-delta) %>% 
-  group_by(trait, p, iter) %>% 
-  nest()
-
-# Assign cores
-resample_phenos_use_list <- resample_phenos_use %>%
-  ungroup() %>%
-  mutate(core = sort(rep(seq(n_core), length.out = nrow(.)))) %>%
-  split(.$core)
-
-
-## Parallelize the association
-resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, function(core_df) {
-  
-  # Map over the list of data
-  gwas_out_list <- core_df$data %>%
-    map(~gwas(pheno = ., geno = geno_use, model = "G", P3D = TRUE, n.core = 1))
-  
-  # Grab the scores, adjust the pvalues, then filter for those <= alpha
-  gwas_sig_scores <- gwas_out_list %>% 
-    map("scores") %>%
-    map(~mutate(., padj = p.adjust(pvalue, method = "fdr"))) %>%
-    map(~filter(., padj <= alpha))
-  
-  # Add those scores to the data.frame and return
-  core_df %>% 
-    select(-data, -core) %>% 
-    mutate(sig_scores = gwas_sig_scores)
-  
-}, mc.cores = n_core)
 
 
 
 
 
-# Save the results
-save_file <- file.path(result_dir, str_c("S2MET_pheno_fw_gwas_resample_results_", tr, ".RData"))
-save("resample_gwas_sig_out", file = save_file)
+### Mapping using resampling estimates of stability ###
+
 
 
 
