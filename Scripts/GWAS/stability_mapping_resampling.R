@@ -17,6 +17,12 @@ source(file.path(repo_dir, "source_MSI.R"))
 # source(file.path(repo_dir, "source.R"))
 
 
+# Load the FW results
+load(file.path(result_dir, "pheno_mean_fw_results.RData"))
+# Load the FW sampling results
+load(file.path(result_dir, "pheno_fw_resampling.RData"))
+
+
 ## Number of cores
 n_core <- ifelse(Sys.info()["sysname"] == "Windows", 1, detectCores())
 
