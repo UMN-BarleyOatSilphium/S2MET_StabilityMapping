@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#PBS -l walltime=12:00:00,mem=24gb,nodes=1:ppn=16
+#PBS -l walltime=24:00:00,mem=24gb,nodes=1:ppn=16
 #PBS -N GWAS_stability_resampling
 #PBS -M neyha001@umn.edu
 #PBS -m abe
