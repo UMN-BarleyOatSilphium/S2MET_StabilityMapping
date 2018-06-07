@@ -37,7 +37,7 @@ geno_use <- S2TP_imputed_multi_genos_hmp %>%
 
 ## Use the FW resampling data to determine the robustness of the mapping results
 # Tidy up for splitting by cores
-resample_phenos_use <- S2MET_pheno_sample_fw %>%
+resample_phenos_use <- pheno_sample_mean_fw %>%
   # Convert delta to log_delta
   mutate(log_delta = log(delta)) %>% 
   # Tidy
