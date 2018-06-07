@@ -33,11 +33,31 @@ geno_use <- S2TP_imputed_multi_genos_hmp %>%
   select(-alleles, -cM_pos) %>%
   rename(marker = rs) %>%
   as.data.frame()
+  
+# Rename the marker matrix
+M <- S2TP_imputed_multi_genos_mat
 
+# Get the marker information
+snp_info <- S2TP_imputed_multi_genos_hmp %>%
+  select(marker = rs, chrom, pos, cM_pos) %>%
+  # Correct the cM position for BOPA snps
+  mutate(cM_pos = if_else(str_detect(marker, "^S"), cM_pos, cM_pos / 1000))
+
+## Split SNPs by chromosomes
+snps_by_chrom <- snp_info %>% 
+  split(.$chrom) %>%
+  map("marker")
+
+
+## Split SNPs by chromosome
+K_chr <- snps_by_chrom %>%
+  map(~setdiff(snp_info$marker, .)) %>% 
+  map(~A.mat(X = M[,.], min.MAF = 0, max.missing = 1))
+  
 
 ## Use the FW resampling data to determine the robustness of the mapping results
 # Tidy up for splitting by cores
-resample_phenos_use <- S2MET_pheno_sample_fw %>%
+resample_phenos_use <- pheno_sample_mean_fw %>%
   # Convert delta to log_delta
   mutate(log_delta = log(delta)) %>% 
   # Tidy
@@ -52,6 +72,7 @@ resample_phenos_use_list <- resample_phenos_use %>%
 
 
 
+
 ## Parallelize the association mapping runs using the resampling
 resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, function(core_df) {
   
@@ -63,8 +84,11 @@ resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, function(core_df
     
     pheno <- as.data.frame(core_df$data[[i]])
     
-    # Run the GWAS
-    gwas_out <- GWAS(pheno = pheno, geno = geno_use, n.PC = 1, plot = FALSE)
+    # Run the GWAS - "QG" model
+    gwas_out <- geno_use %>% 
+      split(.$chrom) %>%
+      list(., K_chr) %>%
+      pmap_df(~GWAS(pheno = pheno, geno = .x, K = .y, n.PC = 1, plot = FALSE))
     
     # Grab the scores, adjust the pvalues, then filter for those <= alpha
     gwas_out_tidy <- gwas_out %>% 
@@ -74,7 +98,7 @@ resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, function(core_df
     # Filter and adjust pvalues
     gwas_sig_scores <- gwas_out_tidy %>%
       filter(pvalue < 1) %>% # Remove the p == 1 (missing)
-      mutate(padj = p.adjust(pvalue, method = "fdr")) %>%
+      mutate(padj = p.adjust(pvalue, method = "BH")) %>%
       filter(padj <= alpha)
     
     # Return a list

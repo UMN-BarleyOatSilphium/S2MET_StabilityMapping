@@ -8,6 +8,11 @@
 ## Last updated: May 30, 2018
 ## 
 
+
+###########################################################3
+## Run the following for all analyses
+
+
 library(qvalue)
 library(cowplot)
 library(broom)
@@ -34,6 +39,14 @@ tp_entry_list <- entry_list %>%
 
 # Significance threshold for GWAS
 alpha <- 0.05
+
+# What model will we use for mapping?
+model_use <- "QG"
+
+
+#######################################################
+
+
 
 
 
@@ -182,11 +195,23 @@ ggsave(filename = "population_structure_versus_nonlinear_stability.jpg", plot = 
 
 
 
+
+
+
 ### Association Results - Genomewide Scan
 
 ## Load the results of the genomewide scan
 load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 
+## 
+gwas_pheno_mean_fw_adj <- subset(gwas_pheno_mean_fw_tidy_adj, model == model_use)
+gwas_mlmm_model_adj <- subset(gwas_mlmm_model, model == model_use) %>%
+  mutate(mlmm_out = map(mlmm_out, "fit_out_reduced") %>% 
+           map(~mutate(subset(.$summary, term != "Q"), snp_r_squared = .$r_squared$snp_r_squared, 
+                       all_snp_r_squared = .$r_squared$fixed_r_squared["all_snps"]))) %>%
+  unnest(mlmm_out) %>%
+  left_join(., select(snp_info, marker:pos), c("term" = "marker")) %>%
+  select(trait:model, marker = term, chrom:pos, beta:all_snp_r_squared)
 
 
 ## Plot the results of the multi-locus mixed model
@@ -194,96 +219,21 @@ load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 # Find the trait-markers that are not in the 'gwas_mlmm_Gmodel' df
 gwas_pheno_mean_fw_adj_nonsig <- gwas_pheno_mean_fw_adj %>% 
   select(marker, trait, coef) %>% 
-  setdiff(., select(ungroup(gwas_mlmm_Gmodel), marker, trait, coef)) %>%
-  # left_join(., filter(gwas_pheno_mean_fw_adj, model == "G")) %>%
+  setdiff(., select(ungroup(gwas_mlmm_model_adj), marker, trait, coef)) %>%
   left_join(., gwas_pheno_mean_fw_adj) %>%
-  mutate(qvalue_neg_log10 = 0) %>% 
-  select(trait, coef, marker, chrom, pos, beta, pvalue, qvalue, qvalue_neg_log10) %>% 
-  rename(alpha = beta)
+  mutate(neg_log_q = 0)
 
 # Calculate the neg-log q values for the 'gwas_mlmm_Gmodel' df
-gwas_mlmm_adj <- gwas_mlmm_Gmodel %>% 
+gwas_mlmm_model_adj1 <- gwas_mlmm_model_adj %>% 
   select(trait:pos, pvalue = pvalue, qvalue) %>%
-  group_by(trait, coef) %>%
-  mutate(qvalue_neg_log10 = -log10(qvalue)) %>%
-  ungroup()
+  mutate(neg_log_q = -log10(qvalue))
 
 # Combine with the significant markers
-gwas_pheno_mean_fw_adj_mlmm <- bind_rows(gwas_pheno_mean_fw_adj_nonsig, gwas_mlmm_adj) %>%
+gwas_pheno_mean_fw_adj_mlmm <- bind_rows(gwas_pheno_mean_fw_adj_nonsig, gwas_mlmm_model_adj1) %>%
   mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G"),
          plot_coef = str_replace_all(coef, coef_replace))
 
 
-# Plot the results of trait mean per se
-g_man_g <- gwas_pheno_mean_fw_adj_mlmm %>%
-  filter(coef == "g") %>%
-  mutate(chrom = as.factor(chrom)) %>% 
-  ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10, group = chrom, col = color)) + 
-  facet_grid(trait ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  labs(title = expression('Multi-Locus Model for Mean'~italic('Per Se'))) +
-  g_mod_man
-
-
-# Save
-save_file <- file.path(fig_dir, "gwas_pheno_genotype_mean_manhattan_mlmm.jpg")
-ggsave(filename = save_file, plot = g_man_g, width = 9, height = 6, dpi = 1000)
-
-
-
-# Plot the results of stability
-g_man_stab <- gwas_pheno_mean_fw_adj_mlmm %>%
-  filter(coef != "g") %>%
-  ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10, group = chrom, col = color)) + 
-  facet_grid(trait + plot_coef ~ chrom, switch = "x", scales = "free", space = "free_x") +
-  labs(title = 'Multi-Locus Model for Phenotypic Stability') +
-  g_mod_man
-
-# Save
-save_file <- file.path(fig_dir, "gwas_pheno_fw_manhattan_mlmm.jpg")
-ggsave(filename = save_file, plot = g_man_stab, width = 9, height = 9, dpi = 1000)
-
-
-
-
-
-
-
-## Adjust the manhattan plots to show the markers that were declared significant 
-## in the mlmm with different colors
-
-# Get the SNPs not in the mlmm df
-gwas_not_sig <- anti_join(gwas_pheno_mean_fw_adj, gwas_mlmm_adj, 
-                                by = c("trait", "coef", "marker", "chrom", "pos")) %>%
-  # Annotate the color for plotting
-  mutate(color = if_else(chrom %in% seq(1, 7, by = 2), "B", "G"))
-
-# Annotate the color from the mlmm
-gwas_mlmm_sig <- gwas_mlmm_adj %>%
-  mutate(color = "Bl")
-
-# Combine
-gwas_results_toplot <- bind_rows(gwas_mlmm_sig, gwas_pheno_not_sig) %>%
-  select(trait:qvalue_neg_log10, color) %>%
-  mutate(plot_coef = str_replace_all(coef, coef_replace), 
-         plot_coef = parse_factor(plot_coef, levels = c("Genotype Mean", "Linear Stability", 
-                                                        "Non-Linear Stability")))
-
-
-## Manhattan plot for the scan and MLMM
-## Iterate over each trait
-for (tr in unique(gwas_results_toplot$trait)) {
-  
-  g_gwas_complete_plot <- gwas_results_toplot %>% 
-    filter(trait == tr) %>%
-    ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10, group = chrom, color = color)) + 
-    geom_point() + 
-    g_mod_man +
-    facet_grid(trait + plot_coef ~ chrom, switch = "x", scales = "free", space = "free_x")
-  
-  save_file <- file.path(fig_dir, str_c("gwas_manhattan_complete_", tr, ".jpg"))
-  ggsave(filename = save_file, plot = g_gwas_complete_plot, width = 9, height = 6, dpi = 1000)
-  
-}
 
 
 
@@ -292,38 +242,38 @@ for (tr in unique(gwas_results_toplot$trait)) {
 ## What are the numbers of significant marker-trait assocations for each trait and type?
 gwas_sig_snp_summ <- gwas_pheno_mean_fw_adj %>% 
   group_by(trait, coef, chrom) %>% 
-  summarize(n_sig_SNP = sum(qvalue <= alpha)) %>%
-  mutate(type = "GWAS")
+  summarize(GWAS_sig_SNP = sum(qvalue <= alpha))
 
-mlmm_sig_snp_summ <- gwas_mlmm_Gmodel %>% 
+mlmm_sig_snp_summ <- gwas_mlmm_model_adj %>% 
   select(trait:pos, qvalue) %>%
-  ungroup() %>%
-  complete(trait, coef, chrom) %>%
   group_by(trait, coef, chrom) %>% 
-  summarize(n_sig_SNP = sum(qvalue <= alpha, na.rm = T)) %>%
-  mutate(type = "MLMM")
+  summarize(MLMM_sig_SNP = sum(qvalue <= alpha, na.rm = T))
 
 # Combine with the multi-locus mixed model results
-gwas_pheno_mean_fw_sig <- bind_rows(gwas_sig_snp_summ, mlmm_sig_snp_summ)
+gwas_pheno_mean_fw_sig <- full_join(gwas_sig_snp_summ, mlmm_sig_snp_summ) %>% 
+  mutate(MLMM_sig_SNP = ifelse(is.na(MLMM_sig_SNP), 0, MLMM_sig_SNP))
 
 # Sumarize
 gwas_pheno_mean_fw_sig %>% 
-  group_by(trait, coef, type) %>% 
-  summarize(n_sig_SNP = sum(n_sig_SNP)) %>% 
-  spread(type, n_sig_SNP)
+  group_by(trait, coef) %>% 
+  summarize_at(vars(contains("SNP")), sum)
+
+
 
 
 
 # Look at the significant markers and assess the effect size, minor allele frequency, etc.
 
 # Calculate the allele frequency of the 1 allele
-af1 <- {colMeans(M + 1) / 2} %>%
-  data.frame(marker = names(.), af = ., row.names = NULL, stringsAsFactors = FALSE)
+af1 <- data.frame(af = colMeans(M + 1) / 2 ) %>% 
+  rownames_to_column("marker") %>% 
+  mutate(maf = pmin(af, 1 - af))
 
 # Combine the minor allele frequency information
-gwas_mlmm_marker_info <- gwas_mlmm_Gmodel %>% 
+gwas_mlmm_marker_info <- gwas_mlmm_model_adj %>% 
   ungroup() %>%
-  left_join(., af1)
+  left_join(., af1) %>%
+  select(-af)
 
 
 
@@ -358,16 +308,15 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
     
   })
 
-gwas_mlmm_marker <- gwas_mlmm_marker_prop %>%
-  ungroup() %>%
-  left_join(., snp_info) %>%
-  select(trait, coef, marker, chrom, pos, cM = cM_pos, alpha, qvalue, R_sqr_snp, af, AB:WA) %>%
-  mutate(coef = str_replace_all(coef, coef_replace),
-         MAF = pmin(af, 1 - af)) %>%
-  select(trait:cM, MAF, alpha:R_sqr_snp, AB:WA) %>%
-  arrange(trait, coef, chrom, pos)
+## Output a table
+gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
+  ungroup() %>% 
+  select(Trait = trait, Coef = coef, Marker = marker, Chrom = chrom, Position = pos, 
+         Beta = beta, SE = se, qvalue = qvalue, R2 = snp_r_squared, MAF = maf, AB:WA) %>% 
+  arrange(Trait, Coef, Chrom, Position) %>% 
+  mutate(Coef = str_replace_all(Coef, coef_replace))
 
-
+write_csv(x = gwas_mlmm_marker_toprint, path = file.path(fig_dir, "gwas_significant_associations.csv"))
 
 
 
@@ -479,26 +428,29 @@ for (tr in unique(gwas_pheno_mean_fw_plei_toplot$trait)) {
 ## estimates, then performed the mapping.
 
 # Read in the results
-load(file.path(result_dir, "S2MET_pheno_fw_gwas_resample_results.RData"))
+load(file.path(result_dir, "pheno_fw_gwas_resample_results.RData"))
 
-# Bind rows
+
+# Bind rows, unnest, and tidy
 resample_gwas_sig_out1 <- resample_gwas_sig_out %>%
-  bind_rows()
+  bind_rows() %>%
+  mutate(gwas_sig = map(results, "gwas_sig"),
+         n_NA = map(results, "n_NA")) 
+
+
+## Filter for the significant GWAS hits
+resample_gwas_sig <- resample_gwas_sig_out1 %>%
+  unnest(gwas_sig)
 
 ## Filter the original GWAS results for the stability QTL
 gwas_sig_stability <- gwas_pheno_mean_fw_adj %>% 
   filter(coef != "g", qvalue <= alpha)
 
 # Iterate over the resampling results and find the signficant loci at alpha
-resample_gwas_sig_out2 <- resample_gwas_sig_out1 %>%
-  unnest() %>%
-  # Rename trait 1 to coefficient
-  rename(coef = trait1) %>%
+resample_gwas_sig_out2 <- resample_gwas_sig %>%
   ## Convert trait, p, iter, and coef to factors
-  mutate_at(vars(trait:coef), as.factor) %>%
-  # Adjust the levels at p and iter
-  mutate(p = factor(p, levels = seq(0.2, 0.8, 0.2)),
-         iter = factor(iter, levels = seq(100)))
+  mutate_at(vars(trait, p, iter, coef), as.factor) %>%
+  mutate(iter = factor(iter, levels = seq(250)))
 
 
 ## Since only the significant markers are part of this data.frame, in order
