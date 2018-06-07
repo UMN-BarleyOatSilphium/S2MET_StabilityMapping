@@ -383,22 +383,22 @@ ggsave(filename = save_file, plot = g_plotgrid2, width = 6, height = 6)
 ## Repeatability of stability using resampling
 
 # Read in the results
-load(file.path(result_dir, "S2MET_pheno_fw_resampling.RData"))
+load(file.path(result_dir, "pheno_fw_resampling.RData"))
 
-S2MET_pheno_sample_fw_tomodel <- S2MET_pheno_sample_fw %>%
+pheno_sample_fw_tomodel <- pheno_sample_mean_fw %>%
   mutate(log_delta = log(delta)) %>%
   select(-delta) %>%
   gather(coef, value, b:log_delta)
 
 # Fit a fixed-effect model
-reliability_fit <- S2MET_pheno_sample_fw_tomodel %>% 
+repeatability_fit <- pheno_sample_fw_tomodel %>% 
   filter(!is.infinite(value)) %>% 
   # filter(iter %in% c(1:40)) %>%
   group_by(trait, p, coef) %>% 
   do(fit = lm(value ~ line_name, .))
 
 ## Summarize
-reliability_summ <- reliability_fit %>% 
+repeatability_summ <- repeatability_fit %>% 
   ungroup() %>% 
   mutate(anova = map(fit, ~tidy(anova(.)))) %>% 
   unnest(anova) %>% 
@@ -406,11 +406,18 @@ reliability_summ <- reliability_fit %>%
   summarize(repeatability = meansq[1] / sum(meansq))
 
 # Plot
-reliability_summ %>% 
-  ggplot(aes(x = p, y = repeatability)) + 
+g_fw_repeatability <- repeatability_summ %>% 
+  ggplot(aes(x = p, y = repeatability, group = 1)) + 
   geom_point() + 
+  geom_line(stat = "identity") + 
+  ylab("Repeatability") +
+  xlab("Proportion of Environments") + 
   facet_grid(coef~ trait) + 
   theme_bw()
+
+# Save
+ggsave(filename = "pheno_fw_resample_repeatability.jpg", path = fig_dir, plot = g_fw_repeatability,
+       height = 4, width = 6, dpi = 1000)
 
 
 

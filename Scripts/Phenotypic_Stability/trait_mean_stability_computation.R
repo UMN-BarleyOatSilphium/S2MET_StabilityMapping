@@ -251,7 +251,7 @@ S2_MET_pheno_mean_fw <- S2_MET_fw_fitted %>%
 
     
 # Save this
-save_file <- file.path(result_dir, "S2MET_pheno_mean_fw_results.RData")
+save_file <- file.path(result_dir, "pheno_mean_fw_results.RData")
 save("S2_MET_fw_fitted", "S2_MET_pheno_mean_fw", file = save_file)
 
 
@@ -266,12 +266,12 @@ S2_MET_pheno_tomodel <- S2_MET_pheno_mean_fw %>%
 
 # Vector of proportion of environments
 p_env <- seq(0.2, 0.8, by = 0.2)
-# Number of bootstrap iterations
-n_iter <- 100
+# Number of resample iterations
+n_iter <- 250
 
 # Iterate over the proportion of environments to sample
 # Create bootstrapping replicates
-S2_MET_pheno_samples <- p_env %>% 
+pheno_samples <- p_env %>% 
   set_names(., .) %>%
   map(function(p) {
     # Create samples grouped by trait
@@ -295,8 +295,8 @@ S2_MET_pheno_samples <- p_env %>%
     
   }) %>% list(., names(.)) %>% pmap_df(~mutate(.x, p = .y))
 
-# Iterate over samples and calculate the stability coefficients
-S2MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
+ # Iterate over samples and calculate the stability coefficients
+pheno_sample_mean_fw <- pheno_samples %>%
   unnest() %>%
   group_by(trait, p, iter, line_name) %>%
   select(-environment, -trait1, -std_error) %>%
@@ -309,9 +309,9 @@ S2MET_pheno_sample_fw <- S2_MET_pheno_samples %>%
   }) 
 
 # Ungroup
-S2MET_pheno_sample_fw <- ungroup(S2MET_pheno_sample_fw)
+pheno_sample_mean_fw <- ungroup(pheno_sample_mean_fw)
 
 # Save the results
-save_file <- file.path(result_dir, "S2MET_pheno_fw_resampling.RData")
-save("S2MET_pheno_sample_fw", file = save_file)
+save_file <- file.path(result_dir, "pheno_fw_resampling.RData")
+save("pheno_sample_mean_fw", file = save_file)
 
