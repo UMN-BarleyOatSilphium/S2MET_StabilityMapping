@@ -31,6 +31,20 @@ coef_replace <- c("b" = "Linear Stability",
 # Color scheme for manhattan plot
 color <- c(set_names(umn_palette(n = 4)[3:4], "Bl", "Or"), "B" = "black", "G" = "grey75")
 
+### Plotting modifiers
+# Manhattan plot
+g_mod_man <- list(
+  geom_point(),
+  geom_hline(yintercept = -log10(alpha), lty = 2),
+  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+  scale_color_manual(values = color, guide = FALSE),
+  ylab(expression(-log[10](italic(q)))),
+  xlab("Position (Mbp)"),
+  theme_bw(),
+  theme_manhattan(),
+  theme(panel.border = element_blank())
+)
+
 
 ######
 # MSI Source starts here
@@ -83,21 +97,6 @@ trial_info <- read_csv(file = file.path(file.path(alt_proj_dir, "Data/"), "trial
 
 
 
-
-### Plotting modifiers
-
-# Manhattan plot
-g_mod_man <- list(
-  geom_point(),
-  geom_hline(yintercept = -log10(alpha), lty = 2),
-  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
-  scale_color_manual(values = color, guide = FALSE),
-  ylab(expression(-log[10](italic(q)))),
-  xlab("Position (Mbp)"),
-  theme_bw(),
-  theme_manhattan(),
-  theme(panel.border = element_blank())
-)
 
 
 
