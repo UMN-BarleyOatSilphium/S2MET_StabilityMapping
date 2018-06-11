@@ -114,15 +114,7 @@ gwas_pheno_mean_fw_tidy <- gwas_pheno_mean_fw %>%
   gather(coef, neg_log_p, g, b, log_delta)
 
 
-## Save the data
-save("gwas_pheno_mean_fw_tidy", file = file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 
-
-
-
-
-## Load data
-load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 
 
 ## Plot the QQ plot
@@ -147,6 +139,11 @@ save_file <- file.path(fig_dir, "pheno_fw_mean_gwas_qq.jpg")
 ggsave(filename = save_file, plot = g_gwas_qq, width = 8, height = 8, dpi = 1000)
 
 
+## How many p-values were 1 (i.e. missing)?
+
+
+
+
 # Convert p-value to q-values
 gwas_pheno_mean_fw_tidy_adj <- gwas_pheno_mean_fw_tidy %>% 
   group_by(trait, model, coef) %>% 
@@ -156,19 +153,6 @@ gwas_pheno_mean_fw_tidy_adj <- gwas_pheno_mean_fw_tidy %>%
   ungroup()
            
 
-# Plot modifier
-# Manhattan plot
-g_mod_man <- list(
-  geom_point(),
-  geom_hline(yintercept = -log10(alpha), lty = 2),
-  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
-  scale_color_manual(values = color, guide = FALSE),
-  ylab(expression(-log[10](italic(q)))),
-  xlab("Position (Mbp)"),
-  theme_bw(),
-  theme_manhattan(),
-  theme(panel.border = element_blank())
-)
 
 # Iterate over the models and plot
 for (mod in unique(gwas_pheno_mean_fw_tidy_adj$model)) {
@@ -313,21 +297,8 @@ gwas_mlmm_final <- gwas_mlmm_model %>%
 
 # Save this data
 save_file <- file.path(result_dir, "pheno_fw_mean_gwas_results.RData")
-save("gwas_pheno_mean_fw_tidy_adj", "gwas_adj_sig", "gwas_mlmm_model",
-     "gwas_mlmm_model", file = save_file)
+save("gwas_pheno_mean_fw_tidy_adj", "gwas_adj_sig", "gwas_mlmm_model", file = save_file)
 
-
-
-
-## Load the data
-load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
-
-
-
-
-
-
-### Mapping using resampling estimates of stability ###
 
 
 

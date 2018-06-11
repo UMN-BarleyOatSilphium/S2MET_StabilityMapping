@@ -575,6 +575,7 @@ g_resample_snp_detect_count <- resample_snp_detect_count_toplot %>%
   ggplot(aes(x = p, y = prop_detected, color = SNP_type)) +
   geom_boxplot(position = "dodge", width = 0.5) +
   scale_color_discrete(drop = FALSE) +
+  ylim(c(0, 1))+
   facet_grid(trait ~ coef) + 
   ylab("Probability of Detecting a SNP") + 
   xlab("Proportion of Environments Sampled") +
@@ -697,18 +698,6 @@ ggsave(filename = save_file, plot = g_resample_ph, width = 10, height = 7, dpi =
 
 save_file <- file.path(fig_dir, "resample_count_gy.jpg")
 ggsave(filename = save_file, plot = g_resample_gy, width = 10, height = 7, dpi = 1000)
-
-
-
-
-
-
-
-## Save data for further analysis
-save_file <- file.path(result_dir, "gwas_adjusted_significant_results.RData")
-save("gwas_pheno_mean_fw_adj", "gwas_mlmm_marker_info", "gwas_pheno_mean_fw_plei_toplot", 
-     file = save_file)
-
 
 
 

@@ -3,69 +3,96 @@
 ## 
 ## This script will calculate marker effects across environment using a G model, similar to GWAS.
 ## 
+## Author: Jeff Neyhart
+## Last updated: June 7, 2018
+## 
 
-# # Capture the trait to use (argument 1)
-# args <- commandArgs(trailingOnly = T)
-# tr <- args[1]
-
-# List of packages to load
-# List of packages
-packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", 
-              "Matrix", "lme4qtl", "sommer", "rrBLUP")
-
-# packages <- c(packages, "pbr")
-
-# Set the directory of the R packages
-package_dir <- NULL
-package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
-package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
+###########################################################3
+## Run the following for all analyses
 
 
-# Load all packages
-invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
-
-## Directories
-proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping//"
-proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
-
-alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
-alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
-
-# Geno, pheno, and enviro data
-geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
-bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
-pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
-
-bopa_geno_dir <- geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
-pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
+library(qvalue)
+library(cowplot)
+library(broom)
 
 
-# Other directories
-script_dir <- file.path(proj_dir, "Scripts/")
-analysis_dir <- file.path(script_dir, "Analysis")
-fig_dir <- file.path(script_dir, "Figures/")
-map_dir <- file.path(analysis_dir, "GWAS")
-result_dir <- file.path(proj_dir, "Results")
+# Run the source script
+repo_dir <- getwd()
+source(file.path(repo_dir, "source.R"))
 
 
-# Load the phenotypic data
-load(file.path(pheno_dir, "S2_MET_BLUEs.RData"))
-# Load the genotypic data
-load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
-
-# Matrix of genotype data for all individuals
-# This must remain intact, and then will be subsetted below
+# Rename the marker matrix
 M <- S2TP_imputed_multi_genos_mat
 
-# Get the marker names
-markers <- colnames(M)
+# Get the marker information
+snp_info <- S2TP_imputed_multi_genos_hmp %>%
+  select(marker = rs, chrom, pos, cM_pos) %>%
+  # Correct the cM position for BOPA snps
+  mutate(cM_pos = if_else(str_detect(marker, "^S"), cM_pos, cM_pos / 1000))
+
+# Subset the entry list for the tp
+tp_entry_list <- entry_list %>%
+  filter(Line %in% tp_geno) %>%
+  select(line_name = Line, program = Program)
+
+# Significance threshold for GWAS
+alpha <- 0.05
+
+# What model will we use for mapping?
+model_use <- "QG"
 
 
-# Remove the environments in which the vp was only observed
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
-  filter(line_name %in% row.names(M)) %>%
-  mutate(line_name = as.factor(line_name),
-         environment = as.factor(environment))
+#######################################################
+
+
+## Use the GWAS Q+G model to estimate the effect of each marker in each environment
+## Use P3D
+
+## Split SNPs by chromosomes
+snps_by_chrom <- snp_info %>% 
+  split(.$chrom) %>%
+  map("marker")
+
+
+## Split SNPs by chromosome
+K_chr <- snps_by_chrom %>%
+  map(~setdiff(snp_info$marker, .)) %>% 
+  map(~A.mat(X = M[,.], min.MAF = 0, max.missing = 1))
+
+
+## Fit the mixed model to estimate variance components
+population_parameters <- list()
+
+# Iterate over traits
+for (tr in unique(S2_MET_BLUEs_use$trait)) {
+
+  df <- subset(S2_MET_BLUEs_use, trait == tr)
+  
+  ## May need to edit this with the correct weights
+  mf <- model.frame(value ~ line_name + environment, df)
+  y <- model.response(mf)
+  
+  # Fixed effects of environment
+  X <- model.matrix(~ environment, mf)
+  Z <- model.matrix(~ -1 + line_name, mf)
+  
+  # Iterate over the K matrices and return the H_inv matrix
+  population_parameters[[tr]] <- list()
+  
+  for (i in seq_along(K_chr)) {
+    Q <- eigen(K_chr[[i]])$vectors[,1]
+    X1 <- cbind(X, Z %*% Q)
+    population_parameters[[tr]][[as.character(i)]] <- 
+      mixed.solve(y = y, Z = Z, K = K_chr[[i]], X = X1, return.Hinv = TRUE)$Hinv
+    
+  }
+  
+}
+  
+
+
+
+
 
 
 # ## Use the GWAS G model to estimate the effect of each marker in each environment

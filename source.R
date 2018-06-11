@@ -81,3 +81,23 @@ S2_MET_BLUEs_use <- S2_MET_BLUEs %>%
 # Read in the trial metadata
 trial_info <- read_csv(file = file.path(file.path(alt_proj_dir, "Data/"), "trial_metadata.csv"))
 
+
+
+
+### Plotting modifiers
+
+# Manhattan plot
+g_mod_man <- list(
+  geom_point(),
+  geom_hline(yintercept = -log10(alpha), lty = 2),
+  # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
+  scale_color_manual(values = color, guide = FALSE),
+  ylab(expression(-log[10](italic(q)))),
+  xlab("Position (Mbp)"),
+  theme_bw(),
+  theme_manhattan(),
+  theme(panel.border = element_blank())
+)
+
+
+
