@@ -1,40 +1,21 @@
 ## S2MET Mapping
+## Calculate marker effect reaction norms
 ## 
-## Marker Stability Analysis
+## 
+## Author: Jeff Neyhart
+## Last updated: June 12, 2018
 ## 
 
 
-library(tidyverse)
-library(stringr)
-library(readxl) 
-library(GenomicRanges)
-library(qvalue)
-library(lme4qtl)
-library(cowplot)
-library(neyhart)
-library(rrBLUP)
-
+# Load the source
 repo_dir <- getwd()
-# Project and other directories
 source(file.path(repo_dir, "source.R"))
 
 # Load the stability results
-load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData"))
+load(file.path(result_dir, "pheno_mean_fw_results.RData"))
+# Load the marker effect by environment results
+load(file.path(result_dir, "marker_by_env_effects.RData"))
 
-# # List the files containing marker effect by environment estimates
-# mxe_files <- list.files(result_dir, pattern = "marker_by_env", full.names = TRUE)
-# 
-# # Iterate over files and save in a list
-# mxe_list <- list()
-# for (file in mxe_files) {
-#   load(file)
-#   trait <- str_extract(string = file, "[A-Za-z]*.RData") %>% str_replace(pattern = ".RData", "")
-#   
-#   mxe_list[[trait]] <- marker_score_out
-# }
-
-# Load the mxe results
-load(file.path(result_dir, "S2MET_marker_ranef_by_env.RData"))
 
 # Get the marker information
 snp_info <- S2TP_imputed_multi_genos_hmp %>%
@@ -42,52 +23,48 @@ snp_info <- S2TP_imputed_multi_genos_hmp %>%
   # Correct the cM position for BOPA snps
   mutate(cM_pos = if_else(str_detect(marker, "^S"), cM_pos, cM_pos / 1000))
 
-# Filter the BLUEs to use
-S2_MET_BLUEs_use <- S2_MET_BLUEs %>% 
-  filter(line_name %in% c(tp_geno)) %>%
-  droplevels()
 
 M <- S2TP_imputed_multi_genos_mat
 
 
 
 
-# ## Manage the mxe data and convert to a tidy data.frame
-# 
-# mxe_df <- marker_by_env %>% 
-#   unnest(marker_effect) %>% 
-#   ungroup()
-# 
-# # Combine with the environmental mean
-# mxe_df1 <- mxe_df %>%
-#   left_join(., distinct(S2_MET_pheno_mean_fw, trait, environment, h), 
-#             by = c("environment", "trait"))
-# 
-# # Calculate the marker effect stability
-# marker_effect_stab <- mxe_df1 %>%
-#   group_by(trait, marker) %>%
-#   do({
-#     df <- . 
-#     # Fit the model
-#     fit <- lm(effect ~ h, df)
-#     data_frame(b = coef(fit)[2], 
-#                b_std_error = summary(fit)$coefficients[2,"Std. Error"],
-#                delta = mean(resid(fit)^2),
-#                df = df.residual(fit),
-#                fit = list(fit)) })
-#     
-# 
-# 
-# # Add the snp information
-# S2_MET_marker_mean_fw <- mxe_df1 %>% 
-#   full_join(., marker_effect_stab, by = c("trait", "marker")) %>% 
-#   left_join(., snp_info, by = "marker") %>% 
-#   select(marker, chrom:cM_pos, trait, environment, effect, h:delta, df)
-# 
-# # Save the data
-# save_file <- file.path(result_dir, "S2MET_marker_mean_fw_results.RData")
-# save("S2_MET_marker_mean_fw", "marker_effect_stab", file = save_file)
-# 
+## Manage the mxe data and convert to a tidy data.frame
+mxe_df <- marker_by_env_effects %>% 
+  list(., names(.)) %>% 
+  pmap_df(~mutate(.x, trait = .y)) %>%
+  select(trait, environment, names(.))
+
+# Combine with the environmental mean
+mxe_df1 <- mxe_df %>%
+  left_join(., distinct(S2_MET_pheno_mean_fw, trait, environment, h),
+            by = c("environment", "trait"))
+
+# Calculate the marker effect stability
+marker_effect_stab <- mxe_df1 %>%
+  group_by(trait, marker) %>%
+  do({
+    df <- .
+    # Fit the model
+    fit <- lm(effect ~ h, df)
+    data_frame(b = coef(fit)[2],
+               b_std_error = summary(fit)$coefficients[2,"Std. Error"],
+               delta = mean(resid(fit)^2),
+               df = df.residual(fit),
+               fit = list(fit)) })
+
+
+
+# Add the snp information
+S2_MET_marker_mean_fw <- mxe_df1 %>%
+  full_join(., marker_effect_stab, by = c("trait", "marker")) %>%
+  left_join(., snp_info, by = "marker") %>%
+  select(marker, chrom:cM_pos, trait, environment, effect, h:delta, df)
+
+# Save the data
+save_file <- file.path(result_dir, "S2MET_marker_mean_fw_results.RData")
+save("S2_MET_marker_mean_fw", "marker_effect_stab", file = save_file)
+
 
 
 

@@ -13,5 +13,5 @@ cd /panfs/roc/groups/6/smithkp/neyha001/QTLMapping/S2MET_Mapping/Scripts/Marker_
 module load R/3.2.0_intel_mkl
 
 # Marker effect by environment computation
-Rscript marker_effect_by_env_MSI.R
+Rscript marker_effect_by_env.R
 
