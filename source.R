@@ -31,6 +31,9 @@ coef_replace <- c("b" = "Linear Stability",
 # Color scheme for manhattan plot
 color <- c(set_names(umn_palette(n = 4)[3:4], "Bl", "Or"), "B" = "black", "G" = "grey75")
 
+# Placeholder
+alpha <- 0
+
 ### Plotting modifiers
 # Manhattan plot
 g_mod_man <- list(
