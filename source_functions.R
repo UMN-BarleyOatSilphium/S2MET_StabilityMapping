@@ -190,6 +190,17 @@ mv_gwas <- function(pheno, geno, fixed = NULL, K, n.PC) {
 }
 
 
+# Return an LD data.frame from a SNP matrix
+LD <- function(x, df = TRUE) {
+  ld <- cor(x)^2
+  
+  if (df) {
+    ld <- as.data.frame(ld) %>% 
+      rownames_to_column("marker1") %>% 
+      gather(marker2, LD, -marker1)
+  }
+  return(ld)
+}
 
 
 

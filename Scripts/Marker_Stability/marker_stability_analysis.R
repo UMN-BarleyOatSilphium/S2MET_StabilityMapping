@@ -56,14 +56,14 @@ marker_effect_stab <- mxe_df1 %>%
 
 
 # Add the snp information
-S2_MET_marker_mean_fw <- mxe_df1 %>%
+marker_mean_fw <- mxe_df1 %>%
   full_join(., marker_effect_stab, by = c("trait", "marker")) %>%
   left_join(., snp_info, by = "marker") %>%
   select(marker, chrom:cM_pos, trait, environment, effect, h:delta, df)
 
 # Save the data
 save_file <- file.path(result_dir, "S2MET_marker_mean_fw_results.RData")
-save("S2_MET_marker_mean_fw", "marker_effect_stab", file = save_file)
+save("marker_mean_fw", "marker_effect_stab", file = save_file)
 
 
 
@@ -77,7 +77,7 @@ load(file.path(result_dir, "S2MET_marker_mean_fw_results.RData"))
 ## Plot the distribution of stability estimates
 
 ## Transform
-S2_MET_marker_mean_fw_trans <- S2_MET_marker_mean_fw %>% 
+marker_mean_fw_trans <- marker_mean_fw %>% 
   distinct(marker, chrom, pos, trait, b, delta) %>%
   mutate(log_delta = log(delta), b = b + 1)
 
@@ -91,7 +91,7 @@ g_mod <- list(
   theme(axis.title.y = element_blank()) )
 
 # Just plot linear stability
-g_marker_fw_dens_b <- S2_MET_marker_mean_fw_trans %>%
+g_marker_fw_dens_b <- marker_mean_fw_trans %>%
   ggplot(aes(x = b)) + 
   labs(title = "Linear Stability") +
   facet_wrap( ~ trait, ncol = 1) +

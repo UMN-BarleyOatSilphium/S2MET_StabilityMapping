@@ -105,8 +105,7 @@ for (tr in unique(S2_MET_BLUEs_use$trait)) {
         
         # Create the SNP X E matrix
         X_snp <- X_env * c(Z %*% snp)
-        colnames(X_snp) <- paste0(colnames(X_snp), "_snp")
-        
+
         # Create a new X matrix
         X2 <- cbind(X1, X_snp)
         
@@ -130,13 +129,16 @@ for (tr in unique(S2_MET_BLUEs_use$trait)) {
       
     }, mc.cores = n_core)
   
-  # Rotate and convert to df
-  marker_by_env_effects[[tr]] <- marker_score %>% 
-    map(~as.data.frame(t(.)) %>% rownames_to_column("marker")) %>% 
-    bind_rows() %>%
-    rename_at(vars(-marker), ~str_extract(., "[A-Z]{3}[0-9]{2}")) %>%
-    gather(environment, effect, -marker) %>%
-    mutate(trait = tr)
+  # # Rotate and convert to df
+  # marker_by_env_effects[[tr]] <- marker_score %>% 
+  #   map(~as.data.frame(t(.)) %>% rownames_to_column("marker")) %>% 
+  #   bind_rows() %>%
+  #   rename_at(vars(-marker), ~str_extract(., "[A-Z]{3}[0-9]{2}")) %>%
+  #   gather(environment, effect, -marker) %>%
+  #   mutate(trait = tr)
+  
+  # Return the matrix
+  marker_by_env_effects[[tr]] <- marker_score
   
 }
 

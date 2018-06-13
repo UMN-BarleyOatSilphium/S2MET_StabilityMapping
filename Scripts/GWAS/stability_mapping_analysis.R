@@ -16,6 +16,7 @@
 library(qvalue)
 library(cowplot)
 library(broom)
+library(LDheatmap)
 
 
 # Run the source script
@@ -198,6 +199,12 @@ ggsave(filename = "population_structure_versus_nonlinear_stability.jpg", plot = 
 
 
 
+
+
+
+
+
+
 ### Association Results - Genomewide Scan
 
 ## Load the results of the genomewide scan
@@ -306,7 +313,104 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
     # Return the df
     bind_cols(df, marker_geno_prop)
     
+  }) %>% arrange(trait, coef, chrom, pos)
+
+
+
+
+### LD Heatmap
+# Define a window around the significant SNPs
+window <- 2e6 # 5 Mbp
+
+# For each significant region, look at a LD heatmap of surrounding markers
+gwas_mlmm_LD <- gwas_mlmm_marker_prop %>%
+  ungroup() %>%
+  mutate(ld_heatmap = vector("list", nrow(.)))
+
+for (i in seq(nrow(gwas_mlmm_LD))) {
+  
+  snp <- gwas_mlmm_LD[i,]
+  
+  # Subset these SNPs and calculate LD
+  surrounding_snps <- snp_info %>% 
+    filter(chrom %in% snp$chrom, between(pos, mean(snp$pos) - window, mean(snp$pos) + window))
+  surrounding_snp_LD <- LD(x = M[,surrounding_snps$marker, drop = FALSE], df = FALSE)
+  
+  # Get the qvalues for these SNPs
+  surrounding_snp_qvalue <- gwas_pheno_mean_fw_adj %>% 
+    filter(marker %in% surrounding_snps$marker, trait %in% snp$trait, coef %in% snp$coef)
+  
+  gwas_mlmm_LD$ld_heatmap[[i]] <- LDheatmap(surrounding_snp_LD, surrounding_snps$pos, flip = TRUE,
+                          SNP.name = snp$marker) %>%
+    LDheatmap.addScatterplot(LDheatmap = ., P = surrounding_snp_qvalue$neg_log_q)
+  
+  
+}
+
+gwas_mlmm_LD <- gwas_mlmm_marker_prop %>% %>%
+  do(test = {
+    snp <- .
+    
+    # Subset these SNPs and calculate LD
+    surrounding_snps <- snp_info %>% 
+      filter(chrom %in% snp$chrom, between(pos, mean(snp$pos) - window, mean(snp$pos) + window))
+    surrounding_snp_LD <- LD(x = M[,surrounding_snps$marker, drop = FALSE], df = FALSE)
+    
+    # Get the qvalues for these SNPs
+    surrounding_snp_qvalue <- gwas_pheno_mean_fw_adj %>% 
+      filter(marker %in% surrounding_snps$marker, trait %in% snp$trait, coef %in% snp$coef)
+    
+    ld_heatmap <- LDheatmap(surrounding_snp_LD, surrounding_snps$pos, flip = TRUE,
+                          SNP.name = snp$marker) %>%
+      LDheatmap.addScatterplot(LDheatmap = ., P = surrounding_snp_qvalue$neg_log_q)
+     
+    snp
   })
+    
+    
+    
+
+
+## Example
+snp <- subset(gwas_mlmm_marker_prop, trait == "HeadingDate" & chrom == 5)
+
+# Subset these SNPs and calculate LD
+surrounding_snps <- snp_info %>% 
+  filter(chrom %in% snp$chrom, between(pos, mean(snp$pos) - window, mean(snp$pos) + window))
+surrounding_snp_LD <- LD(x = M[,surrounding_snps$marker, drop = FALSE], df = FALSE)
+
+# Get the qvalues for these SNPs
+surrounding_snp_qvalue <- gwas_pheno_mean_fw_adj %>% 
+  filter(marker %in% surrounding_snps$marker, trait %in% snp$trait, coef %in% snp$coef)
+
+ld_heatmap <- LDheatmap(surrounding_snp_LD, surrounding_snps$pos, flip = TRUE,
+                        SNP.name = snp$marker) %>%
+  LDheatmap.addScatterplot(LDheatmap = ., P = surrounding_snp_qvalue$neg_log_q)
+
+
+
+ld_manhattan <- ggplotGrob({
+  qplot(x = pos / 1e6, y = neg_log_q, data = surrounding_snp_qvalue, asp = 1/10, col = coef) + theme_manhattan()
+})
+
+
+ld_heatmap <- LDheatmap(surrounding_snp_LD, surrounding_snps$pos, flip = TRUE) %>%
+  LDheatmap.addGrob(grob = ld_manhattan, height = 0.5)
+
+
+
+
+### Annotation
+### 
+ 
+
+
+
+
+
+
+
+
 
 ## Output a table
 gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
@@ -315,6 +419,8 @@ gwas_mlmm_marker_toprint <- gwas_mlmm_marker_prop %>%
          Beta = beta, SE = se, qvalue = qvalue, R2 = snp_r_squared, MAF = maf, AB:WA) %>% 
   arrange(Trait, Coef, Chrom, Position) %>% 
   mutate(Coef = str_replace_all(Coef, coef_replace))
+
+
 
 write_csv(x = gwas_mlmm_marker_toprint, path = file.path(fig_dir, "gwas_significant_associations.csv"))
 
@@ -415,6 +521,12 @@ for (tr in unique(gwas_pheno_mean_fw_plei_toplot$trait)) {
   ggsave(filename = save_file, plot = g_gwas_plei, width = 9, height = 6)
   
 }
+
+
+
+
+
+
 
 
 
