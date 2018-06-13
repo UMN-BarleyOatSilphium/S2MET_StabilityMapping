@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#PBS -l walltime=04:00:00,mem=24gb,nodes=1:ppn=1
-#PBS -N marker_by_env_pop_param
+#PBS -l walltime=24:00:00,mem=24gb,nodes=1:ppn=7
+#PBS -N marker_by_env
 #PBS -M neyha001@umn.edu
 #PBS -m abe
 #PBS -r n

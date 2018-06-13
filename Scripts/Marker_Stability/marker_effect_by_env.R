@@ -93,7 +93,7 @@ for (tr in unique(S2_MET_BLUEs_use$trait)) {
   parallel_list <- transpose(list(snps_by_chrom, K_chr, population_parameters))
   
   # Parallelize
-  mclapply(X = parallel_list, FUN = function(chrom_list) {
+  marker_score <- mclapply(X = parallel_list, FUN = function(chrom_list) {
     
       # Population structure matrix
       # 1 PC
@@ -136,7 +136,7 @@ for (tr in unique(S2_MET_BLUEs_use$trait)) {
     bind_rows() %>%
     rename_at(vars(-marker), ~str_extract(., "[A-Z]{3}[0-9]{2}")) %>%
     gather(environment, effect, -marker) %>%
-    mutate(trait == tr)
+    mutate(trait = tr)
   
 }
 
