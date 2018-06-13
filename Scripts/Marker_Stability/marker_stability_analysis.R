@@ -30,7 +30,15 @@ M <- S2TP_imputed_multi_genos_mat
 
 
 ## Manage the mxe data and convert to a tidy data.frame
-mxe_df <- marker_by_env_effects %>% 
+marker_by_env_effects_df <- marker_by_env_effects %>% 
+  map(~do.call("cbind", .))
+    map(., ~as.data.frame(t(.)) %>% rownames_to_column("marker")) %>% 
+    bind_rows() %>%
+    rename_at(vars(-marker), ~str_extract(., "[A-Z]{3}[0-9]{2}")) %>%
+    gather(environment, effect, -marker)
+  })
+  
+mxe_df
   list(., names(.)) %>% 
   pmap_df(~mutate(.x, trait = .y)) %>%
   select(trait, environment, names(.))

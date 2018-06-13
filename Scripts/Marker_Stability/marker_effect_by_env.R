@@ -32,7 +32,7 @@ tp_entry_list <- entry_list %>%
   filter(Line %in% tp_geno) %>%
   select(line_name = Line, program = Program)
 
-n_core <- ifelse(Sys.info()["sysname"] == "Windows", 1, detectCores())
+n_core <- 7
 
 # Significance threshold for GWAS
 alpha <- 0.05
@@ -50,6 +50,9 @@ snps_by_chrom <- snp_info %>%
   map("marker")
 
 
+snps_by_chrom <- map(snps_by_chrom, head, 10)
+
+
 ## Split SNPs by chromosome
 K_chr <- snps_by_chrom %>%
   map(~setdiff(snp_info$marker, .)) %>% 
@@ -61,7 +64,8 @@ marker_by_env_effects <- list()
 ## Fit the mixed model to estimate variance components
 # Iterate over traits
 for (tr in unique(S2_MET_BLUEs_use$trait)) {
-  
+  # Print the trait
+  print(tr)
   df <- subset(S2_MET_BLUEs_use, trait == tr)
   
   ## May need to edit this with the correct weights
