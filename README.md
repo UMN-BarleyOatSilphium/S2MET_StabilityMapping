@@ -1,18 +1,23 @@
-# S2MET_Mapping
 
-## Description
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+S2MET
+=====
 
-Repository of project to conduct genomewide association using the data from the S2MET project. Traits will include phenotypic means as well as stability.
+Description
+-----------
 
-## Installation
+Project repository for the spring two-row (**S2**) barley multi-environment trial (**MET**) project. This project will look at the impact of genotype-by-environment interaction when performing genomewide prediction. The project includes a panel of 183 training population lines, 50 validation population lines, and 9 repeated checks.
 
-Clone this repository using the following command:
+### Objectives
 
-```
-git clone https://github.com/neyhartj/S2MET_Mapping.git
-```
+The objectives of the project are to:
 
-## Support
+1.  Build a nationwide infrastructure for genomewide selection of two-row spring barley for new environments or growing regions
+2.  Test the use of environmental covariables for genomwide selection and for environmental clustering
+3.  Develop an `R` package for widespread use among breeders, including those outside of barley
 
-Edit the following to allow people to submit issues:
-Please "[open an issue](https://github.com/neyhartj/S2MET_Mapping/issues/new) for support or to comment!
+Methods and Materials
+---------------------
+
+Trials in the `S2MET` will be performed in 21 environments over 3 years for a total of 43 environments.
+

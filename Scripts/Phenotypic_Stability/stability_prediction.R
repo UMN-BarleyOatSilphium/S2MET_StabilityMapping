@@ -4,55 +4,27 @@
 ## For CV, use both GBS markers and BOPA markers. Also conduct predictions using the 
 ## genotypic means
 ## 
-
-# List of packages to load
-# List of packages
-packages <- c("dplyr", "purrr", "tibble", "tidyr", "readr", "stringr", "readxl", "modelr", 
-              "parallel", "purrrlyr", "rrBLUP")
-
-# Set the directory of the R packages
-package_dir <- NULL
-package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-pc-linux-gnu-library/3.4/"
-
-# Load all packages
-invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
+## Author: Jeff Neyhart
+## Last updated: June 18, 2018
+## 
 
 
-## Directories
-proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET_Mapping//"
-proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET_Mapping/" 
+# Run the source script - MSI
+repo_dir <- "/panfs/roc/groups/6/smithkp/neyha001/QTLMapping/S2MET_Mapping/"
+source(file.path(repo_dir, "source_MSI.R"))
 
-alt_proj_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/S2MET"
-alt_proj_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/S2MET/"
-
-# Geno, pheno, and enviro data
-geno_dir <-  "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
-bopa_geno_dir <- "C:/Users/Jeff/Google Drive/Barley Lab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
-pheno_dir <- file.path(alt_proj_dir, "Phenotype_Data/")
-env_var_dir <- file.path(alt_proj_dir, "Environmental_Variables")
-
-geno_dir <- bopa_geno_dir <-  "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Genos"
-pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos"
-env_var_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Environmental_Data"
-
-
-# Other directories
-fig_dir <- file.path(proj_dir, "Figures/")
-map_dir <- file.path(proj_dir, "Mapping")
-entry_dir <- file.path(alt_proj_dir, "Plant_Materials")
-analysis_dir <- file.path(proj_dir, "Analysis")
-result_dir <- file.path(proj_dir, "Results")
-
-# Load the geno data
-load(file.path(bopa_geno_dir, "S2TP_multi_genos.RData"))
+# # Run the source script - local
+# repo_dir <- getwd()
+# source(file.path(repo_dir, "source.R"))
 
 # Load the FW results
-load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData"))
+load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 # Load the marker FW results
-load(file.path(result_dir, "S2MET_marker_mean_fw_results.RData"))
+load(file.path(result_dir, "marker_mean_fw_results.RData"))
 
-# Find the most stable/sensitive and average markers
-S2_MET_marker_mean_fw_tidy <- S2_MET_marker_mean_fw %>% 
+
+# Find the most plastic markers and stable markers
+marker_mean_fw_tidy <- marker_mean_fw %>% 
   distinct(marker, chrom, pos, trait, b, delta) %>%
   mutate(log_delta = log(delta), b = b + 1) %>%
   select(-delta) %>% 
@@ -62,39 +34,28 @@ S2_MET_marker_mean_fw_tidy <- S2_MET_marker_mean_fw %>%
 alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
-S2_MET_marker_fw_sig <- S2_MET_marker_mean_fw_tidy %>%
+marker_fw_sig <- marker_mean_fw_tidy %>%
   filter(coef == "b") %>% 
   group_by(trait) %>% 
   # mutate(estimate = scale(estimate)) %>%
   mutate(lower_perc = quantile(estimate, alpha / 2), 
          upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
   ungroup() %>%
-  mutate(significance = case_when(estimate >= upper_perc ~ "sensitive",
-                                  estimate <= lower_perc ~ "stable",
-                                  TRUE ~ "average"),
+  mutate(significance = case_when(estimate >= upper_perc ~ "plastic",
+                                  estimate <= lower_perc ~ "plastic",
+                                  TRUE ~ "stable"),
          marker_type = if_else(str_detect(marker, "^S"), "GBS", "BOPA"))
 
-# Load an entry file
-entry_list <- read_excel(file.path(entry_dir, "S2MET_project_entries.xlsx"))
 
-
-# Grab the entry names that are not checks
-tp <- entry_list %>% 
-  filter(Class == "S2TP") %>% 
-  pull(Line)
-
-# Find the tp and vp that are genotypes
-tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
 
 # Rename the marker matrix
 M <- S2TP_imputed_multi_genos_mat[tp_geno,]
-
 # Overall K
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 
 # Create a tidy dataset to model
-S2_MET_pheno_mean_fw_tomodel <- S2_MET_pheno_mean_fw %>% 
+pheno_mean_fw_tomodel <- S2_MET_pheno_mean_fw %>% 
   distinct(trait, line_name, g, b, delta) %>%
   mutate(line_name = as.factor(line_name),
          log_delta = log(delta)) %>%
@@ -130,7 +91,7 @@ n_cv_iter <- 100
 n_k <- 7
 
 # Create the cv parts
-cv_parts <- S2_MET_pheno_mean_fw_tomodel %>%
+cv_parts <- pheno_mean_fw_tomodel %>%
   group_by(trait, coef) %>%
   do(folds = rerun(.n = n_cv_iter, crossv_kfold(data = ., k = n_k)))
 
@@ -150,14 +111,14 @@ n_samples <- 100
 
 
 # First nest the marker groups
-S2_MET_marker_fw_nest <- S2_MET_marker_fw_sig %>% 
+marker_fw_nest <- marker_fw_sig %>% 
   group_by(trait, significance) %>% 
   nest(marker) %>%
-  bind_rows(., S2_MET_marker_fw_sig %>% group_by(trait) %>% 
+  bind_rows(., marker_fw_sig %>% group_by(trait) %>% 
               nest(marker) %>% mutate(significance = "all"))
 
 # Combine the stable and sensitive markers into a group called "mix"
-marker_mix_nest <- S2_MET_marker_fw_nest %>% 
+marker_mix_nest <- marker_fw_nest %>% 
   filter(significance %in% c("stable", "sensitive")) %>% 
   group_by(trait) %>% 
   do(data = bind_rows(.$data)) %>%
@@ -165,38 +126,38 @@ marker_mix_nest <- S2_MET_marker_fw_nest %>%
   mutate(significance = "mixed")
 
 # Combine
-S2_MET_marker_fw_nest_use <- bind_rows(S2_MET_marker_fw_nest, marker_mix_nest)
+marker_fw_nest_use <- bind_rows(marker_fw_nest, marker_mix_nest)
 
 # Find the minimum number of markers
-min_markers <- S2_MET_marker_fw_nest_use$data %>% 
+min_markers <- marker_fw_nest_use$data %>% 
   map_dbl(~nrow(.)) %>% 
   min()
 
 # Make random samples of the markers
-S2_MET_marker_fw_samples <- S2_MET_marker_fw_nest_use %>% 
+marker_fw_samples <- marker_fw_nest_use %>% 
   group_by(trait, significance) %>%
   do(data_frame(rep = seq(n_samples), sample = rerun(.n = n_samples, sample_n(.$data[[1]], size = min_markers))))
 
 # Create relationship matrices
-S2_MET_marker_fw_samples_K <- S2_MET_marker_fw_samples %>% 
+marker_fw_samples_K <- marker_fw_samples %>% 
   ungroup() %>%
   mutate(K = map(sample, ~A.mat(X = M[,.$marker, drop = FALSE], min.MAF = 0, max.missing = 1)))
 
 # Combine with the phenotypic data
-S2_MET_marker_fw_samples_tomodel <- left_join(
-  S2_MET_marker_fw_samples_K,
-  S2_MET_pheno_mean_fw_tomodel %>% group_by(trait, coef) %>% nest(),
+marker_fw_samples_tomodel <- left_join(
+  marker_fw_samples_K,
+  pheno_mean_fw_tomodel %>% group_by(trait, coef) %>% nest(),
   by = "trait"
 )
 
 ## Create cv reps for each line and run the CV, report the mean
 # Make an empty list
-cv_results_samples <- vector("list", nrow(S2_MET_marker_fw_samples_tomodel))
+cv_results_samples <- vector("list", nrow(marker_fw_samples_tomodel))
 
 # Iterate over the rows
-for (i in seq(nrow(S2_MET_marker_fw_samples_tomodel))) {
+for (i in seq(nrow(marker_fw_samples_tomodel))) {
   
-  df <- S2_MET_marker_fw_samples_tomodel[i,]
+  df <- marker_fw_samples_tomodel[i,]
   
   trait <- df$trait
   coef <- df$coef
@@ -237,6 +198,6 @@ cv_results_samples_tidy <- cv_results_samples %>%
   tbl_df()
 
 # Save this
-save_file <- file.path(result_dir, "S2MET_stability_crossv_results.RData")
+save_file <- file.path(result_dir, "stability_crossv_results.RData")
 save("cv_results", "cv_results_samples_tidy", file = save_file)
 

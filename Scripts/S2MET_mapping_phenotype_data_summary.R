@@ -7,20 +7,16 @@
 # 2. Heritability estimates
 # 3. Correlations among environments
 
-library(tidyverse)
-library(broom)
-library(stringr)
-library(readxl)
-library(modelr)
-library(pbr)
-library(rrBLUP)
-library(ggridges)
-
 # Repository directory
 repo_dir <- getwd()
-
 # Project and other directories
 source(file.path(repo_dir, "source.R"))
+
+# Other packages
+library(lme4)
+library(ggridges)
+library(modelr)
+library(pbr)
 
 
 ### Basic Summaries
@@ -29,13 +25,30 @@ source(file.path(repo_dir, "source.R"))
 
 # Find the total number of possible line x environment combinations and find
 # the proportion that are observed for each trait
-(prob_observed <- S2_MET_BLUEs_use %>% 
+observed <- S2_MET_BLUEs_use %>% 
   distinct(trait, environment, line_name) %>%
-  mutate(observed = TRUE) %>% 
+  mutate(observed = TRUE) %>%
   group_by(trait) %>%
-  complete(environment, line_name, fill = list(observed = FALSE)) %>%
+  complete(environment, line_name, fill = list(observed = FALSE)) 
+
+(prob_observed <- observed %>%
   # group_by(trait) %>%
   summarize(prop_obs = mean(observed)))
+
+## For each line, calculate the balance - sort lowest to highest
+line_observed <- observed %>% 
+  group_by(trait, line_name) %>% 
+  summarize(p_env = mean(observed)) %>% 
+  arrange(p_env)
+# How many lines were observed everywhere?
+line_observed %>% filter(p_env == 1) %>% summarize(n_line = n_distinct(line_name))
+
+## For each environment, calculate the balance
+env_observed <- observed %>% 
+  group_by(trait, environment) %>% 
+  summarize(p_line = mean(observed)) %>% 
+  arrange(p_line)
+
 
 ## Number of total environments and number of environments per trait
 n_distinct(S2_MET_BLUEs_use$environment)
@@ -61,6 +74,7 @@ env_order <- S2_MET_BLUEs_use %>%
   pull(environment) %>% 
   unique()
 
+# Plot
 (g_met_dist <- S2_MET_BLUEs_use %>%
   mutate(environment = parse_factor(environment, levels = env_order)) %>%
   ggplot(aes(x = value, y = environment, fill = environment)) +
@@ -72,7 +86,26 @@ env_order <- S2_MET_BLUEs_use %>%
   labs(title = "Trait Distributions in All Environments") +
   theme_bw() )
 
-# Sort
+# Sort on latitute
+env_order <- S2_MET_BLUEs_use %>% 
+  left_join(trial_info) %>% 
+  distinct(environment, latitude) %>%
+  arrange(latitude, environment) %>%
+  # distinct(environment, longitude) %>% 
+  # arrange(longitude, environment) %>% 
+  pull(environment)
+
+(g_met_dist <- S2_MET_BLUEs_use %>%
+    mutate(environment = parse_factor(environment, levels = env_order)) %>%
+    ggplot(aes(x = value, y = environment, fill = environment)) +
+    geom_density_ridges() +
+    facet_grid(. ~ trait, scales = "free_x") +
+    scale_fill_discrete(guide = FALSE) +
+    ylab("Environment") +
+    xlab("") +
+    labs(title = "Trait Distributions in All Environments") +
+    theme_bw() )
+
 
 # Save it
 save_file <- file.path(fig_dir, "met_trait_dist.jpg")
@@ -145,7 +178,7 @@ stage_two_lrt <- stage_two_model_fits %>%
 # Extract the full model and calculate heritability
 stage_two_herit <- stage_two_model_fits %>% 
   mutate(full_fit = map(fits, "full")) %>%
-  do(suppressWarnings(herit_boot(object = .$full_fit[[1]], n_e = .$n_e, n_r = .$n_r, boot.reps = 100,
+  do(suppressWarnings(herit(object = .$full_fit[[1]], n_e = .$n_e, n_r = .$n_r,
                        exp = "line_name / (line_name + (line_name:env / n_e) + (Residual / n_r))")))
     
 
@@ -194,61 +227,65 @@ g_prop_varcomp <- prop_varcomp %>%
   theme_bw()
 
 
-save_file <- file.path(fig_dir, "var_comp_prop.jpg")
-ggsave(filename = save_file, plot = g_prop_varcomp, height = 5, width = 5)
+ggsave(filename = "var_comp_prop.jpg", plot = g_prop_varcomp, path = fig_dir,
+       height = 5, width = 5, dpi = 1000)
+
+## Output a table
+prop_varcomp_table <- prop_varcomp %>% 
+  mutate(vcov_prop = str_c(round(vcov, 2), " (", round(prop_vcov * 100, 2), "%)")) %>% 
+  select(-vcov:-prop_vcov) %>% 
+  spread(trait, vcov_prop)
+
+write_csv(x = prop_varcomp_table, path = file.path(fig_dir, "trait_varcomp.csv"))
 
 
+### Calculate the proportion of GxE that is due to environmental genetic variance
+### heterogeneity versus lack of environmental correlation
 
-
-
-
-
-
-
-## Calculate the SNP-based heritability in each environment
-library(lme4qtl)
-
-load(file.path(result_dir, "S2MET_pheno_mean_fw_results.RData" ))
-
-K <- A.mat(S2TP_imputed_multi_genos_mat)
-
-H_snp_env <- S2_MET_BLUEs_use %>% 
-  mutate(line_name = as.factor(line_name)) %>%
-  group_by(environment, trait) %>%
-  do({
+# For each environment, calculate the genetic variance via reml
+env_varG <- S2_MET_BLUEs_use %>% 
+  group_by(trait, environment) %>%
+  do(varG = {
     df <- .
-    mf <- model.frame(value ~ line_name + std_error, df)
     
-    wts <- mf$std_error^2
+    lmer_control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore")
+    wts <- df$std_error^2
+  
+    fit <- lmer(formula = value ~ 1 + (1|line_name), data = df, control = lmer_control,
+                weights = wts)  
     
-    fit <- relmatLmer(value ~ (1|line_name), data  = df, relmat = list(line_name = K))
-    varcor <- as.data.frame(VarCorr(fit))
-    
-    # Return a df
-    data.frame(varSNP = varcor$vcov[1], varR = varcor$vcov[2]) %>%
-      mutate(hSNP = varSNP / (varSNP + varR))
+    as.data.frame(VarCorr(fit))[1,"vcov"]
     
   })
 
-
-# Combine with means
-H_snp_env1 <- left_join(H_snp_env, distinct(S2_MET_pheno_mean_fw, trait, environment, h))
-
-# Plot
-H_snp_env1 %>% 
-  filter(hSNP != 0) %>%
-  ggplot(aes(x = h, y = hSNP)) + 
-  geom_point() + 
-  geom_smooth(method = "lm", formula = y ~ poly(x, 2)) +
-  geom_text(aes(label = environment), check_overlap = TRUE, vjust = 1.5, size = 2) +
-  facet_wrap(~ trait, ncol = 2, scales = "free") +
-  theme_bw()
-
-# Fit a polynomial model for each trait
-lm_fits <- H_snp_env1 %>% 
+# Calculate the heterogeneity
+env_varG_V <- env_varG %>% 
   group_by(trait) %>% 
-  do(linear_fit = lm(hSNP ~ h, data = .), poly_fit = lm(hSNP ~ poly(h, 2), data = .)) %>%
-  gather(fit_type, fit, -trait)
+  unnest() %>% 
+  summarize(V = var(sqrt(varG)))
+
+# Use the estimate of varGE across all environments to calculate L
+env_L <- left_join(env_varG_V, subset(prop_varcomp, grp == "GxE",c(trait, vcov))) %>% 
+  mutate(L = vcov - V)
+
+# Use the estimate of genetic variance across all environments to calculate the 
+# genetic correlation
+env_r <- left_join(env_L, subset(prop_varcomp, grp == "Genotype", c(trait, vcov)), by = "trait") %>% 
+  mutate(r_G = vcov.y / (vcov.y + L))
+
+## Genetic correlation across environments:
+## GY: 0.203
+## HD: 0.726
+## PH: 0.334
+
+
+## What proportion do V and L make up of varGE?
+## This is from Li et al 2018
+env_r %>% 
+  select(trait, varGE = vcov.x, V, L) %>% 
+  mutate_at(vars(V, L), funs(prop = . / varGE))
+
+
 
 
 

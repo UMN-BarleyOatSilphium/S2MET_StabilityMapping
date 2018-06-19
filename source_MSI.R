@@ -6,7 +6,7 @@
 
 # Load packages
 packages <- c("dplyr", "tidyr", "tibble", "stringr", "readxl", "readr", "parallel",
-              "rrBLUP", "purrr", "boot", "EMMREML")
+              "rrBLUP", "purrr", "boot", "EMMREML", "modelr")
 
 package_dir <- "/panfs/roc/groups/6/smithkp/neyha001/R/x86_64-unknown-linux-gnu-library/3.2/"
 invisible(lapply(packages, library, character.only = TRUE, lib.loc = package_dir))
