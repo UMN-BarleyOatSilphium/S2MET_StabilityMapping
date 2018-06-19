@@ -53,98 +53,102 @@ snps_by_chrom <- snp_info %>%
 #snps_by_chrom <- map(snps_by_chrom, head, 10)
 
 
-## Split SNPs by chromosome
-K_chr <- snps_by_chrom %>%
-  map(~setdiff(snp_info$marker, .)) %>% 
-  map(~A.mat(X = M[,.], min.MAF = 0, max.missing = 1))
+# ## Split SNPs by chromosome
+# K_chr <- snps_by_chrom %>%
+#   map(~setdiff(snp_info$marker, .)) %>% 
+#   map(~A.mat(X = M[,.], min.MAF = 0, max.missing = 1))
+# 
+# # Create an empty list for storing marker coefficients
+# marker_by_env_effects <- list()
+# 
+# ## Fit the mixed model to estimate variance components
+# # Iterate over traits
+# for (tr in unique(S2_MET_BLUEs_use$trait)) {
+#   
+#   # Print the trait
+#   print(tr)
+#   df <- subset(S2_MET_BLUEs_use, trait == tr)
+#   
+#   ## May need to edit this with the correct weights
+#   mf <- model.frame(value ~ line_name + environment, df)
+#   y <- model.response(mf)
+#   
+#   # Fixed effects of environment
+#   X <- model.matrix(~ environment, mf)
+#   Z <- model.matrix(~ -1 + line_name, mf)
+#   
+#   # Iterate over the K matrices and return the H_inv matrix
+#   population_parameters <- list()
+#   
+#   for (i in seq_along(K_chr)) {
+#     Q <- eigen(K_chr[[i]])$vectors[,1]
+#     X1 <- cbind(X, Z %*% Q)
+#     population_parameters[[as.character(i)]] <- 
+#       mixed.solve(y = y, Z = Z, K = K_chr[[i]], X = X1, return.Hinv = TRUE)$Hinv
+#     
+#   }
+#   
+#   # Create the snp:environment model matrix
+#   X_env <- model.matrix(~ -1 + environment, mf)
+#   
+#   ## Use the GWAS QG model to estimate the effect of each marker in each environment
+#   ## This will be the environment-specific marker effect + the mean
+#   
+#   # Create a large list to iterate
+#   parallel_list <- transpose(list(snps_by_chrom, K_chr, population_parameters))
+#   
+#   # Parallelize
+#   marker_score <- mclapply(X = parallel_list, FUN = function(chrom_list) {
+#     
+#       # Population structure matrix
+#       # 1 PC
+#       Q <- eigen(chrom_list[[2]])$vectors[,1]
+#       X1 <- cbind(X, pop_str = (Z %*% Q))
+#       Hinv <- chrom_list[[3]]
+#       
+#       apply(X = M[,chrom_list[[1]]], MARGIN = 2, FUN = function(snp) {
+#         
+#         # Create the SNP X E matrix
+#         X_snp <- X_env * c(Z %*% snp)
+# 
+#         # Create a new X matrix
+#         X2 <- cbind(X1, X_snp)
+#         
+#         # Index of snp betas
+#         j <- seq(ncol(X1) + 1, ncol(X2))
+#         
+#         W <- crossprod(X2, Hinv %*% X2)
+#         Winv <- try(solve(W), silent = TRUE)
+#         
+#         
+#         if (class(Winv) != "try-error") {
+#           beta <- Winv %*% crossprod(X2, Hinv %*% y)
+#           beta <- beta[j,]
+#           
+#         } else {
+#           beta <- NA
+#           
+#         }
+#         
+#         return(beta) })
+#       
+#     }, mc.cores = n_core)
+#   
+#   # # Rotate and convert to df
+#   # marker_by_env_effects[[tr]] <- marker_score %>% 
+#   #   map(~as.data.frame(t(.)) %>% rownames_to_column("marker")) %>% 
+#   #   bind_rows() %>%
+#   #   rename_at(vars(-marker), ~str_extract(., "[A-Z]{3}[0-9]{2}")) %>%
+#   #   gather(environment, effect, -marker) %>%
+#   #   mutate(trait = tr)
+#   
+#   # Return the matrix
+#   marker_by_env_effects[[tr]] <- marker_score
 
-# Create an empty list for storing marker coefficients
-marker_by_env_effects <- list()
 
-## Fit the mixed model to estimate variance components
-# Iterate over traits
-for (tr in unique(S2_MET_BLUEs_use$trait)) {
-  
-  # Print the trait
-  print(tr)
-  df <- subset(S2_MET_BLUEs_use, trait == tr)
-  
-  ## May need to edit this with the correct weights
-  mf <- model.frame(value ~ line_name + environment, df)
-  y <- model.response(mf)
-  
-  # Fixed effects of environment
-  X <- model.matrix(~ environment, mf)
-  Z <- model.matrix(~ -1 + line_name, mf)
-  
-  # Iterate over the K matrices and return the H_inv matrix
-  population_parameters <- list()
-  
-  for (i in seq_along(K_chr)) {
-    Q <- eigen(K_chr[[i]])$vectors[,1]
-    X1 <- cbind(X, Z %*% Q)
-    population_parameters[[as.character(i)]] <- 
-      mixed.solve(y = y, Z = Z, K = K_chr[[i]], X = X1, return.Hinv = TRUE)$Hinv
-    
-  }
-  
-  # Create the snp:environment model matrix
-  X_env <- model.matrix(~ -1 + environment, mf)
-  
-  ## Use the GWAS QG model to estimate the effect of each marker in each environment
-  ## This will be the environment-specific marker effect + the mean
-  
-  # Create a large list to iterate
-  parallel_list <- transpose(list(snps_by_chrom, K_chr, population_parameters))
-  
-  # Parallelize
-  marker_score <- mclapply(X = parallel_list, FUN = function(chrom_list) {
-    
-      # Population structure matrix
-      # 1 PC
-      Q <- eigen(chrom_list[[2]])$vectors[,1]
-      X1 <- cbind(X, pop_str = (Z %*% Q))
-      Hinv <- chrom_list[[3]]
-      
-      apply(X = M[,chrom_list[[1]]], MARGIN = 2, FUN = function(snp) {
-        
-        # Create the SNP X E matrix
-        X_snp <- X_env * c(Z %*% snp)
 
-        # Create a new X matrix
-        X2 <- cbind(X1, X_snp)
-        
-        # Index of snp betas
-        j <- seq(ncol(X1) + 1, ncol(X2))
-        
-        W <- crossprod(X2, Hinv %*% X2)
-        Winv <- try(solve(W), silent = TRUE)
-        
-        
-        if (class(Winv) != "try-error") {
-          beta <- Winv %*% crossprod(X2, Hinv %*% y)
-          beta <- beta[j,]
-          
-        } else {
-          beta <- NA
-          
-        }
-        
-        return(beta) })
-      
-    }, mc.cores = n_core)
-  
-  # # Rotate and convert to df
-  # marker_by_env_effects[[tr]] <- marker_score %>% 
-  #   map(~as.data.frame(t(.)) %>% rownames_to_column("marker")) %>% 
-  #   bind_rows() %>%
-  #   rename_at(vars(-marker), ~str_extract(., "[A-Z]{3}[0-9]{2}")) %>%
-  #   gather(environment, effect, -marker) %>%
-  #   mutate(trait = tr)
-  
-  # Return the matrix
-  marker_by_env_effects[[tr]] <- marker_score
-  
+
+
 
 # ## Use the GWAS Q+G model to estimate the effect of each marker in each environment
 # ## Use P3D
