@@ -60,30 +60,62 @@ mxe_df1 <- mxe_df %>%
   left_join(., distinct(S2_MET_pheno_mean_fw, trait, environment, h),
             by = c("environment", "trait"))
 
-# # Calculate the marker effect stability
-# # Regress the marker effects in each environment on the mean in that environment
-# marker_effect_stab <- mxe_df1 %>%
-#   group_by(trait, marker) %>%
-#   do({
-#     df <- .
-#     # Fit the model
-#     fit <- lm(effect ~ h, df)
-#     data_frame(b = coef(fit)[2],
-#                b_std_error = summary(fit)$coefficients[2,"Std. Error"],
-#                delta = mean(resid(fit)^2),
-#                df = df.residual(fit),
-#                fit = list(fit)) })
-# 
-# 
-# 
-# # Add the snp information
-# marker_mean_fw <- mxe_df1 %>%
-#   full_join(., marker_effect_stab, by = c("trait", "marker")) %>%
-#   left_join(., snp_info, by = "marker") %>%
-#   select(marker, chrom:cM_pos, trait, environment, effect, h:delta, df)
-# 
-# # Save the data
-# save("marker_mean_fw", "marker_effect_stab", file = file.path(result_dir, "marker_mean_fw_results.RData"))
+# Calculate the marker effect stability
+# Regress the marker effects in each environment on the mean in that environment
+marker_effect_stab <- mxe_df1 %>%
+  group_by(trait, marker) %>%
+  do({
+    df <- .
+    # Fit the model
+    fit <- lm(effect ~ h, df)
+    
+    # Output a data.frame with the intercept, slope, MSE, and fitted marker effects
+    mutate(df, a = coef(fit)[1], c = coef(fit)[2], delta = mean(resid(fit)^2), 
+           fitted_effects = fitted(fit)) 
+    
+  })
+
+
+# Add the snp information
+marker_mean_fw <- marker_effect_stab %>%
+  left_join(., snp_info, by = "marker") %>%
+  select(trait, marker, chrom:cM_pos, trait, names(.)) %>%
+  ungroup()
+
+# Save the data
+save("marker_mean_fw", file = file.path(result_dir, "marker_mean_fw_results.RData"))
+
+
+
+## Are polynomial regressions of marker effects better fits?
+marker_effect_stab_fits <- mxe_df1 %>%
+  group_by(trait, marker) %>%
+  do({
+    df <- .
+    
+    # Fit the full model with polynomial regression
+    fit_full <- lm(effect ~ 1 + poly(h, 2), df)
+    # Fit the linear regression
+    fit_lin <- lm(effect ~ 1 + h, df)
+    # Fit the base
+    fit_base <- lm(effect ~ 1, df)
+    
+    aic_compare <- AIC(fit_base, fit_lin, fit_full)
+    best <- subset(aic_compare, AIC == min(AIC))
+    
+    # Return the best model
+    data_frame(fit_type = row.names(best))
+  })
+
+# Summarize by trait
+marker_effect_stab_fits %>% 
+  group_by(trait, fit_type) %>% 
+  summarize(n = n()) %>% 
+  spread(fit_type, n) %>%
+  mutate_at(vars(fit_base:fit_lin), ~ . / ncol(M))
+
+## Plot the location of markers with different reaction norms
+
 
 
 
@@ -124,8 +156,8 @@ mean_marker_effect %>%
 
 ## Transform
 marker_mean_fw_trans <- marker_mean_fw %>% 
-  distinct(marker, chrom, pos, trait, b, delta) %>%
-  mutate(log_delta = log(delta), b = b + 1)
+  distinct(marker, chrom, pos, trait, c, delta) %>%
+  mutate(log_delta = log(delta), c = c + 1)
 
 
 ## Plot the stability terms individually, then combine
@@ -137,8 +169,8 @@ g_mod <- list(
   theme(axis.title.y = element_blank()) )
 
 # Just plot linear stability
-g_marker_fw_dens_b <- marker_mean_fw_trans %>%
-  ggplot(aes(x = b)) + 
+g_marker_fw_dens_c <- marker_mean_fw_trans %>%
+  ggplot(aes(x = c)) + 
   labs(title = "Linear Stability") +
   facet_wrap( ~ trait, ncol = 1) +
   scale_fill_brewer(palette = "Set2", guide = FALSE) +
@@ -154,7 +186,7 @@ g_marker_fw_dens_delta <- marker_mean_fw_trans %>%
   g_mod
 
 # Add the plots together
-g_marker_fw_dist <- plot_grid(g_marker_fw_dens_b, g_marker_fw_dens_delta, ncol = 2)
+g_marker_fw_dist <- plot_grid(g_marker_fw_dens_c, g_marker_fw_dens_delta, ncol = 2)
 
 ggsave(filename = "marker_stability_estimate_distriubtions.jpg", plot = g_marker_fw_dist, 
        height = 6, width = 5, dpi = 1000, path = fig_dir)
@@ -162,7 +194,7 @@ ggsave(filename = "marker_stability_estimate_distriubtions.jpg", plot = g_marker
 
 # Plot for all markers the relationship between linear and nonlinear stability
 g_linear_vs_nonlinear <- marker_mean_fw_trans %>% 
-  qplot(x = b, y = log_delta, data = .) + 
+  qplot(x = c, y = log_delta, data = .) + 
   facet_wrap(~trait, ncol = 2, scales = "free_y") +
   ylab("Non-Linear Stability") +
   xlab("Linear Stability") +
@@ -171,12 +203,18 @@ g_linear_vs_nonlinear <- marker_mean_fw_trans %>%
 ggsave(filename = "marker_linear_vs_nonlinear_stability.jpg", plot = g_linear_vs_nonlinear, 
        height = 6, width = 5, dpi = 1000, path = fig_dir)
 
-# Plot for all markers the relationship between linear stability and mean marker effect
-mean_marker_effect %>%
-  distinct(marker, chrom, pos, trait, b, mean_marker_effect) %>%
-  qplot(x = mean_marker_effect, y = b, data = .) +
+# Plot for all markers the relationship between the slope and the intercept
+marker_mean_fw %>% 
+  distinct(trait, marker, a, c) %>%
+  qplot(x = a, y = c, data = .) +
   facet_wrap(~trait, ncol = 2, scales = "free_x") +
   theme_bw()
+
+## Correlate
+marker_mean_fw %>% 
+  distinct(trait, marker, a, c)  %>% 
+  group_by(trait) %>% 
+  summarize(cor = cor(a, c))
 
 
 
@@ -232,7 +270,7 @@ ggsave(filename = "marker_fw_gwas_rn.jpg", plot = g_marker_fw_gwas, path = fig_d
 # Tidy up
 marker_mean_fw_tidy <- marker_mean_fw_trans %>% 
   select(-delta) %>% 
-  gather(coef, estimate, -marker:-trait)
+  gather(coef, estimate, -trait:-pos)
   
 
 # What should be the cutoff level?
@@ -240,7 +278,7 @@ alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
 marker_mean_fw_sig <- marker_mean_fw_tidy %>%
-  filter(coef == "b") %>% 
+  filter(coef == "c") %>% 
   group_by(trait) %>% 
   mutate(lower_perc = quantile(estimate, alpha / 2), 
          upper_perc = quantile(estimate, 1 - (alpha / 2))) %>%
@@ -527,6 +565,11 @@ ggsave(filename = "marker_stability_gene_annotation.jpg", plot = g_snp_ann_prop,
 
 
 
+
+
+
+
+
 ### Contribution of markers to trait variation
 
 # Extract the unique stability coefficients
@@ -576,47 +619,51 @@ mean_fw_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
     #   select(-contains("var"))
     
     fit <- mixed.solve(y = df1$value, K = K)
-    data.frame(grp = c("snp", "Residual"), vcov = c(fit$Vu, fit$Ve)) %>% mutate(prop = vcov / sum(vcov))
+    data.frame(grp = c("snp", "Residual"), vcov = c(fit$Vu, fit$Ve)) %>% 
+      mutate(prop = vcov / sum(vcov))
   })
 
 
 
 # Remove extra data
-mean_fw_varcomp <- mean_fw_varcomp %>%
+mean_fw_varcomp1 <- mean_fw_varcomp %>%
   filter(grp == "snp") %>%
   select(trait, coef, prop) %>%
   ungroup()
 
 # Plot
-mean_fw_varcomp %>%
+g_allmarker_varcomp <- mean_fw_varcomp1 %>%
   ggplot(aes(x = trait, y = prop, fill = coef)) + 
   geom_col(position = "dodge") +
   ylim(c(0,1)) + 
   theme_bw()
 
+ggsave(filename = "allmarker_varcomp.jpg", plot = g_allmarker_varcomp, path = fig_dir,
+       height = 5, width = 5, dpi = 1000)
+
 
 # ## Bootstrap a confidence interval for this estimate
-# mean_fw_varcomp_boot <- S2_MET_pheno_fw_uniq_trans %>% 
+# mean_fw_varcomp_boot <- S2_MET_pheno_fw_uniq_trans %>%
 #   group_by(trait, coef) %>%
 #   do(boot_out = {
 #     # Extract data
 #     df <- .
-#     
+# 
 #     # Copy the line_name column
-#     df_boots <- df %>% 
+#     df_boots <- df %>%
 #       mutate(snp = line_name) %>%
 #       modelr::bootstrap(data = ., n = 100)
-#     
+# 
 #     # Bootstrap
 #     boots_out <- df_boots$strap %>%
 #       map(as.data.frame) %>%
-#       map(~mixed.solve(y = .$value, K = K))  %>%
+#       map(~mixed.solve(y = .$value, K = K[.$line_name, .$line_name]))  %>%
 #       map(~c(snp = .$Vu, res = .$Ve) / sum(.$Vu + .$Ve))
-#     
+# 
 #     # Extract the proportion of variance attributed to snps and to residuals
-#     boots_out %>% 
+#     boots_out %>%
 #       map(~VarProp(.) %>% select(-contains("var")))
-#     
+# 
 #   })
     
 
@@ -703,20 +750,21 @@ mean_fw_martype_varcomp_summ <- mean_fw_martype_varcomp %>%
   ungroup()
 
 ## Plot
-mean_fw_martype_varcomp_summ %>% 
+g_mean_fw_varcomp <- mean_fw_martype_varcomp_summ %>% 
   filter(marker_type %in% names(mar_type_replace)) %>%
   mutate(marker_type = str_replace_all(marker_type, mar_type_replace)) %>%
-  ggplot(aes(x = coef, y = prop_var, col = marker_type)) + 
+  ggplot(aes(x = coef, y = prop_var, fill = marker_type)) + 
   geom_boxplot(position = "dodge") + 
-  theme_bw()
+  facet_wrap(~ trait, ncol = 2) +
+  theme_bw() +
+  theme(legend.position = c(0.75, 0.25))
 
+ggsave(filename = "mean_fw_varcomp.jpg", plot = g_mean_fw_varcomp, path = fig_dir,
+       height = 5, width = 5, dpi = 1000)
 
 ## Save
 save_file <- file.path(result_dir, "marker_stability_varcomp.RData")
 save("mean_fw_varcomp", "mean_fw_martype_varcomp", file = save_file)
-
-
-
 
 
 
@@ -734,7 +782,7 @@ gs_marker_effects <- S2_MET_pheno_mean_fw %>%
 
 # Add the marker stability
 gs_marker_effects1 <- gs_marker_effects %>% 
-  left_join(., distinct(marker_mean_fw, trait, marker, b) %>% rename(marker_b = b))
+  left_join(., distinct(marker_mean_fw, trait, marker, a, c) %>% rename(marker_c = c, marker_a = a))
 
 ## Correlate - bootstrap for significance
 marker_boot_cor <- gs_marker_effects1 %>%
@@ -757,31 +805,116 @@ g_mean_stab_marker_eff <- gs_marker_effects1 %>%
 # Save
 ggsave(filename = "mean_stab_marker_eff.jpg", plot = g_mean_stab_marker_eff,
        path = fig_dir, height = 6, width = 6, dpi = 1000)
+       
+
+## The correlation for the intercept of marker effects and marker effects for the mean
+## is quote high.
+## The correlation for the slope of marker effects and marker effects for the slope is
+## quite high.
+gs_marker_effects1 %>% 
+  summarize(cor_ga = cor(g, marker_a), cor_bc = cor(b, marker_c),
+            cor_gb = cor(g, b), cor_ac = cor(marker_a, marker_c))
 
 
-## Re-run marker stability estimates and get the intercept
-marker_mean_fw_new <- marker_mean_fw %>% 
-  group_by(trait, marker) %>% 
-  do({fit = lm(effect ~ h, data = .); data.frame(a = coef(fit)[1], c = coef(fit)[2])})
+## If the markers with the lowest and highest effect on stability are the most relevant,
+## is the same true for the genotype mean?
+gs_marker_effect_outliers <- gs_marker_effects %>% 
+  mutate(g_upper = quantile(g, 1 - (alpha / 2)), g_lower = quantile(g, alpha / 2),
+         significance = ifelse(g >= g_upper | g <= g_lower, "outlier", "normal"))
+  
 
-# Add the marker effects for the genotypic mean
-marker_mean_fw_new1 <- marker_mean_fw_new %>% 
-  ungroup() %>%
-  left_join(., select(gs_marker_effects1, trait, marker, g, b))
 
-# How much of the variance in marker effects for the genotype mean and the marker
-# effect for the phenotypic varianc is explained by genotype mean marker effects
-# and marker effect stability
-marker_mean_fw_new_fit <- marker_mean_fw_new1 %>% 
-  group_by(trait) %>%
-  do(g_fit = lm(g ~ a + c, data = .),
-     g_base_fit_a = lm(g ~ a, data = .),
-     g_base_fit_c = lm(g ~ c, data = .),
-     b_fit = lm(b ~ a + c, data = .),
-     b_base_fit_a = lm(b ~ a, data = .),
-     b_base_fit_c = lm(b ~ c, data = .))
+# Number of model fittings
+n_iter <- 100
 
-## Not unexpected
+# Now for each trait, find the proportion of variation in the mean and stability
+# due to different marker groups
+geno_mean_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
+  group_by(trait, coef) %>%
+  do({
+    
+    df <- .
+    
+    # What is the trait we are dealing with
+    tr <- unique(df$trait)
+    
+    # Extract the markers for the particular trait and separate by average/stable/plastic
+    marker_types <- gs_marker_effect_outliers %>%
+      filter(trait == tr) %>% 
+      split(.$significance) %>% 
+      map("marker")
+    
+    # Use the plastic markers to make relationship matrices
+    K_out <- marker_types$outlier %>% M[,.,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+    
+    # Sample size
+    sample_size <- length(marker_types$outlier)
+    
+    # Create random samples of the average markers
+    normal_marker_samples <- rerun(.n = n_iter, sample(marker_types$normal, size = sample_size))
+    
+    ## Fit using sommer
+    y <- df$value
+    X <- model.matrix(~ 1, df)
+    Z_g <- model.matrix(~ -1 + line_name, df) %>%
+      `colnames<-`(., colnames(K_out))
+    
+    # Iterate over the samples
+    var_comp_out <- normal_marker_samples %>%
+      map(function(marker_sample) {
+        
+        # Create a relationship matrix
+        K_norm <- M[,marker_sample,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+        
+        # Create a Z list
+        Z <- list(
+          normal = list(Z = Z_g, K = K_norm),
+          outlier = list(Z = Z_g, K = K_out)
+        )
+        
+        fit <- sommer::mmer(Y = y, X = X, Z = Z, silent = TRUE)
+        
+        # Extract and compute variance components
+        fit$var.comp %>% 
+          map_df(~unname(.))
+        
+      })
+    
+    
+    # Add the iteration number and output a data.frame
+    var_comp_out %>% 
+      list(., seq_along(.)) %>% 
+      pmap_df(~mutate(.x, iter = .y))
+    
+  })
+
+
+## Summarize
+# Separate variance components for stable, plastic, and average markers
+geno_mean_martype_varcomp_summ <- geno_mean_martype_varcomp %>% 
+  mutate(total = normal + outlier + units) %>% 
+  mutate_at(vars(normal:units), funs(. / total)) %>%
+  select(-units, -total) %>% 
+  gather(marker_type, prop_var, normal, outlier) %>%
+  ungroup()
+
+## Plot
+g_geno_mean_varcomp <- geno_mean_martype_varcomp_summ %>% 
+  ggplot(aes(x = coef, y = prop_var, fill = marker_type)) + 
+  geom_boxplot(position = "dodge") + 
+  facet_wrap(~trait, ncol = 2) +
+  theme_bw() +
+  theme(legend.position = c(0.75, 0.25))
+
+## plot - just the mean
+mean_fw_martype_varcomp_summ %>% 
+  filter(coef == "g") %>%
+  ggplot(aes(x = trait, y = prop_var, fill = marker_type)) + 
+  geom_boxplot(position = "dodge") + 
+  theme_bw()
+
+ggsave(filename = "geno_mean_varcomp.jpg", plot = g_geno_mean_varcomp, path = fig_dir,
+       height = 5, width = 5, dpi = 1000)
 
 
 

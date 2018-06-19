@@ -25,8 +25,8 @@ load(file.path(result_dir, "marker_mean_fw_results.RData"))
 
 # Find the most plastic markers and stable markers
 marker_mean_fw_tidy <- marker_mean_fw %>% 
-  distinct(marker, chrom, pos, trait, b, delta) %>%
-  mutate(log_delta = log(delta), b = b + 1) %>%
+  distinct(marker, chrom, pos, trait, c, delta) %>%
+  mutate(log_delta = log(delta), c = c + 1) %>%
   select(-delta) %>% 
   gather(coef, estimate, -marker:-trait)
 
@@ -35,7 +35,7 @@ alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
 marker_fw_sig <- marker_mean_fw_tidy %>%
-  filter(coef == "b") %>% 
+  filter(coef == "c") %>% 
   group_by(trait) %>% 
   # mutate(estimate = scale(estimate)) %>%
   mutate(lower_perc = quantile(estimate, alpha / 2), 
@@ -62,28 +62,7 @@ pheno_mean_fw_tomodel <- S2_MET_pheno_mean_fw %>%
   select(-delta) %>%
   gather(coef, value, g:log_delta)
 
-# Write a function that takes a train and test set and predicts using rrBLUP
-predict_RR <- function(train, test, K) {
-  
-  # Convert to df
-  train_df <- as.data.frame(train)
-  test_df <- as.data.frame(test)
-  
-  # Create the model matrix
-  mf <- model.frame(value ~ line_name, train_df)
-  y <- model.response(mf)
-  Z <- model.matrix(~ -1 + line_name, mf)
-  
-  fit <- mixed.solve(y = y, Z = Z, K = K)
-  
-  # Tidy
-  u_hat_tidy <- fit$u %>% 
-    data.frame(line_name = names(.), pred_value = ., stringsAsFactors = FALSE, row.names = NULL)
-  
-  # Combine and return the predictions
-  suppressWarnings(left_join(test_df, u_hat_tidy, by = "line_name"))
-  
-}
+
 
 
 # Set the number of CV iterations and the number of K folds
@@ -117,19 +96,9 @@ marker_fw_nest <- marker_fw_sig %>%
   bind_rows(., marker_fw_sig %>% group_by(trait) %>% 
               nest(marker) %>% mutate(significance = "all"))
 
-# Combine the stable and sensitive markers into a group called "mix"
-marker_mix_nest <- marker_fw_nest %>% 
-  filter(significance %in% c("stable", "sensitive")) %>% 
-  group_by(trait) %>% 
-  do(data = bind_rows(.$data)) %>%
-  ungroup() %>%
-  mutate(significance = "mixed")
-
-# Combine
-marker_fw_nest_use <- bind_rows(marker_fw_nest, marker_mix_nest)
 
 # Find the minimum number of markers
-min_markers <- marker_fw_nest_use$data %>% 
+min_markers <- marker_fw_nest$data %>% 
   map_dbl(~nrow(.)) %>% 
   min()
 
@@ -199,5 +168,5 @@ cv_results_samples_tidy <- cv_results_samples %>%
 
 # Save this
 save_file <- file.path(result_dir, "stability_crossv_results.RData")
-save("cv_results", "cv_results_samples_tidy", file = save_file)
+save("cv_results_all", "cv_results_samples_tidy", file = save_file)
 
