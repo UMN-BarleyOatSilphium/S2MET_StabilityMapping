@@ -90,15 +90,25 @@ n_samples <- 100
 
 
 # First nest the marker groups
-marker_fw_nest <- marker_fw_sig %>% 
+marker_fw_nest_use  <- marker_fw_sig %>% 
   group_by(trait, significance) %>% 
   nest(marker) %>%
   bind_rows(., marker_fw_sig %>% group_by(trait) %>% 
               nest(marker) %>% mutate(significance = "all"))
 
+# Combine the stable and sensitive markers into a group called "mix"
+marker_mix_nest <- marker_fw_nest %>% 
+  filter(significance %in% c("stable", "plastic")) %>% 
+  group_by(trait) %>% 
+  do(data = bind_rows(.$data)) %>%
+  ungroup() %>%
+  mutate(significance = "mixed")
+
+# Combine
+marker_fw_nest_use <- marker_fw_nest
 
 # Find the minimum number of markers
-min_markers <- marker_fw_nest$data %>% 
+min_markers <- marker_fw_nest_use$data %>% 
   map_dbl(~nrow(.)) %>% 
   min()
 
