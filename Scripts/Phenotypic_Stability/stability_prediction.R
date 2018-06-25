@@ -16,6 +16,8 @@ source(file.path(repo_dir, "source_MSI.R"))
 # # Run the source script - local
 # repo_dir <- getwd()
 # source(file.path(repo_dir, "source.R"))
+# library(modelr)
+# library(parallel)
 
 # Load the FW results
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
@@ -121,6 +123,13 @@ for (i in seq_along(K_esm)) {
   esm_cv_results[[i]] <- bind_rows(cv_results)
   
 }
+
+# Tidy up
+esm_cv_results <- esm_cv_results %>% 
+  list(., names(.)) %>% 
+  pmap_df(~mutate(.x, nmar = .y))
+
+
 
 
 ## Ranked markers (top)
