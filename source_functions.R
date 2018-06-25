@@ -352,6 +352,27 @@ predict_RR <- function(train, test, K) {
 
 
 
-
+# Write a function that takes a train and test set and predicts using rrBLUP
+predict_RR <- function(train, test, K) {
+  
+  # Convert to df
+  train_df <- as.data.frame(train)
+  test_df <- as.data.frame(test)
+  
+  # Create the model matrix
+  mf <- model.frame(value ~ line_name, train_df)
+  y <- model.response(mf)
+  Z <- model.matrix(~ -1 + line_name, mf)
+  
+  fit <- mixed.solve(y = y, Z = Z, K = K)
+  
+  # Tidy
+  u_hat_tidy <- fit$u %>% 
+    data.frame(line_name = names(.), pred_value = ., stringsAsFactors = FALSE, row.names = NULL)
+  
+  # Combine and return the predictions
+  suppressWarnings(left_join(test_df, u_hat_tidy, by = "line_name"))
+  
+}
 
 

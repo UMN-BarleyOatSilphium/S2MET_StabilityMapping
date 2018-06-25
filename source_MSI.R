@@ -24,4 +24,3 @@ pheno_dir <- "/panfs/roc/groups/6/smithkp/neyha001/Genomic_Selection/Data/Phenos
 source_lines <- readLines(file.path(repo_dir, "source.R"))
 source_lines_discard <- seq(which(grepl(pattern = "^# MSI", x = source_lines)))
 source_lines_run <- source(textConnection(source_lines[-source_lines_discard]))
-

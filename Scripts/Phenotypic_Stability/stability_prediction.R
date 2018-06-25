@@ -22,10 +22,8 @@ load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 # Load the marker subsets
 load(file.path(result_dir, "marker_subsets.RData"))
 
-
 # Cores
 n_cores <- detectCores()
-
 
 
 # Rename the marker matrix
@@ -41,8 +39,6 @@ pheno_mean_fw_tomodel <- pheno_mean_fw %>%
          log_delta = log(delta)) %>%
   select(-delta) %>%
   gather(coef, value, g:log_delta)
-
-
 
 
 # Set the number of CV iterations and the number of K folds
@@ -125,8 +121,6 @@ for (i in seq_along(K_esm)) {
   esm_cv_results[[i]] <- bind_rows(cv_results)
   
 }
-
-
 
 
 ## Ranked markers (top)

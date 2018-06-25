@@ -114,8 +114,6 @@ save("marker_mean_fw", file = file.path(result_dir, "marker_mean_fw_results.RDat
 #   spread(fit_type, n) %>%
 #   mutate_at(vars(fit_base:fit_lin), ~ . / ncol(M))
 # 
-# ## Plot the location of markers with different reaction norms
-
 
 
 
@@ -250,8 +248,69 @@ gwas_mlmm_model_adj <- subset(gwas_mlmm_model, model == model_use) %>%
                        all_snp_r_squared = .$r_squared$fixed_r_squared["all_snps"]))) %>%
   unnest(mlmm_out)
 
+
+# Plot for all markers the relationship between linear and nonlinear stability
+g_linear_vs_nonlinear <- marker_mean_fw_trans %>% 
+  qplot(x = c, y = log_delta, data = .) + 
+  facet_wrap(~trait, ncol = 2, scales = "free_y") +
+  ylab("Non-Linear Stability") +
+  xlab("Linear Stability") +
+  theme_bw()
+
+ggsave(filename = "marker_linear_vs_nonlinear_stability.jpg", plot = g_linear_vs_nonlinear, 
+       height = 6, width = 5, dpi = 1000, path = fig_dir)
+
+# Plot for all markers the relationship between the slope and the intercept
+marker_mean_fw %>% 
+  distinct(trait, marker, a, c) %>%
+  qplot(x = a, y = c, data = .) +
+  facet_wrap(~trait, ncol = 2, scales = "free_x") +
+  theme_bw()
+
+## Correlate
+marker_mean_fw %>% 
+  distinct(trait, marker, a, c)  %>% 
+  group_by(trait) %>% 
+  summarize(cor = cor(a, c))
+
+
+
+## Assess what markers change sign across environments`
+marker_effect_sign <- marker_mean_fw %>% 
+  mutate(effect_sign = sign(effect)) %>% 
+  group_by(trait, marker, effect_sign) %>% 
+  summarize(n = n()) %>% 
+  mutate(prop = n / sum(n)) %>%
+  ungroup() %>%
+  complete(trait, marker, effect_sign, fill = list(n = 0, prop = 0))
+
+## Proportion of markers that change sign
+marker_effect_sign %>% 
+  filter(effect_sign != -1) %>% 
+  group_by(trait) %>% 
+  summarize(n_change_sign = sum(prop != 1 & prop != 0), 
+            prop_change_sign = n_change_sign / n())
+
+## Plot a histogram of the proportion of positive effects
+marker_effect_sign %>% 
+  filter(effect_sign != -1) %>% 
+  qplot(x = prop, data = ., geom = "density") + 
+  facet_wrap(~trait, ncol = 2) +
+  theme_bw()
+
 marker_mean_fw_gwas_mlmm <- select(marker_mean_fw, trait, marker, environment, effect, h) %>%
   left_join(select(gwas_mlmm_model_adj, trait, coef, marker = term), .)
+
+## Take the significant markers from GWAS and look at their effect reaction norms
+gwas_mlmm_model_adj <- subset(gwas_mlmm_model, model == model_use) %>%
+  mutate(mlmm_out = map(mlmm_out, "fit_out_reduced") %>% 
+           map(~mutate(subset(.$summary, term != "Q"), snp_r_squared = .$r_squared$snp_r_squared, 
+                       all_snp_r_squared = .$r_squared$fixed_r_squared["all_snps"]))) %>%
+  unnest(mlmm_out)
+
+marker_mean_fw_gwas_mlmm <- select(marker_mean_fw, trait, marker, environment, effect, h) %>%
+  left_join(select(gwas_mlmm_model_adj, trait, coef, marker = term), .)
+
 
 # Plot the reaction norms
 g_marker_fw_gwas <- marker_mean_fw_gwas_mlmm %>% 
@@ -697,7 +756,7 @@ mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
     
     # Create random samples of the average markers
     stable_marker_samples <- rerun(.n = n_iter, sample(marker_types$Stable, size = sample_size))
-    
+
     ## Fit using sommer
     y <- df$value
     X <- model.matrix(~ 1, df)
@@ -725,15 +784,11 @@ mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
         
       })
     
-    
-    # Add the iteration number and output a data.frame
     var_comp_out %>% 
       list(., seq_along(.)) %>% 
       pmap_df(~mutate(.x, iter = .y))
     
   })
-
-
 
 
 ## Character vector for replacing marker types
@@ -761,6 +816,48 @@ g_mean_fw_varcomp <- mean_fw_martype_varcomp_summ %>%
 
 ggsave(filename = "mean_fw_varcomp.jpg", plot = g_mean_fw_varcomp, path = fig_dir,
        height = 5, width = 5, dpi = 1000)
+
+
+## Save
+save_file <- file.path(result_dir, "marker_stability_varcomp.RData")
+save("mean_fw_varcomp", "mean_fw_martype_varcomp", file = save_file)
+
+
+
+
+
+
+## What is the relationship between marker effects for stability and marker effects
+## for the mean? What about marker effect stability versus marker effects for the mean?
+gs_marker_effects <- S2_MET_pheno_mean_fw %>% 
+  distinct(trait, line_name, g, b) %>%
+  gather(term, value, g:b) %>% 
+  group_by(trait, term) %>% 
+  do(data.frame(marker = colnames(M), effect = mixed.solve(y = .$value, Z = M)$u)) %>%
+  spread(term, effect)
+
+# Add the marker stability
+gs_marker_effects1 <- gs_marker_effects %>% 
+  left_join(., distinct(marker_mean_fw, trait, marker, a, c) %>% rename(marker_c = c, marker_a = a))
+
+## Correlate - bootstrap for significance
+marker_boot_cor <- gs_marker_effects1 %>%
+  do(bootstrap(x = .$b, y = .$g, fun = "cor")) %>%
+  mutate(significant = !between(0, ci_lower, ci_upper),
+         cor_toprint = str_c("r = ", round(base, 3), ifelse(significant, "*", "")))
+
+
+
+# Interesting - the correlation is stronger for GY > PH > HD
+g_mean_stab_marker_eff <- gs_marker_effects1 %>%
+  ggplot(aes(x = g, y = b)) +
+  geom_point() +
+  geom_text(data = marker_boot_cor, aes(x = Inf, y = -Inf, label = cor_toprint), vjust = -1, hjust = 1.1) + 
+  facet_wrap(~trait, ncol = 2, scales = "free_x") + 
+  ylab("Stability Marker Effect") +
+  xlab("Genotype Mean Marker Effect") + 
+  theme_bw() + theme(panel.grid = element_blank())
+
 
 ## Save
 save_file <- file.path(result_dir, "marker_stability_varcomp.RData")
@@ -947,6 +1044,20 @@ marker_stability_pred_acc %>%
 
 ### Pretty high!
 
+
+
+## Predictions of stability
+marker_stability_pred_acc <- list(marker_stability_effect, pheno_mean_fw_split) %>%
+  pmap(~mutate(.y, marker_b_pred = (M %*% (.x)) + 1)) %>%
+  bind_rows()
+
+# Accuracy
+marker_stability_pred_acc %>% 
+  group_by(trait) %>% 
+  summarize(marker_b_pred_acc = cor(b, marker_b_pred))
+
+### Pretty high!
+
 # Plot
 g_marker_stability_pred <- marker_stability_pred_acc %>% 
   ggplot(aes(x = b, y = marker_b_pred)) +
@@ -969,10 +1080,31 @@ pheno_stab_marker_effect <- pheno_mean_fw_split %>%
 sme_vs_mes <- list(marker_stability_effect, pheno_stab_marker_effect) %>%
   pmap_df(~cbind(.y, .x))
 
+
+# Calculate marker effects for estimates and stability and compare them to the
+# estimates of marker effect stability
+pheno_stab_marker_effect <- pheno_mean_fw_split %>%
+  map(~data.frame(trait = .$trait[1], pheno_stab_marker_effect = mixed.solve(y = .$b, Z = M)$u))
+
+## Stability marker effects (sme) versus marker effect stability (mes)
+sme_vs_mes <- list(marker_stability_effect, pheno_stab_marker_effect) %>%
+  pmap_df(~cbind(.y, .x))
+
 # Correlation
 sme_vs_mes %>% 
   group_by(trait) %>%
   summarize(cor = cor(pheno_stab_marker_effect, b))
+
+# Plot
+g_sme_vs_mes <- sme_vs_mes %>% 
+  ggplot(aes(x = pheno_stab_marker_effect, y = b)) +
+  geom_point() +
+  facet_wrap(~ trait, ncol = 2) + 
+  xlab("Phenotypic Linear Stability Marker Effect") +
+  ylab("Marker Effect Linear Stability") +
+  theme_bw()
+
+
 
 # Plot
 g_sme_vs_mes <- sme_vs_mes %>% 
@@ -1029,262 +1161,334 @@ marker_stability_states_sum %>%
 
 
 
-######
-# Appendix
-######
-
-
-
-#### Overlap with Stability and Mean Loci
-## Also look at previously described QTL
-
-# Load the GWAS results for genotypic mean and phenotypic stability and see if the 
-# markers with the highest plasticity/stability measure overlap
-
-load(file.path(result_dir, "gwas_adjusted_significant_results.RData"))
-
-# Read in the QTL metadata files that were downloaded from T3
-qtl_meta <- map_df(list.files(data_dir, pattern = "meta", full.names = TRUE), read_csv)
-# Read in association data from Pauli2014 and Wang2012
-bcap_association <- read_csv(file.path(data_dir, "BCAP_association_qtl.csv")) %>%
-  mutate(position = parse_number(position)) %>%
-  select(trait, marker, chrom = chromosome, pos = position, gene:feature, reference) %>%
-  filter(trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
-
-
-# Rename the traits
-qtl_meta_df <- qtl_meta %>%
-  mutate(trait = case_when(trait == "grain yield" ~ "GrainYield",
-                           trait == "heading date" ~ "HeadingDate",
-                           trait == "plant height" ~ "PlantHeight"))
-
-# Remove unmapped QTL and change the chromosome name
-qtl_meta_use <- qtl_meta_df %>% 
-  filter(!chromosome %in% c("chrUNK", "chrUn")) %>% 
-  mutate(chrom = as.integer(parse_number(chromosome))) %>%
-  select(trait, marker, chrom, pos = position, gene, feature) %>%
-  arrange(trait, chrom, pos)
-
-# Combine data
-qtl_meta_use1 <- bind_rows(qtl_meta_use, bcap_association)
-
-
-
-### First highlight some examples for known genes / QTL for heading date and plant height
-
-## Heading Date
-tr <- "HeadingDate"
-chr <- 5
-start <- 580e6
-end <- 620e6
-
-
-## Add information on VRN
-vrn1_data <- data.frame(chrom = 5, gene_start = 599135017, gene_end = 599147377, gene_id = "Vrn-H1")
-
-# Get the QTL information
-hd_qtl <- qtl_meta_use1 %>% 
-  filter(trait == tr, chrom == chr)
-
-
-
-## Subset the chromosome of interest
-g_hd_marstab <- S2_MET_marker_eff_pheno_fw_sig %>%   
-  filter(coef == "b", trait == tr, chrom == chr, between(pos, start, end)) %>%
-  ggplot(aes(x = pos / 1000000, y = estimate, col = significance)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = lower_perc), lty = 2) +
-  geom_hline(aes(yintercept = upper_perc), lty = 2) +
-  scale_color_manual(values = colors, name = NULL) +
-  ylab("Marker Effect\nPlasticity Estimate") +
-  xlab("Position (Mbp)") +
-  labs(title = "Heading Date") + 
-  theme_poster() +
-  theme(legend.position = c(0.15, 0.1),
-        axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        panel.border = element_blank())
-
-
-## Create a separate gene annotation plot
-g_hd_ann <- vrn1_data %>%
-  ggplot(aes(y = 1, yend = 1)) +
-  xlim(c(start / 1e6, end / 1e6)) + 
-  geom_segment(aes(x = (gene_start - 100000) / 1000000, xend = (gene_end + 100000) / 1000000), lwd = 5) +
-  geom_text(aes(x = gene_start / 1000000, label = gene_id), vjust = 2, fontface = "italic") +
-  # Add significant QTL
-  geom_segment(data = hd_qtl, aes(x = (pos - 100000) / 1000000, xend = (pos + 100000) / 1000000), lwd = 5) +
-  xlab("Position on Chromosome 5 (Mbp)") +
-  ylab("Known\nGenes/QTL") +
-  ylim(c(0, 1)) +
-  theme_poster() +
-  theme(axis.line.x = element_line(),
-        axis.text.y = element_blank(),
-        # axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        panel.border = element_blank(),
-        panel.grid = element_blank())
-
-## Add the GWAS analysis of stabililty
-g_hd_stab_gwas <- gwas_pheno_mean_fw_adj %>% 
-  filter(trait == tr, coef == "b", chrom == chr, between(pos, start, end)) %>%
-  ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10)) + 
-  geom_point() +
-  ylab(expression(atop(-log[10](italic(q)),'Phenotypic Plasticty'))) +
-  theme_poster() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        panel.border = element_blank())
-
-
-## Combine
-g_hd_example <- plot_grid(
-  g_hd_marstab, 
-  g_hd_stab_gwas,
-  g_hd_ann,
-  ncol = 1, rel_heights = c(0.8, 0.4, 0.25), align = "hv", axis = "lr")
-
-## Save
-ggsave(filename = "hd_marstab_annotation_poster.jpg", plot = g_hd_example, path = fig_dir,
-       height = 8, width = 6, dpi = 1000)
-
-
-## Plant Height
-tr <- "PlantHeight"
-chr <- 6
-start <- 0
-end <- 20e6
-
-
-ph_qtl <- qtl_meta_use1 %>% 
-  filter(trait == tr, chrom == chr)
-
-## Plot of marker effect plasticity
-g_ph_marstab <- S2_MET_marker_eff_pheno_fw_sig %>%   
-  filter(coef == "b", trait == tr, chrom == chr, between(pos, start, end)) %>%
-  ggplot(aes(x = pos / 1000000, y = estimate, col = significance)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = lower_perc), lty = 2) +
-  geom_hline(aes(yintercept = upper_perc), lty = 2) +
-  scale_color_manual(values = colors, name = NULL) +
-  ylab("Marker Plasticity Estimate") +
-  xlab("Position (Mbp)") +
-  theme_poster() +
-  theme(legend.position = c(0.15, 0.05),
-        axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        panel.border = element_blank())
-
-
-## Create a separate gene annotation plot
-g_ph_ann <- ph_qtl %>%
-  ggplot(aes(y = 0, yend = 0)) +
-  xlim(c(start / 1e6, end / 1e6)) + 
-  geom_segment(aes(x = (pos - 100000) / 1000000, xend = (pos + 100000) / 1000000), lwd = 5) +
-  xlab("Position on Chromosome 6 (Mbp)") +
-  theme_poster() +
-  theme(axis.line.x = element_line(),
-        axis.text.y = element_blank(),
-        axis.title.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        panel.border = element_blank(),
-        panel.grid = element_blank())
-
-## Add the GWAS analysis of stabililty
-g_ph_stab_gwas <- gwas_pheno_mean_fw_adj %>% 
-  filter(trait == tr, coef == "b", chrom == chr, between(pos, start, end)) %>%
-  ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10)) + 
-  geom_point() +
-  ylab(expression(-log[10](italic(q))~'Phenotypic Plasticty')) +
-  theme_poster() +
-  theme(axis.title.x = element_blank(),
-        axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        panel.border = element_blank())
-
-## Combine
-g_ph_example <- plot_grid(
-  g_ph_marstab, 
-  g_ph_stab_gwas,
-  g_ph_ann,
-  ncol = 1, rel_heights = c(0.8, 0.4, 0.2), align = "hv", axis = "lr")
-
-## Save
-ggsave(filename = "ph_marstab_annotation_poster.jpg", plot = g_ph_example, path = fig_dir,
-       height = 8, width = 5, dpi = 1000)
-
-
-## Combine HD and PH
-g_hd_ph_example <- plot_grid(g_hd_example, g_ph_example, ncol = 2)
-## Save
-ggsave(filename = "hd_ph_marstab_annotation_poster.jpg", plot = g_hd_ph_example, path = fig_dir,
-       height = 8, width = 10, dpi = 1000)
-
-
-
-
-## Plot examples of the stability of genotypes/markers
-pheno_stable_ex <- S2_MET_pheno_mean_fw %>% 
-  group_by(trait) %>% 
-  filter(b == min(b) | b == max(b) | abs(b - 1) == min(abs(b - 1))) %>%
-  mutate(class = case_when(
-    b == max(b) ~ "Plastic",
-    b == min(b) ~ "Stable",
-    TRUE ~ "Average")) %>%
-  ungroup()
-
-g_pheno_stable_ex <- pheno_stable_ex %>% 
-  # mutate(value = value - h) %>%
-  ggplot(aes(x = h, y = value, color = class)) + 
-  geom_point() + 
-  geom_smooth(method = "lm", se = FALSE) +  
-  scale_color_manual(values = colors, name = "Response Type") +
-  facet_wrap(~ trait, ncol = 1, scales = "free") +
-  ylab(expression("Phenotypic Value "~(italic(y[ij])))) + 
-  xlab(expression("Environmental Effect "~(italic(t[j])))) +
-  labs(title = "Phenotypic Plasticity") + 
-  theme_poster() +
-  theme(legend.position = "bottom", 
-        legend.text = element_text(size = 14),
-        title = element_text(size = 16))
-
-
-mark_stable_ex <- S2_MET_marker_mean_fw %>%
-  group_by(trait) %>% 
-  filter(b == min(b) | b == max(b) | abs(b - 0) == min(abs(b - 0))) %>%
-  mutate(class = case_when(
-    b == max(b) ~ "Plastic",
-    b == min(b) ~ "Stable",
-    TRUE ~ "Average")) %>%
-  ungroup()
-
-g_mark_stable_ex <- mark_stable_ex %>% 
-  # mutate(effect = effect + h) %>%
-  ggplot(aes(x = h, y = effect, color = class)) + 
-  geom_point() + 
-  geom_smooth(method = "lm", se = FALSE) +  
-  scale_color_manual(values = colors, name = NULL) +
-  facet_wrap(~ trait, ncol = 1, scales = "free") +
-  ylab(expression("Marker Effect "~(italic(alpha[jp])))) + 
-  xlab(expression("Environmental Effect "~(italic(t[j])))) +
-  labs(title = "Marker Effect Plasticity",
-       caption = expression("Environmental effect"~(italic(t[j]))~"not added to marker effect to highlight reponse.")) + 
-  theme_poster() +
-  theme(legend.position = "none",
-        plot.title = element_text(size = 16),
-        plot.caption = element_text(size = 10))
-
-## Combine
-g_stable_ex <- plot_grid(g_pheno_stable_ex + theme(legend.position = "none"), 
-                         g_mark_stable_ex, ncol = 2, align = "hv")
-g_stable_ex1 <- plot_grid(g_stable_ex, get_legend(g_pheno_stable_ex), ncol = 1, rel_heights = c(0.95, 0.05))
-
-## Save
-ggsave(filename = "stability_example_poster.jpg", plot = g_stable_ex1, path = fig_dir,
-       height = 10, width = 8, dpi = 1000)
-
-
-
+# ######
+# # Appendix
+# ######
+# 
+# 
+# 
+# #### Overlap with Stability and Mean Loci
+# ## Also look at previously described QTL
+# 
+# # Load the GWAS results for genotypic mean and phenotypic stability and see if the 
+# # markers with the highest plasticity/stability measure overlap
+# 
+# load(file.path(result_dir, "gwas_adjusted_significant_results.RData"))
+# 
+# # Read in the QTL metadata files that were downloaded from T3
+# qtl_meta <- map_df(list.files(data_dir, pattern = "meta", full.names = TRUE), read_csv)
+# # Read in association data from Pauli2014 and Wang2012
+# bcap_association <- read_csv(file.path(data_dir, "BCAP_association_qtl.csv")) %>%
+#   mutate(position = parse_number(position)) %>%
+#   select(trait, marker, chrom = chromosome, pos = position, gene:feature, reference) %>%
+#   filter(trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
+# 
+# 
+# # Rename the traits
+# qtl_meta_df <- qtl_meta %>%
+#   mutate(trait = case_when(trait == "grain yield" ~ "GrainYield",
+#                            trait == "heading date" ~ "HeadingDate",
+#                            trait == "plant height" ~ "PlantHeight"))
+# 
+# # Remove unmapped QTL and change the chromosome name
+# qtl_meta_use <- qtl_meta_df %>% 
+#   filter(!chromosome %in% c("chrUNK", "chrUn")) %>% 
+#   mutate(chrom = as.integer(parse_number(chromosome))) %>%
+#   select(trait, marker, chrom, pos = position, gene, feature) %>%
+#   arrange(trait, chrom, pos)
+# 
+# # Combine data
+# qtl_meta_use1 <- bind_rows(qtl_meta_use, bcap_association)
+# 
+# 
+# 
+# ### First highlight some examples for known genes / QTL for heading date and plant height
+# 
+# ## Heading Date
+# tr <- "HeadingDate"
+# chr <- 5
+# start <- 580e6
+# end <- 620e6
+# 
+# 
+# ## Add information on VRN
+# vrn1_data <- data.frame(chrom = 5, gene_start = 599135017, gene_end = 599147377, gene_id = "Vrn-H1")
+# 
+# # Get the QTL information
+# hd_qtl <- qtl_meta_use1 %>% 
+#   filter(trait == tr, chrom == chr)
+# 
+# 
+# 
+# ## Subset the chromosome of interest
+# g_hd_marstab <- S2_MET_marker_eff_pheno_fw_sig %>%   
+#   filter(coef == "b", trait == tr, chrom == chr, between(pos, start, end)) %>%
+#   ggplot(aes(x = pos / 1000000, y = estimate, col = significance)) + 
+#   geom_point() + 
+#   geom_hline(aes(yintercept = lower_perc), lty = 2) +
+#   geom_hline(aes(yintercept = upper_perc), lty = 2) +
+#   scale_color_manual(values = colors, name = NULL) +
+#   ylab("Marker Effect\nPlasticity Estimate") +
+#   xlab("Position (Mbp)") +
+#   labs(title = "Heading Date") + 
+#   theme_poster() +
+#   theme(legend.position = c(0.15, 0.1),
+#         axis.title.x = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         panel.border = element_blank())
+# 
+# 
+# ## Create a separate gene annotation plot
+# g_hd_ann <- vrn1_data %>%
+#   ggplot(aes(y = 1, yend = 1)) +
+#   xlim(c(start / 1e6, end / 1e6)) + 
+#   geom_segment(aes(x = (gene_start - 100000) / 1000000, xend = (gene_end + 100000) / 1000000), lwd = 5) +
+#   geom_text(aes(x = gene_start / 1000000, label = gene_id), vjust = 2, fontface = "italic") +
+#   # Add significant QTL
+#   geom_segment(data = hd_qtl, aes(x = (pos - 100000) / 1000000, xend = (pos + 100000) / 1000000), lwd = 5) +
+#   xlab("Position on Chromosome 5 (Mbp)") +
+#   ylab("Known\nGenes/QTL") +
+#   ylim(c(0, 1)) +
+#   theme_poster() +
+#   theme(axis.line.x = element_line(),
+#         axis.text.y = element_blank(),
+#         # axis.title.y = element_blank(),
+#         axis.ticks.y = element_blank(),
+#         panel.border = element_blank(),
+#         panel.grid = element_blank())
+# 
+# ## Add the GWAS analysis of stabililty
+# g_hd_stab_gwas <- gwas_pheno_mean_fw_adj %>% 
+#   filter(trait == tr, coef == "b", chrom == chr, between(pos, start, end)) %>%
+#   ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10)) + 
+#   geom_point() +
+#   ylab(expression(atop(-log[10](italic(q)),'Phenotypic Plasticty'))) +
+#   theme_poster() +
+#   theme(axis.title.x = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         panel.border = element_blank())
+# 
+# 
+# ## Combine
+# g_hd_example <- plot_grid(
+#   g_hd_marstab, 
+#   g_hd_stab_gwas,
+#   g_hd_ann,
+#   ncol = 1, rel_heights = c(0.8, 0.4, 0.25), align = "hv", axis = "lr")
+# 
+# ## Save
+# ggsave(filename = "hd_marstab_annotation_poster.jpg", plot = g_hd_example, path = fig_dir,
+#        height = 8, width = 6, dpi = 1000)
+# 
+# 
+# ## Plant Height
+# tr <- "PlantHeight"
+# chr <- 6
+# start <- 0
+# end <- 20e6
+# 
+# 
+# ph_qtl <- qtl_meta_use1 %>% 
+#   filter(trait == tr, chrom == chr)
+# 
+# ## Plot of marker effect plasticity
+# g_ph_marstab <- S2_MET_marker_eff_pheno_fw_sig %>%   
+#   filter(coef == "b", trait == tr, chrom == chr, between(pos, start, end)) %>%
+#   ggplot(aes(x = pos / 1000000, y = estimate, col = significance)) + 
+#   geom_point() + 
+#   geom_hline(aes(yintercept = lower_perc), lty = 2) +
+#   geom_hline(aes(yintercept = upper_perc), lty = 2) +
+#   scale_color_manual(values = colors, name = NULL) +
+#   ylab("Marker Plasticity Estimate") +
+#   xlab("Position (Mbp)") +
+#   theme_poster() +
+#   theme(legend.position = c(0.15, 0.05),
+#         axis.title.x = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         panel.border = element_blank())
+# 
+# 
+# ## Create a separate gene annotation plot
+# g_ph_ann <- ph_qtl %>%
+#   ggplot(aes(y = 0, yend = 0)) +
+#   xlim(c(start / 1e6, end / 1e6)) + 
+#   geom_segment(aes(x = (pos - 100000) / 1000000, xend = (pos + 100000) / 1000000), lwd = 5) +
+#   xlab("Position on Chromosome 6 (Mbp)") +
+#   theme_poster() +
+#   theme(axis.line.x = element_line(),
+#         axis.text.y = element_blank(),
+#         axis.title.y = element_blank(),
+#         axis.ticks.y = element_blank(),
+#         panel.border = element_blank(),
+#         panel.grid = element_blank())
+# 
+# ## Add the GWAS analysis of stabililty
+# g_ph_stab_gwas <- gwas_pheno_mean_fw_adj %>% 
+#   filter(trait == tr, coef == "b", chrom == chr, between(pos, start, end)) %>%
+#   ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10)) + 
+#   geom_point() +
+#   ylab(expression(-log[10](italic(q))~'Phenotypic Plasticty')) +
+#   theme_poster() +
+#   theme(axis.title.x = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         panel.border = element_blank())
+# 
+# ## Combine
+# g_ph_example <- plot_grid(
+#   g_ph_marstab, 
+#   g_ph_stab_gwas,
+#   g_ph_ann,
+#   ncol = 1, rel_heights = c(0.8, 0.4, 0.2), align = "hv", axis = "lr")
+# 
+# ## Save
+# ggsave(filename = "ph_marstab_annotation_poster.jpg", plot = g_ph_example, path = fig_dir,
+#        height = 8, width = 5, dpi = 1000)
+# 
+# 
+# ## Combine HD and PH
+# g_hd_ph_example <- plot_grid(g_hd_example, g_ph_example, ncol = 2)
+# ## Save
+# ggsave(filename = "hd_ph_marstab_annotation_poster.jpg", plot = g_hd_ph_example, path = fig_dir,
+#        height = 8, width = 10, dpi = 1000)
+# 
+# ## Plant Height
+# tr <- "PlantHeight"
+# chr <- 6
+# start <- 0
+# end <- 20e6
+# 
+# 
+# ph_qtl <- qtl_meta_use1 %>% 
+#   filter(trait == tr, chrom == chr)
+# 
+# ## Plot of marker effect plasticity
+# g_ph_marstab <- S2_MET_marker_eff_pheno_fw_sig %>%   
+#   filter(coef == "b", trait == tr, chrom == chr, between(pos, start, end)) %>%
+#   ggplot(aes(x = pos / 1000000, y = estimate, col = significance)) + 
+#   geom_point() + 
+#   geom_hline(aes(yintercept = lower_perc), lty = 2) +
+#   geom_hline(aes(yintercept = upper_perc), lty = 2) +
+#   scale_color_manual(values = colors, name = NULL) +
+#   ylab("Marker Plasticity Estimate") +
+#   xlab("Position (Mbp)") +
+#   theme_poster() +
+#   theme(legend.position = c(0.15, 0.05),
+#         axis.title.x = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         panel.border = element_blank())
+# 
+# 
+# ## Create a separate gene annotation plot
+# g_ph_ann <- ph_qtl %>%
+#   ggplot(aes(y = 0, yend = 0)) +
+#   xlim(c(start / 1e6, end / 1e6)) + 
+#   geom_segment(aes(x = (pos - 100000) / 1000000, xend = (pos + 100000) / 1000000), lwd = 5) +
+#   xlab("Position on Chromosome 6 (Mbp)") +
+#   theme_poster() +
+#   theme(axis.line.x = element_line(),
+#         axis.text.y = element_blank(),
+#         axis.title.y = element_blank(),
+#         axis.ticks.y = element_blank(),
+#         panel.border = element_blank(),
+#         panel.grid = element_blank())
+# 
+# ## Add the GWAS analysis of stabililty
+# g_ph_stab_gwas <- gwas_pheno_mean_fw_adj %>% 
+#   filter(trait == tr, coef == "b", chrom == chr, between(pos, start, end)) %>%
+#   ggplot(aes(x = pos / 1000000, y = qvalue_neg_log10)) + 
+#   geom_point() +
+#   ylab(expression(-log[10](italic(q))~'Phenotypic Plasticty')) +
+#   theme_poster() +
+#   theme(axis.title.x = element_blank(),
+#         axis.text.x = element_blank(),
+#         axis.ticks.x = element_blank(),
+#         panel.border = element_blank())
+# 
+# ## Combine
+# g_ph_example <- plot_grid(
+#   g_ph_marstab, 
+#   g_ph_stab_gwas,
+#   g_ph_ann,
+#   ncol = 1, rel_heights = c(0.8, 0.4, 0.2), align = "hv", axis = "lr")
+# 
+# ## Save
+# ggsave(filename = "ph_marstab_annotation_poster.jpg", plot = g_ph_example, path = fig_dir,
+#        height = 8, width = 5, dpi = 1000)
+# 
+# 
+# ## Combine HD and PH
+# g_hd_ph_example <- plot_grid(g_hd_example, g_ph_example, ncol = 2)
+# ## Save
+# ggsave(filename = "hd_ph_marstab_annotation_poster.jpg", plot = g_hd_ph_example, path = fig_dir,
+#        height = 8, width = 10, dpi = 1000)
+# 
+# 
+# 
+# 
+# ## Plot examples of the stability of genotypes/markers
+# pheno_stable_ex <- S2_MET_pheno_mean_fw %>% 
+#   group_by(trait) %>% 
+#   filter(b == min(b) | b == max(b) | abs(b - 1) == min(abs(b - 1))) %>%
+#   mutate(class = case_when(
+#     b == max(b) ~ "Plastic",
+#     b == min(b) ~ "Stable",
+#     TRUE ~ "Average")) %>%
+#   ungroup()
+# 
+# g_pheno_stable_ex <- pheno_stable_ex %>% 
+#   # mutate(value = value - h) %>%
+#   ggplot(aes(x = h, y = value, color = class)) + 
+#   geom_point() + 
+#   geom_smooth(method = "lm", se = FALSE) +  
+#   scale_color_manual(values = colors, name = "Response Type") +
+#   facet_wrap(~ trait, ncol = 1, scales = "free") +
+#   ylab(expression("Phenotypic Value "~(italic(y[ij])))) + 
+#   xlab(expression("Environmental Effect "~(italic(t[j])))) +
+#   labs(title = "Phenotypic Plasticity") + 
+#   theme_poster() +
+#   theme(legend.position = "bottom", 
+#         legend.text = element_text(size = 14),
+#         title = element_text(size = 16))
+# 
+# 
+# mark_stable_ex <- S2_MET_marker_mean_fw %>%
+#   group_by(trait) %>% 
+#   filter(b == min(b) | b == max(b) | abs(b - 0) == min(abs(b - 0))) %>%
+#   mutate(class = case_when(
+#     b == max(b) ~ "Plastic",
+#     b == min(b) ~ "Stable",
+#     TRUE ~ "Average")) %>%
+#   ungroup()
+# 
+# g_mark_stable_ex <- mark_stable_ex %>% 
+#   # mutate(effect = effect + h) %>%
+#   ggplot(aes(x = h, y = effect, color = class)) + 
+#   geom_point() + 
+#   geom_smooth(method = "lm", se = FALSE) +  
+#   scale_color_manual(values = colors, name = NULL) +
+#   facet_wrap(~ trait, ncol = 1, scales = "free") +
+#   ylab(expression("Marker Effect "~(italic(alpha[jp])))) + 
+#   xlab(expression("Environmental Effect "~(italic(t[j])))) +
+#   labs(title = "Marker Effect Plasticity",
+#        caption = expression("Environmental effect"~(italic(t[j]))~"not added to marker effect to highlight reponse.")) + 
+#   theme_poster() +
+#   theme(legend.position = "none",
+#         plot.title = element_text(size = 16),
+#         plot.caption = element_text(size = 10))
+# 
+# ## Combine
+# g_stable_ex <- plot_grid(g_pheno_stable_ex + theme(legend.position = "none"), 
+#                          g_mark_stable_ex, ncol = 2, align = "hv")
+# g_stable_ex1 <- plot_grid(g_stable_ex, get_legend(g_pheno_stable_ex), ncol = 1, rel_heights = c(0.95, 0.05))
+# 
+# ## Save
+# ggsave(filename = "stability_example_poster.jpg", plot = g_stable_ex1, path = fig_dir,
+#        height = 10, width = 8, dpi = 1000)
+# 
+# 
+# 
