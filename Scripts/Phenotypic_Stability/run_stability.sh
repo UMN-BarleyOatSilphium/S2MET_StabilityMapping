@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#PBS -l walltime=04:00:00,mem=24gb,nodes=1:ppn=1
+#PBS -l walltime=24:00:00,mem=24gb,nodes=1:ppn=16
 #PBS -N stability_genomic_prediction
 #PBS -M neyha001@umn.edu
 #PBS -m abe
