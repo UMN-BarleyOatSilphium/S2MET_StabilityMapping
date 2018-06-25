@@ -7,18 +7,13 @@
 ## 
 
 # Load packages and set directories
-
-library(tidyverse)
-library(readxl)
-library(lme4)
-library(modelr)
-library(broom)
-library(stringr)
 library(FW)
+library(lme4)
+library(broom)
+library(modelr)
 
 # Repository directory
 repo_dir <- getwd()
-
 # Project and other directories
 source(file.path(repo_dir, "source.R"))
 
@@ -29,40 +24,6 @@ env <- unique(S2_MET_BLUEs_use$environment)
 n_env <- length(env)
 n_entries <- n_distinct(S2_MET_BLUEs_use$line_name)
 
-## Genotype mean
-# Function to calculate the genotype mean and the environmental effect
-calc_gh <- function(df) {
-  
-  # Set the control
-  control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore")
-  # Extract the weights - square of the standard error of the mean
-  wts <- df$std_error^2
-  
-  # First calculate the least-square means of each genotype
-  # Fit environment and GxE as random effects
-  fit1 <- lmer(value ~ -1 + line_name + (1|environment),
-               data = df, control = control, weights = wts)
-  
-  # Extract the BLUEs
-  geno_blues <- tidy(fit1) %>% 
-    filter(group == "fixed") %>% 
-    mutate(line_name = str_replace(term, "line_name", "")) %>% 
-    select(line_name, g = estimate)
-  
-  # Extract the BLUPs
-  env_blups <- ranef(fit1) %>% 
-    as.data.frame() %>% 
-    filter(grpvar == "environment") %>% 
-    select(environment = grp, h = condval)
-  
-  # Return
-  df1 <- df %>% 
-    left_join(., geno_blues) %>% 
-    left_join(., env_blups)
-  
-  return(df1)
-  
-}
 
 
 # Calculate for each trait
@@ -74,91 +35,6 @@ S2_MET_pheno_mean <- S2_MET_BLUEs_use %>%
 # Ungroup
 S2_MET_pheno_mean <- ungroup(S2_MET_pheno_mean)
     
-
-
-## Finlay-Wilkinson Regression
-# Use the mean of each genotype in each environment and the random effect of 
-# each environment to calculate the random regression coefficient of genotype
-# on environment
-
-
-# Create a function to iteratively remove outliers based on studentized residuals
-# Returns a df to be used to fit the final model
-remove_outliers <- function(df, fit, cutoff = 3) {
-  
-  # Add residuals to the df
-  df_resid <- df %>% 
-    add_residuals(fit) %>%
-    mutate(stand_resid = as.numeric(scale(resid, center = FALSE)))
-  
-  # If there are std residuals that are greater than the cutoff, remove them
-  # and refit
-  while (any(abs(df_resid$stand_resid) > cutoff)) {
-    
-    # Filter
-    df_filter <- df_resid %>%
-      filter(abs(stand_resid) <= cutoff)
-    
-    # Refit
-    re_fit <- lm(value ~ h, data = df_filter)
-    
-    # Add the residuals and repeat
-    df_resid <- df_filter %>% 
-      add_residuals(re_fit) %>%
-      mutate(stand_resid = as.numeric(scale(resid, center = FALSE)))
-  }
-  
-  # Return the data.frame
-  return(df_resid)
-}
-
-# Function to estimate the slope and MSE of a line
-# Incorportate code to remove outliers
-calc_stability <- function(df) {
-  
-  # # Set the control
-  # control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore", check.nlev.gtr.1 = "ignore")
-  # # Get the weights
-  # wts <- df$std_error^2
-  # fit <- lmer(value ~ (h|line_name), data = df, control = control, weights = wts)
-  
-  # Fit the model and return
-  fit <- lm(value ~ h, data = df) 
-  
-  # Add residuals to the df
-  # Filter for outliers
-  df_filter <- remove_outliers(df = df, fit = fit, cutoff = 3)
-  
-  # Refit
-  re_fit <- lm(value ~ h, data = df_filter) 
-  
-  # Return a data.frame with each data.frame, slope and MSE estimates,
-  # and number of observations
-  df_fit <- df %>%
-    mutate(b = coef(fit)[2],
-           b_std_error = subset(tidy(fit), term == "h", std.error, drop = TRUE), # Regression coefficient
-           delta = mean(resid(fit)^2))
-  
-  df_re_fit <- df_filter %>%
-    select(-contains("resid")) %>%
-    mutate(b = coef(re_fit)[2],
-           b_std_error = subset(tidy(re_fit), term == "h", std.error, drop = TRUE), # Regression coefficient
-           delta = mean(resid(re_fit)^2))
-  
-  # List of data.frame
-  df_list <- list(df_fit, df_re_fit)
-  
-  # Return data
-  df1 <- data_frame(type = c("outliers", "no_outliers"), 
-             data = df_list, 
-             model = list(fit, re_fit),
-             n = map_dbl(df_list, nrow), 
-             b = map_dbl(df_list, ~unique(.$b)), 
-             delta = map_dbl(df_list, ~unique(.$delta)))
-  
-  return(df1)
-  
-}
 
   
 
@@ -201,7 +77,6 @@ while(any_outliers) {
   
   # Refit the first model
   S2_MET_pheno_mean_refit <- S2_MET_pheno_mean_fw %>%
-    select(trait:z_score) %>%
     group_by(trait) %>%
     do({
       # Extract the data.frame
@@ -236,23 +111,24 @@ while(any_outliers) {
 
    
 # Ungroup
-S2_MET_fw_fitted <- ungroup(S2_MET_fw_fitted) %>%
+fw_fitted <- ungroup(S2_MET_fw_fitted) %>%
   # Replace the "no-outlier" group with the original data
   filter(type == "no_outliers") %>% 
   bind_rows(., S2_MET_fw_fitted_outliers) %>%
   arrange(trait, line_name)
 
 # Extract the data from the outlier-removed model
-S2_MET_pheno_mean_fw <- S2_MET_fw_fitted %>% 
+pheno_mean_fw <- S2_MET_fw_fitted %>% 
   filter(type == "no_outliers") %>% 
   select(trait, line_name, data) %>% 
   unnest() %>%
-  select(-line_name1, -trait1)
+  select(-line_name1, -trait1) %>%
+  ungroup()
 
     
 # Save this
 save_file <- file.path(result_dir, "pheno_mean_fw_results.RData")
-save("S2_MET_fw_fitted", "S2_MET_pheno_mean_fw", file = save_file)
+save("fw_fitted", "pheno_mean_fw", file = save_file)
 
 
 # How robust are our estimates of stability?
@@ -261,7 +137,7 @@ save("S2_MET_fw_fitted", "S2_MET_pheno_mean_fw", file = save_file)
 
 
 # Extract data to model
-S2_MET_pheno_tomodel <- S2_MET_pheno_mean_fw %>% 
+S2_MET_pheno_tomodel <- pheno_mean_fw %>% 
   distinct(environment, line_name, trait, value, std_error, h)
 
 # Vector of proportion of environments

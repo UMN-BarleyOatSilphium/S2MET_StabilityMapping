@@ -11,14 +11,18 @@ library(rrBLUP)
 library(neyhart)
 
 
+## The Google Drive directory
+# gdrive_dir <- "C:/Users/Jeff/GoogleDrive"
+gdrive_dir <- "/Users/neyha001/Google Drive/"
+
 # Project and other directories
 proj_dir <- repo_dir
-alt_proj_dir <- "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/S2MET"
+alt_proj_dir <- file.path(gdrive_dir, "BarleyLab/Projects/S2MET")
 
 # Geno, pheno, and enviro data
-geno_dir <-  "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/"
+geno_dir <-  file.path(gdrive_dir, "BarleyLab/Projects/Genomics/Genotypic_Data/GBS_Genotype_Data/")
 # geno_dir <- 
-bopa_geno_dir <- "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/"
+bopa_geno_dir <- file.path(gdrive_dir, "/BarleyLab/Projects/Genomics/Genotypic_Data/BOPA_Genotype_Data/")
 # bopa_geno_dir <- 
 pheno_dir <- file.path(alt_proj_dir, "Data/")
 

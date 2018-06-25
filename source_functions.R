@@ -205,6 +205,152 @@ LD <- function(x, df = TRUE) {
 
 
 
+## Finlay-Wilkinson Regression
+# Use the mean of each genotype in each environment and the random effect of 
+# each environment to calculate the random regression coefficient of genotype
+# on environment
+
+
+# Create a function to iteratively remove outliers based on studentized residuals
+# Returns a df to be used to fit the final model
+remove_outliers <- function(df, fit, cutoff = 3) {
+  
+  # Add residuals to the df
+  df_resid <- df %>% 
+    add_residuals(fit) %>%
+    mutate(stand_resid = as.numeric(scale(resid, center = FALSE)))
+  
+  # If there are std residuals that are greater than the cutoff, remove them
+  # and refit
+  while (any(abs(df_resid$stand_resid) > cutoff)) {
+    
+    # Filter
+    df_filter <- df_resid %>%
+      filter(abs(stand_resid) <= cutoff)
+    
+    # Refit
+    re_fit <- lm(value ~ h, data = df_filter)
+    
+    # Add the residuals and repeat
+    df_resid <- df_filter %>% 
+      add_residuals(re_fit) %>%
+      mutate(stand_resid = as.numeric(scale(resid, center = FALSE)))
+  }
+  
+  # Return the data.frame
+  return(df_resid)
+}
+
+# Function to estimate the slope and MSE of a line
+# Incorportate code to remove outliers
+calc_stability <- function(df) {
+  
+  # # Set the control
+  # control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore", check.nlev.gtr.1 = "ignore")
+  # # Get the weights
+  # wts <- df$std_error^2
+  # fit <- lmer(value ~ (h|line_name), data = df, control = control, weights = wts)
+  
+  # Fit the model and return
+  fit <- lm(value ~ h, data = df) 
+  
+  # Add residuals to the df
+  # Filter for outliers
+  df_filter <- remove_outliers(df = df, fit = fit, cutoff = 3)
+  
+  # Refit
+  re_fit <- lm(value ~ h, data = df_filter) 
+  
+  # Return a data.frame with each data.frame, slope and MSE estimates,
+  # and number of observations
+  df_fit <- df %>%
+    mutate(b = coef(fit)[2],
+           b_std_error = subset(tidy(fit), term == "h", std.error, drop = TRUE), # Regression coefficient
+           delta = mean(resid(fit)^2))
+  
+  df_re_fit <- df_filter %>%
+    select(-contains("resid")) %>%
+    mutate(b = coef(re_fit)[2],
+           b_std_error = subset(tidy(re_fit), term == "h", std.error, drop = TRUE), # Regression coefficient
+           delta = mean(resid(re_fit)^2))
+  
+  # List of data.frame
+  df_list <- list(df_fit, df_re_fit)
+  
+  # Return data
+  df1 <- data_frame(type = c("outliers", "no_outliers"), 
+                    data = df_list, 
+                    model = list(fit, re_fit),
+                    n = map_dbl(df_list, nrow), 
+                    b = map_dbl(df_list, ~unique(.$b)), 
+                    delta = map_dbl(df_list, ~unique(.$delta)))
+  
+  return(df1)
+  
+}
+
+
+## Genotype mean
+# Function to calculate the genotype mean and the environmental effect
+calc_gh <- function(df) {
+  
+  # Set the control
+  control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore")
+  # Extract the weights - square of the standard error of the mean
+  wts <- df$std_error^2
+  
+  # First calculate the least-square means of each genotype
+  # Fit environment and GxE as random effects
+  fit1 <- lmer(value ~ -1 + line_name + (1|environment),
+               data = df, control = control, weights = wts)
+  
+  # Extract the BLUEs
+  geno_blues <- tidy(fit1) %>% 
+    filter(group == "fixed") %>% 
+    mutate(line_name = str_replace(term, "line_name", "")) %>% 
+    select(line_name, g = estimate)
+  
+  # Extract the BLUPs
+  env_blups <- ranef(fit1) %>% 
+    as.data.frame() %>% 
+    filter(grpvar == "environment") %>% 
+    select(environment = grp, h = condval)
+  
+  # Return
+  df1 <- df %>% 
+    left_join(., geno_blues) %>% 
+    left_join(., env_blups)
+  
+  return(df1)
+  
+}
+
+
+
+# Write a function that takes a train and test set and predicts using rrBLUP	+
+predict_RR <- function(train, test, K) {	
+  
+  # Convert to df	
+  train_df <- as.data.frame(train)	
+  test_df <- as.data.frame(test)	
+  
+  # Create the model matrix	
+  mf <- model.frame(value ~ line_name, train_df)	
+  y <- model.response(mf)	
+  Z <- model.matrix(~ -1 + line_name, mf)	
+  
+  fit <- mixed.solve(y = y, Z = Z, K = K)	
+  
+  # Tidy	
+  u_hat_tidy <- fit$u %>% 	
+    data.frame(line_name = names(.), pred_value = ., stringsAsFactors = FALSE, row.names = NULL)	
+  
+  # Combine and return the predictions	
+  suppressWarnings(left_join(test_df, u_hat_tidy, by = "line_name"))	
+  
+}
+
+
 
 
 
