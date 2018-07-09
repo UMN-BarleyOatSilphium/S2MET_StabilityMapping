@@ -31,7 +31,20 @@ pheno_mean_fw <- pheno_mean_fw_tpvp %>%
   filter(line_name %in% tp)
 
 
+# Extract the unique stability coefficients
+# Then add the breeding program information
+pheno_mean_fw1 <- pheno_mean_fw %>%
+  left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), 
+            by = c("line_name" = "Line")) %>%
+  rename(program = Program)
 
+## Log transform the non-linear stability estimates
+pheno_fw_use <- pheno_mean_fw1 %>%
+  group_by(trait) %>% 
+  mutate(log_delta = log(delta)) %>%
+  # Tidy
+  gather(term, estimate, b, delta, log_delta) %>% 
+  filter(term != "delta")
 
 
 
