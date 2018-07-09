@@ -243,7 +243,7 @@ remove_outliers <- function(df, fit, cutoff = 3) {
 
 # Function to estimate the slope and MSE of a line
 # Incorportate code to remove outliers
-calc_stability <- function(df) {
+calc_stability <- function(df, remove.outliers = TRUE) {
   
   # # Set the control
   # control <- lmerControl(check.nobs.vs.nlev = "ignore", check.nobs.vs.nRE = "ignore", check.nlev.gtr.1 = "ignore")
@@ -254,25 +254,36 @@ calc_stability <- function(df) {
   # Fit the model and return
   fit <- lm(value ~ h, data = df) 
   
-  # Add residuals to the df
-  # Filter for outliers
-  df_filter <- remove_outliers(df = df, fit = fit, cutoff = 3)
+  if (remove.outliers) {
   
-  # Refit
-  re_fit <- lm(value ~ h, data = df_filter) 
+    # Add residuals to the df
+    # Filter for outliers
+    df_filter <- remove_outliers(df = df, fit = fit, cutoff = 3)
+    
+    # Refit
+    re_fit <- lm(value ~ h, data = df_filter) 
+    
+    df_re_fit <- df_filter %>%
+      select(-contains("resid")) %>%
+      mutate(b = coef(re_fit)[2],
+             b_std_error = subset(tidy(re_fit), term == "h", std.error, drop = TRUE), # Regression coefficient
+             delta = mean(resid(re_fit)^2))
+  
+  } else {
+    df_re_fit <- data_frame(b = NA, delta = NA)
+    re_fit <- NA
+    
+  }
+  
+
   
   # Return a data.frame with each data.frame, slope and MSE estimates,
   # and number of observations
   df_fit <- df %>%
     mutate(b = coef(fit)[2],
-           b_std_error = subset(tidy(fit), term == "h", std.error, drop = TRUE), # Regression coefficient
            delta = mean(resid(fit)^2))
   
-  df_re_fit <- df_filter %>%
-    select(-contains("resid")) %>%
-    mutate(b = coef(re_fit)[2],
-           b_std_error = subset(tidy(re_fit), term == "h", std.error, drop = TRUE), # Regression coefficient
-           delta = mean(resid(re_fit)^2))
+
   
   # List of data.frame
   df_list <- list(df_fit, df_re_fit)

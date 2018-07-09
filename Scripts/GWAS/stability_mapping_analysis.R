@@ -5,7 +5,7 @@
 ## This script also includes code for generating figures related to this analysis
 ## 
 ## Author: Jeff Neyhart
-## Last updated: May 30, 2018
+## Last updated: June 27, 2018
 ## 
 
 
@@ -104,21 +104,21 @@ df_combined <- bind_rows(df_PC1_PC2, df_PC1_PC3, df_PC2_PC3) %>%
          y1 = str_c(y, " (", 100 * round(var_expy, 3), "%)"))
 
 
+colors_use <- set_names(umn_palette(2)[3:7], unique(df_combined$Program))
+
 ## Plot
 g_pop_str <- df_combined %>% 
   ggplot(aes(x = xvalue, y = yvalue, col = Program)) + 
-  geom_point() + 
+  geom_point(size = 1) + 
   facet_grid(y1 ~ x1, switch = "both") +
-  scale_color_discrete(guide = guide_legend(title = "Breeding\nProgram")) +
-  theme_bw() + 
-  theme(axis.title = element_blank(),
-        panel.border = element_blank(),
-        panel.grid = element_blank(),
-        legend.position = c(0.8, 0.8))
+  scale_color_manual(name = "Breeding\nProgram", values = colors_use) +
+  theme_pnas() +
+  theme(legend.position = c(0.75, 0.75), axis.title.x = element_blank(),
+        legend.key.height = unit(0.75, units = "lines"))
 
 # Save this
 ggsave(filename = "population_structure.jpg", plot = g_pop_str, path = fig_dir,
-       width = 5, height = 5, dpi = 1000)
+       width = 3.5, height = 3.5, dpi = 1000)
 
 
 
@@ -130,7 +130,7 @@ ggsave(filename = "population_structure.jpg", plot = g_pop_str, path = fig_dir,
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 
 # Transform the delta statistic to log-delta
-pheno_mean_fw_trans <- S2_MET_pheno_mean_fw %>% 
+pheno_mean_fw_trans <- pheno_mean_fw %>% 
   distinct(trait, line_name, g, b, delta) %>% 
   mutate(log_delta = log(delta)) %>%
   select(-delta)
@@ -148,11 +148,16 @@ trait_pop_str <- K_prcomp_df %>%
 ## Use a bootstrap to estimate confidence interval
 trait_pop_str_corr <- trait_pop_str %>% 
   group_by(trait, PC, measure) %>% 
-  do(bootstrap(x = .$value, y = .$eigenvalue, fun = "cor", boot.reps = 10000)) %>%
+  do(bootstrap(x = .$value, y = .$eigenvalue, fun = "cor", boot.reps = 1000)) %>%
   # Which ones are significant
   mutate(significant = !between(0, ci_lower, ci_upper),
-         annotation = ifelse(significant, "*", ""))
+         sig_ann = ifelse(significant, "*", ""),
+         annotation = str_c("r = ", formatC(base, digits = 3, format = "f"), sig_ann))
 
+trait_pop_str_annotation <- trait_pop_str_corr %>%
+  ungroup() %>%
+  distinct(trait, measure, PC, annotation) %>%
+  mutate(measure = str_replace_all(measure, coef_replace))
 
 # Add the correlations back to the data
 trait_pop_str1 <- left_join(trait_pop_str, trait_pop_str_corr)
@@ -200,6 +205,31 @@ ggsave(filename = "population_structure_versus_nonlinear_stability.jpg", plot = 
        path = fig_dir, height = 4, width = 6, dpi = 1000)  
 
 
+## Just PC1
+g_PC1_v_traits <- trait_pop_str1 %>% 
+  filter(PC == "PC1") %>% 
+  mutate(measure = str_replace_all(measure, coef_replace)) %>%
+  ggplot(aes(x = eigenvalue, y = value, col = program)) + 
+  geom_point(size = 0.2) + 
+  geom_text(data = subset(trait_pop_str_annotation, PC == "PC1"), aes(x = Inf, y = Inf, label = annotation), 
+            inherit.aes = FALSE, hjust = 1, vjust = 1.5, size = 2) + 
+  scale_color_manual(values = colors_use, name = "Breeding\nProgram") +
+  facet_wrap(trait ~ measure, scales = "free") +
+  xlab("PC1") +
+  theme_pnas() + 
+  theme(axis.title.y = element_blank())
+
+## Combine plots
+
+g_pop_str_fig <- plot_grid(
+  g_pop_str + ylab(""),
+  g_PC1_v_traits + theme(legend.position = "none"),
+  ncol = 1, labels = LETTERS[1:2], align = "hv", axis = "lr", hjust = 0.001
+)
+
+# Save
+ggsave(filename = "population_structure_and_traits.jpg", plot = g_pop_str_fig, path = fig_dir,
+       width = 3.5, height = 7, dpi = 1000)
 
 
 
@@ -270,7 +300,16 @@ gwas_pheno_mean_fw_sig %>%
   group_by(trait, coef) %>% 
   summarize_at(vars(contains("SNP")), sum)
 
-
+# trait       coef      GWAS_sig_SNP MLMM_sig_SNP
+# 1 GrainYield  b                    0            0
+# 2 GrainYield  g                    0            0
+# 3 GrainYield  log_delta            0            0
+# 4 HeadingDate b                   16            4
+# 5 HeadingDate g                   10            2
+# 6 HeadingDate log_delta            2            2
+# 7 PlantHeight b                   47            2
+# 8 PlantHeight g                    9            5
+# 9 PlantHeight log_delta            0            0
 
 
 
@@ -329,6 +368,47 @@ gwas_mlmm_marker_prop <- gwas_mlmm_marker_info %>%
 
 
 
+## Pretty manhattan plots
+# Add the position of the preceding chromosome to the position of the next
+chrom_pos_cumsum <- snp_info %>% 
+  group_by(chrom) %>% 
+  summarize(chrom_pos = max(pos)) %>% 
+  mutate(max_pos = c(0, head(chrom_pos, -1)), 
+         next_chrom_start_pos = cumsum(max_pos),
+         new_chrom_end = chrom_pos + next_chrom_start_pos,
+         chrom_label_pos =( next_chrom_start_pos + new_chrom_end) / 2)
+
+snp_info_new_pos <- left_join(snp_info, select(chrom_pos_cumsum, -max_pos)) %>% 
+  mutate(new_pos = pos + next_chrom_start_pos)
+
+  
+g_all_gwas <- gwas_pheno_mean_fw_adj %>% 
+  left_join(snp_info_new_pos) %>%
+  # filter(coef != "log_delta") %>%
+  mutate(coef = str_replace_all(coef, coef_replace)) %>%
+  ggplot(aes(x = new_pos, y = neg_log_p, color = coef, shape = coef)) + 
+  # Add chromosome lines
+  geom_segment(data = chrom_pos_cumsum, aes(x = new_chrom_end, xend = new_chrom_end, y = 0, yend = 10), inherit.aes = FALSE, color = "grey75") +
+  geom_point() +
+  geom_text(data = chrom_pos_cumsum, aes(x = chrom_label_pos, y = -1, label = chrom), vjust = 0, inherit.aes = FALSE) +
+  scale_color_discrete(name = NULL) +
+  scale_shape_discrete(name = NULL) +
+  ylab(expression(-log[10](italic(p)))) + 
+  ylim(c(0, 10)) + 
+  facet_grid(trait ~ ., switch = "y", space = "free_x") + 
+  theme_classic() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+        strip.background = element_rect(fill = "grey85", size = 0), legend.position = c(0.08, 0.9),
+        legend.text = element_text(size = 6))
+
+
+# Save
+ggsave(filename = "gwas_manhattan_all_trait_QG.jpg", plot = g_all_gwas, path = fig_dir, 
+       height = 6, width = 10, dpi = 1000)
+
+
+  
+  
 
 ### LD Heatmap
 
@@ -451,6 +531,9 @@ bcap_association <- read_csv(file.path(data_dir, "BCAP_association_qtl.csv")) %>
   select(trait, marker, chrom = chromosome, position, gene:feature, reference) %>%
   filter(trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
 
+# Read in known genes
+known_genes <- read_csv(file = file.path(data_dir, "known_genes.csv"))
+
 
 # Rename the traits
 qtl_meta_df <- qtl_meta %>%
@@ -483,7 +566,7 @@ common_traits <- intersect(names(gwas_mlmm_grange_split), names(qtl_meta_grange)
 gwas_mlmm_qtl_meta_overlap <- list(gwas_mlmm_grange_split[common_traits], qtl_meta_grange[common_traits]) %>%
   pmap(., ~lapply(as.list(.x), function(mar) mergeByOverlaps(query = mar, subject = .y))) %>%
   map(~do.call("rbind", .)) %>% do.call("rbind", .) %>%
-  subset(x = ., , c(trait, coef, marker, marker.1, gene, reference)) %>%
+  subset(x = ., , c(trait, coef, marker, marker, gene, reference)) %>%
   as_data_frame()
 
 ## Find the overlap with all sig markers
@@ -492,7 +575,7 @@ common_traits <- intersect(names(gwas_sig_mar_grange_split), names(qtl_meta_gran
 gwas_sig_mar_qtl_meta_overlap <- list(gwas_sig_mar_grange_split[common_traits], qtl_meta_grange[common_traits]) %>%
   pmap(., ~lapply(as.list(.x), function(mar) mergeByOverlaps(query = mar, subject = .y))) %>%
   map(~do.call("rbind", .)) %>% do.call("rbind", .) %>%
-  subset(x = ., , c(trait, coef, marker, marker.1, gene, reference)) %>%
+  subset(x = ., , c(trait, coef, marker, marker, gene, reference)) %>%
   as_data_frame()
 
 
@@ -524,13 +607,15 @@ gwas_sig_marker_info_ann1 <- gwas_sig_marker_info_ann %>%
 ## Output a table
 gwas_mlmm_marker_toprint <- gwas_mlmm_marker_info_ann %>%
   select(Trait = trait, Coef = coef, Marker = marker, Chrom = chrom, Position = pos, 
-         Beta = beta, qvalue = qvalue, R2 = snp_r_squared, MAF = maf, QTLHits = qtl_hits,
+         Beta = beta, pvalue = pvalue, R2 = snp_r_squared, total_R2 = all_snp_r_squared, MAF = maf, QTLHits = qtl_hits,
          annotation) %>% 
   arrange(Trait, Coef, Chrom, Position) %>% 
   mutate(Coef = str_replace_all(Coef, coef_replace),
          Reference = map(annotation, "reference") %>% map(~ifelse(is.na(.), "T3", .)) %>% 
            map_chr(~paste0(unique(.), collapse = ", "))) %>%
-  select(-annotation)
+  select(-annotation) %>%
+  # Round
+  mutate_at(vars(Beta:MAF), funs(formatC(., digits = 3, format = "g")))
 
 write_csv(x = gwas_mlmm_marker_toprint, path = file.path(fig_dir, "gwas_mlmm_significant_associations.csv"))
 
@@ -548,6 +633,88 @@ gwas_sig_marker_toprint <- gwas_sig_marker_info_ann %>%
 write_csv(x = gwas_sig_marker_toprint, path = file.path(fig_dir, "gwas_significant_associations.csv"))
 
 
+## Use the annotation in the GWAS
+
+## Pretty manhattan plots
+# Add the position of the preceding chromosome to the position of the next
+chrom_pos_cumsum <- snp_info %>% 
+  group_by(chrom) %>% 
+  summarize(chrom_pos = max(pos)) %>% 
+  mutate(max_pos = c(0, head(chrom_pos, -1)), 
+         next_chrom_start_pos = cumsum(max_pos),
+         new_chrom_end = chrom_pos + next_chrom_start_pos,
+         chrom_label_pos =( next_chrom_start_pos + new_chrom_end) / 2)
+
+snp_info_new_pos <- left_join(snp_info, select(chrom_pos_cumsum, -max_pos)) %>% 
+  mutate(new_pos = pos + next_chrom_start_pos)
+
+## Adjust annotation positions
+qtl_meta_use1_newpos <- qtl_meta_use1 %>% 
+  select(trait, chrom, position) %>% 
+  left_join(chrom_pos_cumsum) %>% 
+  mutate(new_qtl_pos = position + next_chrom_start_pos)
+
+known_genes_newpos <- known_genes %>% 
+  select(trait:end) %>% 
+  left_join(chrom_pos_cumsum) %>% 
+  mutate(new_gene_pos = ((start + end) / 2) + next_chrom_start_pos)
+
+# Adjust the position of the label of some genes
+known_genes_newpos1 <- known_genes_newpos %>% 
+  mutate(label_pos = new_gene_pos, 
+         label_pos = ifelse(gene %in% c("Ppd-H2", "denso", "eps4L", "Vrn-H1"), label_pos - 2e8, label_pos),
+         label_pos = ifelse(gene %in% c("eps7S", "Vrn-H3"), label_pos + 2e8, label_pos)) %>%
+  # Remove eps7S
+  filter(gene != "eps7S")
+
+# New colors
+colors_use <- set_names(umn_palette(2)[3:5], coef_replace)
+
+
+g_all_gwas_annotated <- gwas_pheno_mean_fw_adj %>% 
+  left_join(snp_info_new_pos) %>%
+  # filter(coef != "log_delta") %>%
+  mutate(coef = str_replace_all(coef, coef_replace)) %>%
+  # ggplot(aes(x = new_pos, y = neg_log_p, color = coef, shape = coef)) + 
+  ggplot(aes(x = new_pos, y = neg_log_q, color = coef, shape = coef)) + 
+  # Significance thresholds
+  geom_hline(yintercept = -log10(alpha), lwd = 0.2, lty = 3) + 
+  # Add chromosome lines
+  # geom_segment(data = chrom_pos_cumsum, aes(x = new_chrom_end, xend = new_chrom_end, y = 0, yend = 10), lwd = 0.25, inherit.aes = FALSE, color = "grey75") +
+  geom_segment(data = chrom_pos_cumsum, aes(x = new_chrom_end, xend = new_chrom_end, y = 0, yend = 7), lwd = 0.25, inherit.aes = FALSE, color = "grey75") +
+  geom_segment(data = qtl_meta_use1_newpos, aes(x = new_qtl_pos - 1e6, xend = new_qtl_pos + 1e6, y = -0.5, yend = -0.5), lwd = 2, inherit.aes = FALSE) +
+  geom_point(size = 0.1) +
+  # Chromosomes
+  geom_text(data = chrom_pos_cumsum, aes(x = chrom_label_pos, y = -1.5, label = chrom), size = 2, vjust = 0.70, inherit.aes = FALSE) +
+  # Known genes
+  geom_text(data = known_genes_newpos1, aes(x = label_pos, y = 4, label = gene, fontface = "italic"), inherit.aes = FALSE, 
+            check_overlap = TRUE, size = 2) + 
+  geom_segment(data = known_genes_newpos1, aes(x = label_pos, xend = new_gene_pos, y = 3.5, yend = 2.5), lwd = 0.25, inherit.aes = FALSE) + 
+  scale_color_manual(name = NULL, values = colors_use, guide = guide_legend(override.aes = list(size = 1.5))) +
+  scale_shape_discrete(name = NULL) +
+  # Remove annoying whitespace
+  # scale_y_continuous(expand = c(0, 0)) + 
+  scale_x_continuous(expand = c(0.005, 0)) + 
+  # ylab(expression(-log[10](italic(p)))) + 
+  ylab(expression(-log[10](italic(q)))) + 
+  ylim(c(-1.5, 7)) +
+  # xlim(c(0, 5e9)) +
+  facet_grid(trait ~ ., switch = "y", space = "free_x") + 
+  theme_pnas() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+        legend.position = "bottom", legend.margin = margin(t = -5, unit = "pt"), legend.key.height = unit(0.75, "lines"),
+        axis.line.x = element_blank(), strip.placement = "outside")
+
+
+# Save
+ggsave(filename = "gwas_manhattan_all_trait_QG_annotated.jpg", plot = g_all_gwas_annotated, path = fig_dir, 
+       height = 8, width = 11.7, units = "cm", dpi = 1000)
+
+
+
+
+
+
 
 
 
@@ -560,12 +727,11 @@ write_csv(x = gwas_sig_marker_toprint, path = file.path(fig_dir, "gwas_significa
 # Load the results
 load(file.path(result_dir, "pheno_fw_gwas_pleiotropy_results.RData"))
 
-# Choose the right model and tidy up
-gwas_pleio_pheno_mean_fw_tidy
-
 ## Tidy up the data
-gwas_pleio_pheno_mean_fw_tidy <- gwas_pleio_pheno_mean_fw %>% 
+gwas_pleio_pheno_mean_fw_tidy <- gwas_pleio_pheno_mean_fw %>%
+  filter(model == "QG") %>%
   gather(trait2, trait2_neg_log_p, b:log_delta) %>% 
+  rename(trait1_neg_log_p = g) %>%
   filter(!is.na(trait2_neg_log_p),
          model == model_use) %>% 
   as_data_frame()
@@ -585,7 +751,7 @@ gwas_pleio_pheno_mean_fw_tidy <- gwas_pleio_pheno_mean_fw %>%
 ## Run a shortcut of the intersection-union test by grabbing the minimum -log10(p)
 # Convert p-value to q-values
 gwas_pleio_pheno_mean_fw_tidy_adj <- gwas_pleio_pheno_mean_fw_tidy %>% 
-  mutate(min_neg_log_p = pmin(g, trait2_neg_log_p),
+  mutate(min_neg_log_p = pmin(trait1_neg_log_p, trait2_neg_log_p),
          min_pvalue = 10^-min_neg_log_p) %>%
   group_by(trait, trait2) %>% 
   mutate(qvalue = qvalue(p = min_pvalue)$qvalue, 
@@ -696,6 +862,44 @@ for (tr in unique(gwas_pleio_pheno_mean_fw_tidy_adj$trait)) {
   ggsave(filename = save_file, plot = g_gwas_plei, width = 9, height = 6)
   
 }
+
+
+## Reformat the known genes
+known_genes_newpos2 <- known_genes_newpos1 %>% 
+  select(trait, trait:chrom, label_pos, new_gene_pos) %>%
+  full_join(mutate(distinct(gwas_pleio_pheno_mean_fw_tidy_adj, trait, trait2), trait2 = str_replace_all(trait2, coef_replace))) %>%
+  filter((gene == "Ppd-H2" & trait2 == "Linear Stability") | (gene == "Vrn-H1") | (gene == "Vrn-H3") )
+
+
+## Output a pretty manhattan plot
+g_gwas_pleio <- gwas_pleio_pheno_mean_fw_tidy_adj %>%
+  left_join(snp_info_new_pos) %>%
+  mutate(trait2 = str_replace_all(trait2, coef_replace),
+         color = ifelse(min_neg_log_p >= empirical_cutoff, "Bl", color)) %>%
+  ggplot(aes(x = new_pos, y = min_neg_log_p, color = color)) +
+  # Add chromosome lines
+  geom_segment(data = chrom_pos_cumsum, aes(x = new_chrom_end, xend = new_chrom_end, y = 0, yend = 5), lwd = 0.25, inherit.aes = FALSE, color = "grey75") +
+  geom_point(size = 0.1) +
+  geom_text(data = chrom_pos_cumsum, aes(x = chrom_label_pos, y = -1.5, label = chrom), size = 2, vjust = 0.70, inherit.aes = FALSE) +
+  # Known genes
+  geom_text(data = known_genes_newpos2, aes(x = label_pos, y = 4, label = gene, fontface = "italic"), inherit.aes = FALSE, 
+            check_overlap = TRUE, size = 2) + 
+  geom_segment(data = known_genes_newpos2, aes(x = label_pos, xend = new_gene_pos, y = 3.5, yend = 2.75), lwd = 0.25, inherit.aes = FALSE) +
+  geom_segment(data = qtl_meta_use1_newpos, aes(x = new_qtl_pos - 1e6, xend = new_qtl_pos + 1e6, y = -0.5, yend = -0.5), lwd = 2, inherit.aes = FALSE) +
+  scale_color_manual(name = NULL, values = color, guide = FALSE) +
+  scale_x_continuous(expand = c(0.005, 0)) + 
+  ylab(expression(-log[10](italic(p)))) + 
+  ylim(c(-1.5, 5)) +
+  facet_grid(trait + trait2 ~ ., switch = "y", space = "free_x", labeller = labeller(trait2 = function(x) str_c("Mean:", x))) + 
+  theme_pnas() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+        legend.position = "bottom", legend.margin = margin(t = -5, unit = "pt"), legend.key.height = unit(0.75, "lines"),
+        axis.line.x = element_blank(), strip.placement = "outside")
+  
+## Save
+ggsave(filename = "gwas_pleio_manhattan_all_trait_QG_annotated.jpg", plot = g_gwas_pleio, path = fig_dir,
+       height = 14, width = 11.4, units = "cm", dpi = 1000)
+  
 
 
 

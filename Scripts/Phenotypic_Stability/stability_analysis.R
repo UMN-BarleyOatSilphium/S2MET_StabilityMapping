@@ -9,6 +9,8 @@
 # Other packages
 library(cowplot)
 library(modelr)
+library(EMMREML)
+library(parallel)
 
 # Repository directory
 repo_dir <- getwd()
@@ -18,9 +20,39 @@ source(file.path(repo_dir, "source.R"))
 # Load fw data
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 
+# Relationship matrix
+M <- S2TP_imputed_multi_genos_mat
+K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 # Significance threshold
 alpha <- 0.05
+
+# Number of cores
+n_cores <- detectCores()
+
+# Substitute the estimates of stability using just the TP with estimates using
+# both the TP and VP
+pheno_mean_fw <- pheno_mean_fw_tpvp %>%
+  filter(line_name %in% tp)
+
+
+### Preliminary analysis
+
+## Are traits correlated with latitude?
+env_means <- pheno_mean_fw %>% 
+  distinct(trait, environment, h) %>%
+  left_join(distinct(trial_info, environment, latitude, longitude))
+
+env_means %>%
+  group_by(trait) %>%
+  summarize_at(vars(latitude, longitude), funs(corr = list(neyhart::bootstrap(x = h, y = ., fun = "cor")))) %>%
+  gather(coord, out, -trait) %>%
+  unnest() %>% 
+  mutate(significant = ! (ci_lower <= 0 & ci_upper >= 0))
+
+
+
+
 
 ### Finlay-Wilkinson Regression
 
@@ -53,27 +85,17 @@ trial_info %>%
 pheno_mean_fw1 <- pheno_mean_fw %>%
   left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), 
             by = c("line_name" = "Line")) %>%
-  dplyr::rename(program = Program)
+  rename(program = Program)
 
 ## Log transform the non-linear stability estimates
-pheno_mean_fw_trans <- pheno_mean_fw1 %>%
+pheno_fw_use <- pheno_mean_fw1 %>%
   group_by(trait) %>% 
   mutate(log_delta = log(delta)) %>%
   # Tidy
   gather(term, estimate, b, delta, log_delta) %>% 
   filter(term != "delta")
 
-# # Remove potential outliers (visually)
-# pheno_mean_fw_trans_filter <- pheno_mean_fw_trans %>%
-#   # Remove 07MT-10 from grain protein linear stability
-#   filter(!(trait == "GrainProtein" & line_name == "07MT-10" & term == "b")) %>%
-#   # Remove 07AB-84 and 08AB-08 from heading date non-linear stability
-#   filter(!(trait == "HeadingDate" & term == "log_delta" & estimate > 3)) %>%
-#   # Remove 07MT-10 from TestWeight
-#   filter(!(trait == "TestWeight" & line_name == "07MT-10"))
-  
-pheno_fw_use <- pheno_mean_fw_trans %>%
-  filter(trait %in% c("GrainYield", "HeadingDate", "PlantHeight"))
+
 
 #### Summary
 
@@ -130,64 +152,186 @@ ggsave(filename = "stability_estimate_distriubtions.jpg", plot = g_fw_dist, path
 
 
 # Plot the stability estimates as lines against g_i vs h_j
+colors_use <- set_names(umn_palette(2)[3:7], unique(pheno_fw_use$program))
+
 
 # Add the program information to the results
 pheno_fw_use_toplot <- pheno_fw_use %>% 
   spread(term, estimate) %>% 
   select(trait, environment, line_name, value, g, h, b) %>% 
   left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), by = c("line_name" = "Line")) %>%
-  dplyr::rename(program = Program)
+  rename(program = Program)
 
 # Plot the normal FW analysis plot (genotype mean against environmental effects)
 g_pheno_fw_b <- pheno_fw_use_toplot %>%
   ggplot(aes(x = h, y = value, col = program, group = line_name)) + 
-  geom_point() + 
+  geom_point(size = 0.1) + 
   geom_abline(aes(slope = b, intercept = g, col = program), alpha = 0.15) +
-  facet_wrap(~ trait, ncol = 1, scales = "free") +
-  scale_color_discrete(drop = FALSE, guide = guide_legend(title = "Program", ncol = 1)) +
-  ylab("Phenotypic Value") +
-  xlab("Environmental Effect") +
-  labs(title = "Linear Phenotypic Stability") +
+  facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left") +
+  scale_color_manual(drop = FALSE, name = "Origin\nBreeding\nProgram", values = colors_use,
+                     guide = guide_legend(override.aes = list(size = 1), nrow = 1)) +
+  ylab("Phenotypic value") +
+  xlab("Environmental mean") +
+  # labs(title = "Linear Phenotypic Stability") +
   # scale_color_brewer(palette = "Set2") +
-  theme_bw() +
-  theme(legend.position = "right",
-        legend.background = element_rect(fill = "grey85", color = NA))
+  theme_pnas() +
+  theme(legend.position = "bottom", legend.direction = "horizontal", strip.placement = "outside")
 
-ggsave(filename = "pheno_fw_linear.jpg", plot = g_pheno_fw_b, path = fig_dir, 
-       width = 5, height = 10, dpi = 1000)
+# ggsave(filename = "pheno_fw_linear.jpg", plot = g_pheno_fw_b, path = fig_dir, 
+#        width = 5, height = 10, dpi = 1000)
 
 
-## Subset genotypes to highlight different responses
-pheno_fw_example <- pheno_fw_use_toplot %>%
-  distinct(trait, line_name, g, b) %>%
-  group_by(trait) %>% 
-  filter(b == min(b) | b == max(b) | abs(1 - b) == min(abs(1 - b)))
+# ## Subset genotypes to highlight different responses
+# pheno_fw_example <- pheno_fw_use_toplot %>%
+#   distinct(trait, line_name, g, b, program) %>%
+#   mutate(program = as.factor(program)) %>%
+#   group_by(trait) %>% 
+#   filter(b == min(b) | b == max(b) | abs(1 - b) == min(abs(1 - b))) %>%
+#   left_join(., data.frame(program = unique(pheno_fw_use_toplot$program), color = colors_use))
 
-g_pheno_fw_b_example <- pheno_fw_use_toplot %>%
-  select(trait, environment, line_name, value, h) %>% 
-  ggplot(aes(x = h, y = value)) + 
-  geom_point() + 
-  geom_abline(data = pheno_fw_example, aes(intercept = g, slope = b, col = line_name), lwd = 1) + 
-  scale_color_discrete(guide = guide_legend(title = "Line Name", ncol = 1)) +
-  facet_wrap(~ trait, ncol = 1, scales = "free") +
-  ylab("Phenotypic Value") +
-  xlab("Environment Effect") +
-  labs(title = "Example Genotype Responses") +
-  theme_bw() +
-  theme(legend.position = "right",
-        legend.background = element_rect(fill = "grey85", color = NA),
-        legend.text = element_text(size = 8),
-        legend.title = element_text(size = 10))
 
-ggsave(filename = "pheno_fw_linear_example.jpg", plot = g_pheno_fw_b_example, path = fig_dir, 
-       width = 5, height = 10, dpi = 1000)
+# g_pheno_fw_b_example <- pheno_fw_use_toplot %>%
+#   select(trait, environment, line_name, value, h) %>% 
+#   ggplot(aes(x = h, y = value)) + 
+#   geom_point(color = "grey75", size = 0.2) + 
+#   geom_abline(data = pheno_fw_example, aes(intercept = g, slope = b, col = program), lwd = 0.5) + 
+#   # scale_color_manual(drop = FALSE, guide = guide_legend(title = "Program", ncol = 1), values = colors_use) +
+#   scale_color_manual(drop = FALSE, guide = FALSE, values = colors_use) +
+#   facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left") +
+#   ylab("Phenotypic Value") +
+#   xlab("Environment Mean") +
+#   # labs(title = "Example Genotype Responses") +
+#   theme_pnas() +
+#   theme(legend.position = c(0.10, 0.90), axis.title.y = element_blank(),
+#         strip.background = element_blank(), strip.text = element_blank())
+# 
+# ggsave(filename = "pheno_fw_linear_example.jpg", plot = g_pheno_fw_b_example, path = fig_dir, 
+#        width = 5, height = 10, dpi = 1000)
+
+
+
+## Plot the relationship between the genotypic effect and the sensitivity
+set.seed(415)
+
+# Calculate the correlation between genotype mean and the stability estimate
+stability_mean_corr <- pheno_fw_use %>%
+  distinct(trait, line_name, g, term, estimate) %>%
+  group_by(trait, term) %>% 
+  # Bootstrap the correlation
+  do(neyhart::bootstrap(x = .$g, y = .$estimate, fun = "cor")) %>%
+  mutate(significant = !between(0, ci_lower, ci_upper),
+         sig_ann = ifelse(significant, "*", ""),
+         annotation = str_c("r = ", round(base, 3), sig_ann))
+
+# Create a list of plot additions
+g_add <- list(geom_point(size = 0.1),
+              geom_smooth(method = "lm", se = FALSE, col = "black", lwd = 0.5),
+              scale_color_manual(name = "Program", values = colors_use, guide = FALSE),
+              xlab("Genotype mean"),
+              theme_pnas(),
+              theme(strip.placement = "inside"))
+
+# Plot just the linear stability
+g_linear_stability_and_mean <- pheno_fw_use %>%
+  filter(term == "b") %>%
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
+  geom_text(data = subset(stability_mean_corr, term == "b"), aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 2) +
+  facet_wrap(~ trait, scales = "free_x", ncol = 1, strip.position = "left") +
+  ylab("Linear stability estimate") +
+  theme(legend.position = "right") +
+  g_add
+
+# Plot just the non-linear stability
+g_nonlinear_stability_and_mean <- pheno_fw_use %>%
+  filter(term == "log_delta") %>%
+  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
+  geom_text(data = subset(stability_mean_corr, term == "log_delta"), aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 2) +
+  facet_wrap(~ trait, scales = "free", ncol = 1, strip.position = "left")+
+  ylab("Non-linear stability estimate") +
+  theme(legend.position = "right") +
+  g_add
+
+
+## Plot the reaction norms, then the correlations together
+g_plotgrid <- plot_grid(
+  g_pheno_fw_b + theme(legend.position = "none"),
+  g_linear_stability_and_mean + theme(strip.background = element_blank(), strip.text = element_blank()),
+  g_nonlinear_stability_and_mean + theme(strip.background = element_blank(), strip.text = element_blank()),
+  ncol = 3, align = "hv", labels = LETTERS[1:3], axis = "tblr", label_size = 8
+)
+
+# Add the legend
+g_plotgrid1 <- plot_grid(g_plotgrid, get_legend(g_pheno_fw_b), ncol = 1, rel_heights = c(1, 0.1))
+
+
+ggsave(filename = "reaction_norms_and_correlations.jpg", plot = g_plotgrid1, path = fig_dir, 
+       width = 11.4, height = 8, units = "cm", dpi = 1000)
+
+
+
 
 
 # Combine plots
-g_pheno_fw_figure <- plot_grid(g_pheno_fw_b, g_pheno_fw_b_example, labels = c("A", "B"), ncol = 2)
+g_pheno_fw_figure <- plot_grid(g_pheno_fw_b + scale_color_manual(drop = FALSE, guide = FALSE, values = colors_use), 
+                               g_pheno_fw_b_example, labels = c("A", "B"), align = "hv", axis = "lr", ncol = 2, hjust = -0.1)
+# Add legend
+g_pheno_fw_figure1 <- plot_grid(g_pheno_fw_figure, get_legend(g_pheno_fw_b), rel_heights = c(1, 0.1), ncol = 1)
 
-ggsave(filename = "pheno_fw_linear_combined.jpg", plot = g_pheno_fw_figure, path = fig_dir,
-       width = 10, height = 10, dpi = 1000)
+ggsave(filename = "pheno_fw_linear_combined.jpg", plot = g_pheno_fw_figure1, path = fig_dir,
+       width = 8.7, height = 10,  units = "cm", dpi = 1000)
+
+
+
+### Use a bi-variate model and the genomic relationship matrix to estimate genetic correlation
+library(EMMREML)
+
+# Create a df for modeling
+pheno_fw_use_tomodel <- pheno_fw_use %>%
+  ungroup() %>%
+  distinct(trait, line_name, g, term, estimate)
+
+# Iterate over each trait and term
+pheno_fw_gen_corr <- pheno_fw_use_tomodel %>%
+  group_by(trait, term) %>%
+  do({
+    df <- .
+    # Create a model.frame
+    mf <- model.frame(estimate ~ line_name, df)
+    
+    # Create model matrices
+    Z <- model.matrix(~ -1 + line_name, mf)
+    X <- model.matrix(~ 1, mf)
+    
+    # Create the response matrix
+    Y <- as.matrix(select(df, g, estimate))
+    
+    # Fit the model
+    fit <- emmremlMultivariate(Y = t(Y), X = t(X), Z = t(Z), K = K)
+    vcovG <- fit$Vg
+    
+    # Estimate the correlation using the formula for correlation
+    # covariance / (sd1 * sd2)
+    rhoG_hat <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
+    
+    # Return
+    data_frame(trait1 = "g", trait2 = unique(df$term), corG = rhoG_hat)
+  })
+
+
+
+
+# Add the original estimates and calculate a p value
+pheno_fw_gen_corr_perm_sig <- pheno_fw_gen_corr_perm1 %>% 
+  mutate(trait1 = "g") %>% 
+  rename(trait2 = term, corrG_NULL = corrG) %>%
+  left_join(., pheno_fw_gen_corr) %>% 
+  group_by(trait, trait1, trait2) %>% 
+  mutate(n_sig = corrG_NULL >= corG | corrG_NULL <= -corG) %>% 
+  summarize(pvalue = mean(n_sig))
+
+
+
+
 
 
 
@@ -242,6 +386,11 @@ pheno_fw_nXO %>%
             meanCO = mean(cross_over_count1)) %>% 
   summarize(mean = mean(meanCO))
 
+# trait        mean
+# 1 GrainYield  0.418
+# 2 HeadingDate 0.125
+# 3 PlantHeight 0.372
+
 # Visualize
 pheno_fw_nXO %>% 
   group_by(trait, geno1) %>% 
@@ -254,109 +403,6 @@ pheno_fw_nXO %>%
 
 
 
-## Plot the relationship between the genotypic effect and the sensitivity
-set.seed(415)
-
-# Calculate the correlation between genotype mean and the stability estimate
-stability_mean_corr <- pheno_fw_use %>%
-  group_by(trait, term) %>% 
-  # Bootstrap the correlation
-  do(boot = {
-    df <- .
-    # Perform bootstrap
-    boot_out <- df %>% 
-      bootstrap(n = 1000) %>% 
-      pull(strap) %>%
-      map_dbl(~as.data.frame(.) %>% ungroup() %>% select(g, estimate) %>% cor(.) %>% .[1,2])
-    
-    # Summarize and export
-    data.frame(cor = boot_out) %>% 
-      summarize(boot_mean = mean(cor), se = sd(cor), 
-                ci_lower = quantile(cor, alpha / 2), ci_upper = quantile(cor, 1 - (alpha / 2))) }) %>%
-  # Join with original data
-  left_join(pheno_fw_use, .) %>%
-  # Calculate the base correlation and add a character annotation
-  group_by(trait, term) %>% 
-  mutate(corr = cor(g, estimate, use = "complete.obs"),
-         corr = str_c("r = ", round(corr, 3))) %>% 
-  unnest() %>%
-  ungroup()
-
-
-# # Fit linear models
-# stability_mean_lm <- stability_mean_corr %>% 
-#   group_by(trait, term) %>%
-#   do(fit = lm(g ~ estimate, data = .))
-# 
-# # Tidy up
-# stability_mean_lm_tidy <- stability_mean_lm %>%
-#   ungroup() %>%
-#   mutate(tidy_fit = map(fit, tidy)) %>%
-#   unnest(tidy_fit) %>% 
-#   filter(term1 == "estimate")
-
-
-## Looks like significant regression slopes for the relationship between genotype 
-## mean and $b$ for GrainYield and PlantHeight, and between genotype mean and $\delta$ 
-## for HeadingDate and PlantHeight.
-
-# The relationship between genotype mean and $\delta$ is still significant after outlier removal
-
-# Extract the data to plot
-stability_mean_corr_toplot <- stability_mean_corr %>% 
-  rowwise() %>%
-  mutate(significant = !between(0, ci_lower, ci_upper)) %>% 
-  ungroup() %>%
-  distinct(trait, line_name, program, g, term, estimate, corr, significant) %>%
-  mutate(annotation = str_c(corr, ifelse(significant, "*", "")))
-
-# Create a list of plot additions
-g_add <- list(geom_point(),
-              geom_smooth(method = "lm", se = FALSE, col = "black"),
-              geom_text(aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black"),
-              scale_color_discrete(name = "Program"),
-              ylab("Estimate"),
-              xlab("Genotype Mean"),
-              theme_bw(),
-              theme(legend.background = element_rect(fill = "grey85", color = NA)))
-
-# Plot just the linear stability
-g_linear_stability_and_mean <- stability_mean_corr_toplot %>%
-  filter(term == "b") %>%
-  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
-  facet_wrap(~ trait, scales = "free_x", ncol = 1) +
-  labs(title = "Linear Stability") +
-  theme(legend.position = "right") +
-  g_add
-  
-# Plot just the non-linear stability
-g_nonlinear_stability_and_mean <- stability_mean_corr_toplot %>%
-  filter(term == "log_delta") %>%
-  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
-  facet_wrap(~ trait, scales = "free", ncol = 1) +
-  labs(title = "Non-Linear Stability" ) +
-  theme(legend.position = "right") +
-  g_add
-  
-
-# Plot grid
-# Remove the legend from each plot object. Also remove the y axis title from the right-hand plot
-g_plotgrid <- plot_grid(
-  g_linear_stability_and_mean + theme(legend.position="none", axis.title.x = element_blank()),
-  g_nonlinear_stability_and_mean + theme(legend.position="none", axis.title.x = element_blank()) + ylab(""),
-  align = "h",
-  labels = c("A", "B"))
-
-# Extract the legend from one of the plots and add it back in
-g_plotgrid1 <- plot_grid(
-  g_plotgrid, get_legend(g_linear_stability_and_mean), rel_widths = c(2, 0.3)
-)
-
-# Add a common x-axis legend.
-g_plotgrid2 <- ggdraw(add_sub(g_plotgrid1, "Genotype Mean", size = 12, hjust = 0.7))
-
-ggsave(filename = "pheno_fw_stability_mean.jpg", plot = g_plotgrid2, path = fig_dir, 
-       width = 8, height = 6, dpi = 1000)
 
 
 
@@ -403,21 +449,168 @@ ggsave(filename = "pheno_fw_resample_repeatability.jpg", path = fig_dir, plot = 
 
 ## Calculate the proportion of stability variance due to genomewide markers
 # Load the results
-load(file.path(result_dir, "pheno_mar_fw_varcomp.RData"))
+load(file.path(result_dir, "stability_mean_marker_varcomp_results.RData"))
 
-prop_varcomp <- pheno_fw_var_comp_all_markers %>% 
-  mutate(total = snps + res) %>% 
-  mutate_at(vars(snps, res), funs(. / total))
+## What is the proportion of variance explained by all genomewide markers
+all_marker_prop_varcomp <- all_marker_varcomp %>% 
+  ungroup() %>% 
+  mutate(varP = varG + varR) %>% 
+  mutate_at(vars(varG, varR), funs(. / varP))
 
-prop_varcomp %>%
-  select(trait:snps) %>% 
-  spread(coef, snps)
+all_marker_prop_varcomp %>%
+  select(trait:varG) %>% 
+  spread(coef, varG)
 
 #   trait           b     g     log_delta
 # <chr>       <dbl> <dbl>         <dbl>
 # 1 GrainYield  0.431 0.345 0.0813       
 # 2 HeadingDate 0.449 0.611 0.0774       
 # 3 PlantHeight 0.289 0.517 0.00000000100
+
+## Random markers
+rand_marker_prop_varcomp <- rand_marker_varcomp %>%
+  mutate(varP = varG + varR,
+         nmar = parse_number(nmar)) %>% 
+  mutate_at(vars(varG, varR), funs(. / varP)) %>%
+  group_by(trait, coef, nmar) %>%
+  summarize_at(vars(varG), funs(mean = mean(.), lower = quantile(., alpha / 2), upper = quantile(., 1 - (alpha / 2)))) %>%
+  ungroup()
+
+## Plot
+g_rand <- rand_marker_prop_varcomp %>% 
+  ggplot(aes(x = nmar, y = mean, color = coef)) + 
+  geom_point(pch = 0) +
+  geom_line() +
+  geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.1) + 
+  facet_wrap(~trait, ncol = 2) +
+  theme_bw()
+
+
+## Calculate marker effects and assess accuracy
+pheno_fw_me <- pheno_fw_use %>% 
+  distinct(trait, line_name, term, estimate) %>% 
+  filter(term == "b") %>%
+  group_by(trait) %>% 
+  do(me = mixed.solve(y = .$estimate, Z = M)$u)
+
+# Predict
+
+
+
+
+
+
+## Compare different marker subsets for the proportion of variance explained
+# Top markers
+top_marker_prop_varcomp <- top_marker_varcomp %>%
+  mutate(varP = varG + varR,
+         nmar = parse_number(nmar)) %>% 
+  mutate_at(vars(varG, varR), funs(. / varP))
+
+## Plot
+g_top <- top_marker_prop_varcomp %>% 
+  ggplot(aes(x = nmar, y = varG, color = coef)) + 
+  geom_point() + 
+  geom_line() + 
+  facet_wrap(~trait, ncol = 3) +
+  theme_bw()
+
+# Add random
+g_top1 <- g_top + 
+  geom_point(data = rand_marker_prop_varcomp, aes(y = mean), pch = 0) +
+  geom_line(data = rand_marker_prop_varcomp, aes(y = mean)) +
+  geom_ribbon(data = rand_marker_prop_varcomp, aes(ymin = lower, ymax = upper, y = mean), alpha = 0.1) +
+  theme(legend.position = c(0.25, 0.80)) + 
+  ylim(c(0, 1))
+  
+# Save
+ggsave(filename = "top_maker_varcomp.jpg", plot = g_top1, path = fig_dir,
+       height = 4, width = 8, dpi = 1000)
+  
+  
+
+# evenly-spaced markers
+esm_marker_prop_varcomp <- esm_marker_varcomp %>%
+  mutate(varP = varG + varR,
+         nmar = parse_number(nmar)) %>% 
+  mutate_at(vars(varG, varR), funs(. / varP))
+
+## Plot
+g_esm <- esm_marker_prop_varcomp %>% 
+  ggplot(aes(x = nmar, y = varG, color = coef)) + 
+  geom_point() + 
+  geom_line() + 
+  facet_wrap(~trait, ncol = 3) +
+  theme_bw()
+
+g_esm1 <- g_esm + 
+  geom_point(data = rand_marker_prop_varcomp, aes(y = mean), pch = 0) +
+  geom_line(data = rand_marker_prop_varcomp, aes(y = mean)) +
+  geom_ribbon(data = rand_marker_prop_varcomp, aes(ymin = lower, ymax = upper, y = mean), alpha = 0.1) +
+  theme(legend.position = c(0.25, 0.80)) + 
+  ylim(c(0, 1))
+
+# Save
+ggsave(filename = "even_spaced_maker_varcomp.jpg", plot = g_esm1, path = fig_dir,
+       height = 4, width = 8, dpi = 1000)
+
+
+
+
+
+# Top evenly-spaced markers
+tesm_marker_prop_varcomp <- tesm_marker_varcomp %>%
+  mutate(varP = varG + varR,
+         nmar = parse_number(nmar)) %>% 
+  mutate_at(vars(varG, varR), funs(. / varP))
+
+## Plot
+g_tesm <- tesm_marker_prop_varcomp %>% 
+  ggplot(aes(x = nmar, y = varG, color = coef)) + 
+  geom_point() + 
+  geom_line() + 
+  facet_wrap(~trait, ncol = 3) +
+  theme_bw()
+
+g_tesm1 <- g_tesm + 
+  geom_point(data = rand_marker_prop_varcomp, aes(y = mean), pch = 0) +
+  geom_line(data = rand_marker_prop_varcomp, aes(y = mean)) +
+  geom_ribbon(data = rand_marker_prop_varcomp, aes(ymin = lower, ymax = upper, y = mean), alpha = 0.1) +
+  theme(legend.position = c(0.25, 0.80)) + 
+  ylim(c(0, 1))
+
+# Save
+ggsave(filename = "top_even_spaced_maker_varcomp.jpg", plot = g_tesm1, path = fig_dir,
+       height = 4, width = 8, dpi = 1000)
+
+
+# Top plastic markers
+plas_marker_prop_varcomp <- plas_marker_varcomp %>%
+  mutate(varP = varG + varR,
+         nmar = parse_number(nmar)) %>% 
+  mutate_at(vars(varG, varR), funs(. / varP))
+
+## Plot
+g_plas <- plas_marker_prop_varcomp %>% 
+  ggplot(aes(x = nmar, y = varG, color = coef)) + 
+  geom_point() + 
+  geom_line() + 
+  facet_wrap(~trait, ncol = 3) +
+  theme_bw()
+
+g_plas1 <- g_plas + 
+  geom_point(data = rand_marker_prop_varcomp, aes(y = mean), pch = 0) +
+  geom_line(data = rand_marker_prop_varcomp, aes(y = mean)) +
+  geom_ribbon(data = rand_marker_prop_varcomp, aes(ymin = lower, ymax = upper, y = mean), alpha = 0.1) +
+  theme(legend.position = c(0.25, 0.80)) + 
+  ylim(c(0, 1))
+
+# Save
+ggsave(filename = "plastic_maker_varcomp.jpg", plot = g_plas1, path = fig_dir,
+       height = 4, width = 8, dpi = 1000)
+
+
+
 
 
 

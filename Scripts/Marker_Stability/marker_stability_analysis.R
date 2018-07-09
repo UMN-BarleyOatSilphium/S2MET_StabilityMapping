@@ -8,7 +8,6 @@
 
 # Extra libraries
 library(cowplot)
-library(lme4qtl)
 
 # Load the source
 repo_dir <- getwd()
@@ -57,33 +56,33 @@ mxe_df <- marker_by_env_effects %>%
 
 # Combine with the environmental mean
 mxe_df1 <- mxe_df %>%
-  left_join(., distinct(S2_MET_pheno_mean_fw, trait, environment, h),
+  left_join(., distinct(pheno_mean_fw, trait, environment, h),
             by = c("environment", "trait"))
 
-# Calculate the marker effect stability
-# Regress the marker effects in each environment on the mean in that environment
-marker_effect_stab <- mxe_df1 %>%
-  group_by(trait, marker) %>%
-  do({
-    df <- .
-    # Fit the model
-    fit <- lm(effect ~ h, df)
-    
-    # Output a data.frame with the intercept, slope, MSE, and fitted marker effects
-    mutate(df, a = coef(fit)[1], c = coef(fit)[2], delta = mean(resid(fit)^2), 
-           fitted_effects = fitted(fit)) 
-    
-  })
-
-
-# Add the snp information
-marker_mean_fw <- marker_effect_stab %>%
-  left_join(., snp_info, by = "marker") %>%
-  select(trait, marker, chrom:cM_pos, trait, names(.)) %>%
-  ungroup()
-
-# Save the data
-save("marker_mean_fw", file = file.path(result_dir, "marker_mean_fw_results.RData"))
+# # Calculate the marker effect stability
+# # Regress the marker effects in each environment on the mean in that environment
+# marker_effect_stab <- mxe_df1 %>%
+#   group_by(trait, marker) %>%
+#   do({
+#     df <- .
+#     # Fit the model
+#     fit <- lm(effect ~ h, df)
+#     
+#     # Output a data.frame with the intercept, slope, MSE, and fitted marker effects
+#     mutate(df, a = coef(fit)[1], c = coef(fit)[2], delta = mean(resid(fit)^2), 
+#            fitted_effects = fitted(fit)) 
+#     
+#   })
+# 
+# 
+# # Add the snp information
+# marker_mean_fw <- marker_effect_stab %>%
+#   left_join(., snp_info, by = "marker") %>%
+#   select(trait, marker, chrom:cM_pos, trait, names(.)) %>%
+#   ungroup()
+# 
+# # Save the data
+# save("marker_mean_fw", file = file.path(result_dir, "marker_mean_fw_results.RData"))
 
 
 
@@ -123,6 +122,16 @@ save("marker_mean_fw", file = file.path(result_dir, "marker_mean_fw_results.RDat
 
 load(file.path(result_dir, "marker_mean_fw_results.RData"))
 
+## Transform
+marker_mean_fw_trans <- marker_mean_fw %>% 
+  distinct(marker, chrom, pos, trait, c, delta) %>%
+  mutate(log_delta = log(delta))
+
+
+
+
+
+
 ## Calculate the mean marker effect of each marker
 mean_marker_effect <- marker_mean_fw %>% 
   group_by(marker, trait) %>% 
@@ -149,13 +158,41 @@ mean_marker_effect %>%
 
 
 
+## Plot markers with the highest and lowest slopes
+marker_mean_fw_example <- marker_mean_fw %>% 
+  group_by(trait) %>% 
+  filter(c == min(c) | c == max(c) | (abs(c) - 0 == min(abs(c) - 0)) ) %>%
+  mutate(type = case_when(c == min(c) ~ "Negative plastic",
+                          c == max(c) ~ "Positive plastic",
+                          TRUE ~ "Stable"))
+
+colors <- umn_palette(2)[3:5]
+colors <- set_names(x = grey.colors(n = 3, start = 0.2, end = 0.8), 
+                    nm = c("Positive plastic", "Stable", "Negative plastic"))
+
+
+# Plot
+g_marker_fw_example <- marker_mean_fw_example %>% 
+  ggplot(aes(x = h, y = effect, color = type, group = marker, shape = type)) + 
+  geom_point(size = 0.3) + 
+  geom_smooth(method = "lm", se = FALSE, lwd = 0.25) + 
+  # scale_color_brewer(name = "Marker\nReaction\nType", palette = "Greys") + 
+  scale_color_manual(name = "Marker\nReaction\nType", values = colors, guide = FALSE) +
+  scale_shape_discrete(name = "Marker\nReaction\nType", guide = FALSE) +
+  facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left") + 
+  ylab("Marker effect") +
+  xlab("Environmental mean") + 
+  theme_pnas() +
+  theme(strip.placement = "outside", legend.position = "bottom")
+
+# Save
+ggsave(filename = "marker_reaction_norm_example.jpg", plot = g_marker_fw_example, path = fig_dir, 
+       width = 4, height = 6, units = "cm", dpi = 1000)
+
+
+
 
 ## Plot the distribution of stability estimates
-
-## Transform
-marker_mean_fw_trans <- marker_mean_fw %>% 
-  distinct(marker, chrom, pos, trait, c, delta) %>%
-  mutate(log_delta = log(delta), c = c + 1)
 
 
 ## Plot the stability terms individually, then combine
@@ -201,24 +238,249 @@ g_linear_vs_nonlinear <- marker_mean_fw_trans %>%
 ggsave(filename = "marker_linear_vs_nonlinear_stability.jpg", plot = g_linear_vs_nonlinear, 
        height = 6, width = 5, dpi = 1000, path = fig_dir)
 
-# Plot for all markers the relationship between the slope and the intercept
-marker_mean_fw %>% 
-  distinct(trait, marker, a, c) %>%
-  qplot(x = a, y = c, data = .) +
-  facet_wrap(~trait, ncol = 2, scales = "free_x") +
-  theme_bw()
 
-## Correlate
-marker_mean_fw %>% 
+
+## Relationship between marker intercept and marker slope
+
+set.seed(1012)
+# Correlate
+(marker_int_slope_corr <- marker_mean_fw %>% 
   distinct(trait, marker, a, c)  %>% 
   group_by(trait) %>% 
-  summarize(cor = cor(a, c))
+  do(bootstrap(x = .$a, y = .$c, fun = "cor")))
+
+# trait       statistic     base      se       bias ci_lower ci_upper
+# 1 GrainYield  cor        0.410   0.00946 0.000754   0.392    0.429 
+# 2 HeadingDate cor       -0.129   0.0121  0.000129  -0.154   -0.104 
+# 3 PlantHeight cor        0.00325 0.0119  0.000437  -0.0195   0.0284
+
+# Plot for all markers the relationship between the slope and the intercept
+g_marker_slope_int <- marker_mean_fw %>% 
+  distinct(trait, marker, a, c) %>%
+  ggplot(aes(x = a, y = c)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se  = FALSE) + 
+  facet_wrap(~trait, ncol = 1, scales = "free_x") +
+  ylab("Marker reaction norm slope") +
+  xlab("Marker reaction norm intercept") +
+  theme_bw()
+
+
+## Relationship between marker effects for the mean and marker effects for stability
+# Calculate
+pheno_mean_fw_marker_effects <- pheno_mean_fw %>% 
+  distinct(trait, line_name, g, b) %>% 
+  gather(coef, value, g:b) %>% 
+  group_by(trait, coef) %>% 
+  do({data.frame(marker = colnames(M), effect = mixed.solve(y = .$value, Z = M)$u)})
+
+# Correlations
+set.seed(1012)
+(marker_mean_fw_corr <- pheno_mean_fw_marker_effects %>% 
+  spread(coef, effect) %>%
+  do(bootstrap(x = .$g, y = .$b, fun = "cor")))
+
+# trait       statistic   base      se      bias ci_lower ci_upper
+# 1 GrainYield  cor       0.610  0.00727 0.000341    0.596    0.625 
+# 2 HeadingDate cor       0.0461 0.0123  0.0000611   0.0214   0.0709
+# 3 PlantHeight cor       0.315  0.0108  0.000141    0.294    0.336 
+
+# Plot
+g_marker_mean_fw <- pheno_mean_fw_marker_effects %>% 
+  spread(coef, effect)%>%
+  ggplot(aes(x = g, y = b)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se  = FALSE) + 
+  facet_wrap(~trait, ncol = 1, scales = "free_x") +
+  ylab("Phenotypic stability marker effect") +
+  xlab("Mean per se marker effect") +
+  theme_bw()
+
+# Combine
+g_marker_cor <- plot_grid(g_marker_slope_int, g_marker_mean_fw, ncol = 2)
+# Save
+ggsave(filename = "marker_mean_slope_corr_comparison.jpg", plot = g_marker_cor, path = fig_dir,
+       height = 6, width = 6, dpi = 1000)
 
 
 
-## Assess what markers change sign across environments`
+## Combine all marker effects and estimates
+marker_effects_omnibus <- pheno_mean_fw_marker_effects %>% 
+  spread(coef, effect) %>%
+  left_join(., distinct(marker_mean_fw, trait, marker, a, c) )
+
+
+## The correlation for the slope of marker effects and marker effects for the slope is
+## quite high.
+marker_effects_omnibus %>% 
+  summarize(cor_ga = cor(g, a), 
+            cor_bc = cor(b, c),
+            cor_gb = cor(g, b), 
+            cor_ac = cor(a, c))
+
+## Plot
+g_marker_slope_v_effect <- marker_effects_omnibus %>%
+  ggplot(aes(x = b, y = c)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se  = FALSE) + 
+  facet_wrap(~trait, ncol = 1, scales = "free_x") +
+  xlab("Phenotypic stability marker effect") +
+  ylab("Marker reaction norm slope") +
+  theme_bw()
+
+g_marker_int_v_effect <- marker_effects_omnibus %>%
+  ggplot(aes(x = g, y = a)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se  = FALSE) + 
+  facet_wrap(~trait, ncol = 1, scales = "free") +
+  xlab("Mean per se marker effect") +
+  ylab("Marker reaction norm intercept") +
+  theme_bw()
+
+# Combine
+g_marker_comparison <- plot_grid(g_marker_int_v_effect, g_marker_slope_v_effect, ncol = 2)
+# Save
+ggsave(filename = "marker_mean_slope_intra_comparison.jpg", plot = g_marker_comparison, path = fig_dir,
+       height = 6, width = 6, dpi = 1000)
+
+
+
+
+##### Marker stability as effect estimates for phenotypic stability
+# Use the marker stability estimates as marker effects - predict phenotypic stability
+
+# Create matrices with these "effects"
+marker_stability_effect <- marker_mean_fw %>% 
+  distinct(trait, marker, c) %>% 
+  split(.$trait) %>% 
+  map(~select(., -trait) %>% as.data.frame() %>% column_to_rownames("marker") %>% as.matrix())
+
+# Split the phenotypic stability estimates
+pheno_mean_fw_split <- pheno_mean_fw %>% 
+  distinct(trait, line_name, b) %>% 
+  split(.$trait)
+
+## Predictions of stability
+marker_stability_pred_acc <- list(marker_stability_effect, pheno_mean_fw_split) %>%
+  pmap(~mutate(.y, marker_b_pred = (M[,row.names(.x)] %*% (.x)) + 1)) %>%
+  bind_rows()
+
+# Accuracy
+marker_stability_pred_corr <- marker_stability_pred_acc %>% 
+  group_by(trait) %>% 
+  summarize(marker_b_pred_acc = cor(b, marker_b_pred)) %>%
+  mutate(annotation = str_c("r = ", round(marker_b_pred_acc, 3)))
+
+### Pretty high!
+
+
+# Plot
+g_marker_stability_pred <- marker_stability_pred_acc %>% 
+  ggplot(aes(x = b, y = marker_b_pred)) +
+  geom_point(size = 0.3) +
+  geom_text(data = marker_stability_pred_corr, aes(x = Inf, y = -Inf, label = annotation), hjust = 1, vjust = -1, size = 2) +  
+  facet_wrap(~ trait, ncol = 1, scales = "free_y", strip.position = "left") + 
+  xlab("Linear phenotypic stability") +
+  ylab("Predicted linear stability") +
+  theme_pnas()
+
+ggsave(filename = "marker_stability_pred.jpg", plot = g_marker_stability_pred, path = fig_dir,
+       height = 6, width = 4, units = "cm", dpi = 1000)
+
+
+
+
+### Theoretical example of how the reaction norms of loci act additively to result in the phenotypic 
+### reaction norms
+# Dummy genotype matrix
+m <- rbind(c(1, 1), c(-1, -1))
+# Reaction norm slopes of each locus
+c <- c(0.4, -0.2)
+# Environmental means
+h <- c(-5, 5)
+# Environment-specific qtl effects
+a <- rbind(c(-2, 2), c(0, -2))
+# Environment-specific genotype values
+g <- m %*% a
+b <- m %*% c
+
+
+# Df to plot
+sim_marker_df <- data.frame(qtl = rep(c("QTL1", "QTL2"), 2), env = rep(c("E1", "E2"), each = 2), 
+                            a = c(a), h = rep(h, each = 2), c = rep(c, 2)) %>%
+  mutate(annotation = str_c("slope = ", c), facet = "strip")
+
+sim_geno_df <- data.frame(gen = rep(c("G1", "G2"), 2), env = rep(c("E1", "E2"), each = 2), 
+                          g = c(g), h = rep(h, each = 2), b = rep(b, 2)) %>%
+  mutate(annotation = str_c("slope = ", b), facet = "strip")
+
+
+
+# Plot
+g_sim_qtl <- sim_marker_df %>% 
+  ggplot(aes(x = h, y = a, shape = qtl, color = qtl)) + 
+  geom_point() +
+  geom_line() +
+  geom_text(aes(x = 0, y = c, label = annotation), vjust = 0, hjust = 0, nudge_x = 1, nudge_y = -0.5, inherit.aes = FALSE, size = 1.5) + 
+  ylab("QTL effect") +
+  xlab("Environmental mean") +
+  scale_color_manual(name = NULL, values = unname(colors[-2])) + 
+  scale_shape_discrete(name = NULL) +
+  theme_pnas() +
+  theme(legend.position = c(0.20, 0.90), legend.key.height = unit(0.5, "lines"),
+        legend.background = element_rect(fill = alpha("white", 0)))
+
+g_sim_geno <- sim_geno_df %>% 
+  ggplot(aes(x = h, y = g, shape = gen, color = gen)) + 
+  geom_point() +
+  geom_line() +
+  geom_text(aes(x = 0, y = -b, label = annotation), vjust = 0, hjust = 0, nudge_x = -1, inherit.aes = FALSE, size = 1.5) + 
+  ylab("Genotypic value") +
+  xlab("Environmental mean") +
+  scale_color_manual(name = NULL, values = unname(colors[-2])) + 
+  scale_shape_discrete(name = NULL) +
+  theme_pnas() +
+  theme(legend.position = c(0.60, 0.90), legend.key.height = unit(0.5, "lines"),
+        legend.background = element_rect(fill = alpha("white", 0)))
+
+
+
+# Combine
+g_sim <- plot_grid(g_sim_qtl, g_sim_geno, ncol = 2, labels = c("A", "B"), label_size = 10)
+# Save
+ggsave(filename = "marker_reaction_norm_theory.jpg", plot = g_sim, path = fig_dir,
+       height = 4, width = 8, units = "cm", dpi = 1000)
+
+
+g_marker_rn_figure <- plot_grid(
+  g_sim_qtl,
+  g_sim_geno,
+  g_marker_fw_example, 
+  g_marker_stability_pred + theme(strip.background = element_blank(), strip.text = element_blank()),
+  ncol = 2, labels = LETTERS[1:4], align = "hv", axis = "lr", rel_heights = c(0.5, 1), label_size = 10
+)
+
+
+# Save
+ggsave(filename = "marker_reaction_norm_figure.jpg", plot = g_marker_rn_figure, path = fig_dir,
+       height = 8, width = 8.7, units = "cm", dpi = 1000)
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ## Assess what markers change sign across environments`
 marker_effect_sign <- marker_mean_fw %>% 
-  mutate(effect_sign = sign(effect)) %>% 
+  # mutate(effect_sign = sign(effect)) %>% 
+  mutate(effect_sign = sign(fitted_effects)) %>% # fitted effects?
   group_by(trait, marker, effect_sign) %>% 
   summarize(n = n()) %>% 
   mutate(prop = n / sum(n)) %>%
@@ -232,12 +494,24 @@ marker_effect_sign %>%
   summarize(n_change_sign = sum(prop != 1 & prop != 0), 
             prop_change_sign = n_change_sign / n())
 
+# trait       n_change_sign prop_change_sign
+# 1 GrainYield           9254            0.997
+# 2 HeadingDate          8816            0.950
+# 3 PlantHeight          9192            0.991
+
+## Fitted effects
+# trait       n_change_sign prop_change_sign
+# 1 GrainYield           4310            0.464
+# 2 HeadingDate          2091            0.225
+# 3 PlantHeight          3497            0.377
+
 ## Plot a histogram of the proportion of positive effects
 marker_effect_sign %>% 
   filter(effect_sign != -1) %>% 
   qplot(x = prop, data = ., geom = "density") + 
   facet_wrap(~trait, ncol = 2) +
   theme_bw()
+
 
 
 
@@ -248,80 +522,24 @@ gwas_mlmm_model_adj <- subset(gwas_mlmm_model, model == model_use) %>%
                        all_snp_r_squared = .$r_squared$fixed_r_squared["all_snps"]))) %>%
   unnest(mlmm_out)
 
-
-# Plot for all markers the relationship between linear and nonlinear stability
-g_linear_vs_nonlinear <- marker_mean_fw_trans %>% 
-  qplot(x = c, y = log_delta, data = .) + 
-  facet_wrap(~trait, ncol = 2, scales = "free_y") +
-  ylab("Non-Linear Stability") +
-  xlab("Linear Stability") +
-  theme_bw()
-
-ggsave(filename = "marker_linear_vs_nonlinear_stability.jpg", plot = g_linear_vs_nonlinear, 
-       height = 6, width = 5, dpi = 1000, path = fig_dir)
-
-# Plot for all markers the relationship between the slope and the intercept
-marker_mean_fw %>% 
-  distinct(trait, marker, a, c) %>%
-  qplot(x = a, y = c, data = .) +
-  facet_wrap(~trait, ncol = 2, scales = "free_x") +
-  theme_bw()
-
-## Correlate
-marker_mean_fw %>% 
-  distinct(trait, marker, a, c)  %>% 
-  group_by(trait) %>% 
-  summarize(cor = cor(a, c))
-
-
-
-## Assess what markers change sign across environments`
-marker_effect_sign <- marker_mean_fw %>% 
-  mutate(effect_sign = sign(effect)) %>% 
-  group_by(trait, marker, effect_sign) %>% 
-  summarize(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>%
-  ungroup() %>%
-  complete(trait, marker, effect_sign, fill = list(n = 0, prop = 0))
-
-## Proportion of markers that change sign
-marker_effect_sign %>% 
-  filter(effect_sign != -1) %>% 
-  group_by(trait) %>% 
-  summarize(n_change_sign = sum(prop != 1 & prop != 0), 
-            prop_change_sign = n_change_sign / n())
-
-## Plot a histogram of the proportion of positive effects
-marker_effect_sign %>% 
-  filter(effect_sign != -1) %>% 
-  qplot(x = prop, data = ., geom = "density") + 
-  facet_wrap(~trait, ncol = 2) +
-  theme_bw()
-
-marker_mean_fw_gwas_mlmm <- select(marker_mean_fw, trait, marker, environment, effect, h) %>%
-  left_join(select(gwas_mlmm_model_adj, trait, coef, marker = term), .)
-
-## Take the significant markers from GWAS and look at their effect reaction norms
-gwas_mlmm_model_adj <- subset(gwas_mlmm_model, model == model_use) %>%
-  mutate(mlmm_out = map(mlmm_out, "fit_out_reduced") %>% 
-           map(~mutate(subset(.$summary, term != "Q"), snp_r_squared = .$r_squared$snp_r_squared, 
-                       all_snp_r_squared = .$r_squared$fixed_r_squared["all_snps"]))) %>%
-  unnest(mlmm_out)
-
-marker_mean_fw_gwas_mlmm <- select(marker_mean_fw, trait, marker, environment, effect, h) %>%
+marker_mean_fw_gwas_mlmm <- select(marker_mean_fw, trait, marker, environment, effect, h, fitted_effects) %>%
   left_join(select(gwas_mlmm_model_adj, trait, coef, marker = term), .)
 
 
 # Plot the reaction norms
 g_marker_fw_gwas <- marker_mean_fw_gwas_mlmm %>% 
+  filter(coef == "b") %>% # Only plot linear stability
   ggplot(aes(x = h, y = effect, color = environment, group = 1)) + 
-  geom_point() + 
-  geom_smooth(method = "lm", se = FALSE) +
-  facet_wrap(~ trait + coef + marker, ncol = 3, scales = "free") +
-  theme_bw()
+  geom_point(size = 0.2) + 
+  geom_smooth(method = "lm", se = FALSE, lwd = 0.2) +
+  scale_color_discrete(guide = FALSE) + 
+  facet_wrap(~ trait + marker, nrow = 1, scales = "free_x") +
+  ylab("Marker effect") + 
+  xlab("Environmental mean") + 
+  theme_pnas()
 
 ggsave(filename = "marker_fw_gwas_rn.jpg", plot = g_marker_fw_gwas, path = fig_dir,
-       height = 10, width = 6, dpi = 1000)
+       height = 4, width = 17.7, units = "cm", dpi = 1000)
 
 
 # First group markers into those that are highly stable, highly sensitive, or neither using empirical thresholds
@@ -331,9 +549,6 @@ marker_mean_fw_tidy <- marker_mean_fw_trans %>%
   select(-delta) %>% 
   gather(coef, estimate, -trait:-pos)
   
-
-# What should be the cutoff level?
-alpha <- 0.05
 
 # For each trait, calculate empirical thresholds for significance
 marker_mean_fw_sig <- marker_mean_fw_tidy %>%
@@ -365,26 +580,50 @@ xtabs(~ trait + significance, marker_mean_fw_sig)
 
 
 ## Plot the stability estimates across the genome with the empirical threshold
-# Color theme
-colors <- c("black", umn_palette(n = 4)[-c(1:3)]) %>%
-  set_names(c("Stable", "Plastic"))
 
+## Pretty manhattan plots
+# Add the position of the preceding chromosome to the position of the next
+chrom_pos_cumsum <- snp_info %>% 
+  group_by(chrom) %>% 
+  summarize(chrom_pos = max(pos)) %>% 
+  mutate(max_pos = c(0, head(chrom_pos, -1)), 
+         next_chrom_start_pos = cumsum(max_pos),
+         new_chrom_end = chrom_pos + next_chrom_start_pos,
+         chrom_label_pos =( next_chrom_start_pos + new_chrom_end) / 2)
 
-g_mar_stab <- marker_mean_fw_sig %>%   
-  ggplot(aes(x = pos / 1000000, y = estimate, col = significance)) + 
-  geom_point() + 
-  geom_hline(aes(yintercept = lower_perc), lty = 2) +
-  geom_hline(aes(yintercept = upper_perc), lty = 2) +
-  scale_color_manual(values = colors, name = "Marker Type") +
-  ylab("Marker Effect Plasticity Estimate") +
+# Combine with traits to re-use
+chrom_pos_cumsum1 <- left_join(distinct(marker_mean_fw_sig, trait, chrom), chrom_pos_cumsum) %>%
+  filter(trait == "PlantHeight")
+
+snp_info_new_pos <- left_join(snp_info, select(chrom_pos_cumsum, -max_pos)) %>% 
+  mutate(new_pos = pos + next_chrom_start_pos)
+
+## Color scheme
+colors <- c(Stable = "black", Plastic = umn_palette(2)[3])
+
+g_mar_stab <- marker_mean_fw_sig %>% 
+  left_join(snp_info_new_pos) %>%
+  ggplot(aes(x = new_pos, y = estimate, color = significance)) + 
+  geom_point(size = 0.2) + 
+  geom_vline(data = chrom_pos_cumsum, aes(xintercept = new_chrom_end), lwd = 0.25, color = "grey75") +
+  # geom_text(data = chrom_pos_cumsum1, aes(x = chrom_label_pos, y = -2e-04, label = chrom), size = 2, vjust = 0.50, inherit.aes = FALSE) +
+  # geom_hline(aes(yintercept = lower_perc), lty = 2) +
+  # geom_hline(aes(yintercept = upper_perc), lty = 2) +
+  scale_color_manual(values = colors, name = "Marker Type", guide = FALSE) +
+  scale_x_continuous(expand = c(0.005, 0)) + 
+  ylab("Per-marker reaction norm slope") +
   xlab("Position (Mbp)") +
-  facet_grid(trait ~ chrom, scales = "free", space = "free_x", switch = "both",
+  facet_grid(trait ~ ., scales = "free", space = "free_x", switch = "both",
              labeller = labeller(chrom = function(x) str_c("Chr. ", x)))   +
-  theme_manhattan()
+  theme_pnas() +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+        legend.position = "bottom", legend.margin = margin(t = -5, unit = "pt"), legend.key.height = unit(0.75, "lines"),
+        axis.line.x = element_blank(), strip.placement = "outside", panel.spacing.y = unit(x = 0.5, units = "lines"))
+
 
 # Save
 ggsave(filename = "marker_stability_genome.jpg", plot = g_mar_stab, path = fig_dir,
-       height = 6.5, width = 9, dpi = 1000)
+       height = 6.5, width = 11.4, units = "cm", dpi = 1000)
 
 
 # ## Poster version
@@ -417,7 +656,7 @@ ggsave(filename = "marker_stability_genome.jpg", plot = g_mar_stab, path = fig_d
 
 
 ## Load the barley annotation
-ann_dir <- "C:/Users/Jeff/GoogleDrive/BarleyLab/Projects/Genomics/Annotation"
+ann_dir <- file.path(gdrive_dir, "/BarleyLab/Projects/Genomics/Annotation")
 load(file.path(ann_dir, "barley_genomic_ranges.RData"))
 
 
@@ -467,25 +706,40 @@ barley_genes_perchrom <- list(barley_seqlengths_split, barley_genes_split) %>%
       ungroup()
   })
   
+## Adjust chromosome positions and implement ad loess smooth
+barley_genes_perchrom1 <- barley_genes_perchrom %>% 
+  mutate(chrom = parse_number(seqnames),
+         pos = (start + end) / 2) %>% 
+  left_join(chrom_pos_cumsum) %>%
+  group_by(chrom) %>%
+  do({
+    new_pos <- .$pos + .$next_chrom_start_pos
+    smooth <- loess(formula = n_genes ~ pos, data = .)$fitted
+    mutate(., new_pos = new_pos, n_genes_smooth = smooth)
+  })
+
+
 ## Plot
-g_gene_dens <- barley_genes_perchrom %>% 
-  mutate(pos = (start + end) / 2,
-         chrom = parse_number(seqnames)) %>%
-  ggplot(aes(x = pos / 1e6, y = n_genes)) + 
-  geom_smooth(method = "loess", span = 0.25) + 
-  ylab("Number\nof Genes") +
-  xlab("Position (Mbp)") +
-  facet_grid(~ chrom, scales = "free_x", switch = "x", space = "free_x") +
-  theme_manhattan()
+g_gene_dens <- barley_genes_perchrom1 %>% 
+  mutate(new_pos = pos + next_chrom_start_pos) %>%
+  ggplot(aes(x = new_pos, y = n_genes_smooth, group = chrom)) + 
+  geom_line(lwd = 0.5, color = umn_palette(2)[4]) +
+  geom_vline(data = chrom_pos_cumsum, aes(xintercept = new_chrom_end), lwd = 0.25, color = "grey75") +
+  # geom_text(data = chrom_pos_cumsum1, aes(x = chrom_label_pos, y = 0, label = chrom), size = 2, vjust = 0.50, inherit.aes = FALSE) +
+  scale_x_continuous(expand = c(0.005, 0), breaks = chrom_pos_cumsum1$chrom_label_pos, labels = chrom_pos_cumsum1$chrom) + 
+  ylab("Number of\nGenes") +
+  # xlab("Position (Mbp)") +
+  theme_pnas() +
+  theme(axis.title.x = element_blank(), axis.ticks.x = element_blank(), axis.text.x = element_text())
 
 ## Combine the stability plot above with the gene density plot
 g_plast_gene_dens <- plot_grid(g_mar_stab + theme(axis.title.x = element_blank()), 
                                g_gene_dens, ncol = 1, 
-                               rel_heights = c(0.80, 0.20), align = "hv", axis = "lr")
+                               rel_heights = c(1, 0.25), align = "hv", axis = "lr")
 
 ## Save
 ggsave(filename = "marker_stability_and_genes.jpg", plot = g_plast_gene_dens, path = fig_dir,
-       height = 8, width = 10, dpi = 1000)
+       height = 8, width = 11.4, units = "cm", dpi = 1000)
 
 
 
@@ -590,9 +844,14 @@ marker_stability_snp_prop_test_toplot <- marker_stability_snp_prop_adj %>%
   distinct() %>% 
   mutate(significance = "Null") %>% 
   bind_rows(marker_stability_snp_prop_adj, .) %>% 
-  mutate(significance = parse_factor(significance, levels = c("Null", "Average", "Plastic", "Stable")),
-         p_value = round(p_value, 4),
-         p_adj = round(p_adj, 4))
+  mutate(significance = parse_factor(significance, levels = c("Null", "Stable", "Plastic")),
+         p_value = formatC(p_value, digits = 4, format = "f", drop0trailing = TRUE),
+         p_adj = formatC(p_adj, digits = 4, format = "f", drop0trailing = TRUE),
+         p_adj_ann = str_c("p = ", p_adj),
+         p_adj_ann = ifelse(str_detect(p_adj_ann, "NA"), "", p_adj_ann)) %>%
+  group_by(class) %>%
+  mutate(y_ann = max(prop)) %>%
+  ungroup()
 
 
 # Plot
@@ -602,21 +861,40 @@ g_snp_ann_prop <- marker_stability_snp_prop_test_toplot %>%
   geom_errorbar(aes(ymin = lower, ymax = upper), position = position_dodge(0.9), width = 0.5) + 
   # geom_text(aes(label = p_ann), position = position_dodge(0.9), hjust = -1, vjust = 0.5, angle = 90) +
   # geom_text(aes(label = p_adj), position = position_dodge(0.9), hjust = -1, vjust = 0.5, angle = 90) +
-  # geom_text(aes(label = snp_ann), position = position_dodge(0.9), vjust = -3, size = 2) +
-  scale_fill_manual(values = c("Null" = "grey75", colors), name = "Marker Type") + 
+  # geom_text(aes(y = y_ann, label = p_adj_ann), position = position_dodge(0.9), vjust = -3, size = 1.5) +
+  scale_fill_manual(values = c("Null" = "grey75", colors), guide = guide_legend(title = "Marker\nType", override.aes = list(size = 1))) + 
   ylab("Proportion of Markers") +
   xlab("Gene Annotation Class") +
-  labs(caption = "Proximal: within 10 kbp of a gene.
-       Error bars are 95% confidence interval from exact binomial test.") +
-  ylim(c(0, 0.80)) +
+  # labs(caption = "Proximal: within 10 kbp of a gene.
+  #      Error bars are 95% confidence interval from exact binomial test.") +
+  ylim(c(0, 1)) +
   # facet_grid(~ trait) + 
-  facet_wrap(~ trait, ncol = 2) +
-  theme_poster() +
-  theme(legend.position = c(0.75, 0.25),
-        title = element_text(size = 10))
+  facet_wrap(~ trait, ncol = 1) +
+  theme_pnas() +
+  theme(legend.position = c(0.75, 0.95), legend.direction = "horizontal", legend.key.size = unit(10, "pt"))
 
 ggsave(filename = "marker_stability_gene_annotation.jpg", plot = g_snp_ann_prop, 
-       height = 8, width = 8, path = fig_dir)
+       height = 13, width = 8.7, units = "cm", dpi = 1000, path = fig_dir)
+
+
+
+
+## What are the most common gene annotations for plastic markers? Stable? All markers?
+# First assign annotation terms
+snp_info_distance_to_gene_ann2 <- snp_info_distance_to_gene_ann1 %>%
+  left_join(., barley_grange_list$genes %>% as_data_frame() %>% select(gene_id, term)) %>%
+  filter(!is.na(term),
+         class == "Genic")
+  
+# Calculate the frequency of each annotation term 
+snp_info_distance_to_gene_ann2 %>% 
+  group_by(trait, significance, term) %>% 
+  summarize(n = n()) %>% 
+  mutate(prop = n / sum(n)) %>% 
+  top_n(5) %>% 
+  arrange(trait, desc(n))
+
+
 
 
 
@@ -633,7 +911,7 @@ ggsave(filename = "marker_stability_gene_annotation.jpg", plot = g_snp_ann_prop,
 
 # Extract the unique stability coefficients
 # Then add the breeding program information
-S2_MET_pheno_fw_uniq <- S2_MET_pheno_mean_fw %>%
+pheno_fw_uniq <- pheno_mean_fw %>%
   select(trait, line_name, g, b, delta) %>% 
   distinct() %>%
   left_join(., subset(entry_list, Class == "S2TP", c(Line, Program)), 
@@ -642,7 +920,7 @@ S2_MET_pheno_fw_uniq <- S2_MET_pheno_mean_fw %>%
 
 
 ## Log transform the non-linear stability estimates
-S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
+pheno_fw_uniq_trans <- pheno_fw_uniq %>%
   group_by(trait) %>% 
   mutate(log_delta = log(delta)) %>%
   # Tidy
@@ -657,83 +935,13 @@ S2_MET_pheno_fw_uniq_trans <- S2_MET_pheno_fw_uniq %>%
 ## Determine the proportion of variation in stability/mean that is accounted by
 ## all markers, then marker subsets
 
-# Create the K matrix across all SNPs
-K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
-
-# Estimate the proportion of variation due to all SNPs
-mean_fw_varcomp <- S2_MET_pheno_fw_uniq_trans %>% 
-  group_by(trait, coef) %>%
-  do({
-    # Extract data
-    df <- .
-    
-    # Copy the line_name column
-    df1 <- df %>% mutate(snp = line_name)
-    
-    # # Fit the model
-    # fit <- relmatLmer(value ~ (1|snp), df1, relmat = list(snp = K))
-    # 
-    # # Extract the proportion of variance attributed to snps and to residuals
-    # VarProp(fit) %>% 
-    #   select(-contains("var"))
-    
-    fit <- mixed.solve(y = df1$value, K = K)
-    data.frame(grp = c("snp", "Residual"), vcov = c(fit$Vu, fit$Ve)) %>% 
-      mutate(prop = vcov / sum(vcov))
-  })
-
-
-
-# Remove extra data
-mean_fw_varcomp1 <- mean_fw_varcomp %>%
-  filter(grp == "snp") %>%
-  select(trait, coef, prop) %>%
-  ungroup()
-
-# Plot
-g_allmarker_varcomp <- mean_fw_varcomp1 %>%
-  ggplot(aes(x = trait, y = prop, fill = coef)) + 
-  geom_col(position = "dodge") +
-  ylim(c(0,1)) + 
-  theme_bw()
-
-ggsave(filename = "allmarker_varcomp.jpg", plot = g_allmarker_varcomp, path = fig_dir,
-       height = 5, width = 5, dpi = 1000)
-
-
-# ## Bootstrap a confidence interval for this estimate
-# mean_fw_varcomp_boot <- S2_MET_pheno_fw_uniq_trans %>%
-#   group_by(trait, coef) %>%
-#   do(boot_out = {
-#     # Extract data
-#     df <- .
-# 
-#     # Copy the line_name column
-#     df_boots <- df %>%
-#       mutate(snp = line_name) %>%
-#       modelr::bootstrap(data = ., n = 100)
-# 
-#     # Bootstrap
-#     boots_out <- df_boots$strap %>%
-#       map(as.data.frame) %>%
-#       map(~mixed.solve(y = .$value, K = K[.$line_name, .$line_name]))  %>%
-#       map(~c(snp = .$Vu, res = .$Ve) / sum(.$Vu + .$Ve))
-# 
-#     # Extract the proportion of variance attributed to snps and to residuals
-#     boots_out %>%
-#       map(~VarProp(.) %>% select(-contains("var")))
-# 
-#   })
-    
-
-
 
 # Number of model fittings
 n_iter <- 100
 
 # Now for each trait, find the proportion of variation in the mean and stability
 # due to different marker groups
-mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
+mean_fw_martype_varcomp <- pheno_fw_uniq_trans %>%
   group_by(trait, coef) %>%
   do({
     
@@ -791,8 +999,59 @@ mean_fw_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
   })
 
 
+
+## Take random samples of all markers and run the same analysis
+mean_fw_random_varcomp <- pheno_fw_uniq_trans %>%
+  group_by(trait, coef) %>%
+  do({
+    
+    df <- .
+    
+    # What is the trait we are dealing with
+    tr <- unique(df$trait)
+    
+    # Extract the markers for the particular trait and separate by average/stable/plastic
+    marker_types <- marker_mean_fw_sig %>%
+      filter(trait == tr) %>% 
+      split(.$significance) %>% 
+      map("marker")
+    
+    # Sample size
+    sample_size <- length(marker_types$Plastic)
+    
+    # Create random samples of all markers
+    random_marker_samples <- rerun(.n = n_iter, sample(colnames(M), size = sample_size))
+    
+    ## Fit using rrBLUP
+    y <- df$value
+    Z_g <- model.matrix(~ -1 + line_name, df)
+    
+    # Iterate over the samples
+    var_comp_out <- random_marker_samples %>%
+      map(function(marker_sample) {
+        
+        # Create a relationship matrix
+        K_rand <- M[,marker_sample,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
+        
+        fit <- mixed.solve(y = y, Z = Z_g, K = K_rand)
+        
+        # Extract and compute variance components
+        data_frame(rand = fit$Vu, units = fit$Ve)
+        
+      })
+    
+    var_comp_out %>% 
+      list(., seq_along(.)) %>% 
+      pmap_df(~mutate(.x, iter = .y))
+    
+  })
+
+
+
+
+
 ## Character vector for replacing marker types
-mar_type_replace <- c("plas" = "Plastic", "stab" = "Stable")
+mar_type_replace <- c("plas" = "Plastic", "stab" = "Stable", rand = "Random")
 
 
 ## Summarize
@@ -804,271 +1063,80 @@ mean_fw_martype_varcomp_summ <- mean_fw_martype_varcomp %>%
   gather(marker_type, prop_var, stab, plas) %>%
   ungroup()
 
-## Plot
-g_mean_fw_varcomp <- mean_fw_martype_varcomp_summ %>% 
-  filter(marker_type %in% names(mar_type_replace)) %>%
-  mutate(marker_type = str_replace_all(marker_type, mar_type_replace)) %>%
-  ggplot(aes(x = coef, y = prop_var, fill = marker_type)) + 
-  geom_boxplot(position = "dodge") + 
-  facet_wrap(~ trait, ncol = 2) +
-  theme_bw() +
-  theme(legend.position = c(0.75, 0.25))
-
-ggsave(filename = "mean_fw_varcomp.jpg", plot = g_mean_fw_varcomp, path = fig_dir,
-       height = 5, width = 5, dpi = 1000)
-
-
-## Save
-save_file <- file.path(result_dir, "marker_stability_varcomp.RData")
-save("mean_fw_varcomp", "mean_fw_martype_varcomp", file = save_file)
-
-
-
-
-
-
-## What is the relationship between marker effects for stability and marker effects
-## for the mean? What about marker effect stability versus marker effects for the mean?
-gs_marker_effects <- S2_MET_pheno_mean_fw %>% 
-  distinct(trait, line_name, g, b) %>%
-  gather(term, value, g:b) %>% 
-  group_by(trait, term) %>% 
-  do(data.frame(marker = colnames(M), effect = mixed.solve(y = .$value, Z = M)$u)) %>%
-  spread(term, effect)
-
-# Add the marker stability
-gs_marker_effects1 <- gs_marker_effects %>% 
-  left_join(., distinct(marker_mean_fw, trait, marker, a, c) %>% rename(marker_c = c, marker_a = a))
-
-## Correlate - bootstrap for significance
-marker_boot_cor <- gs_marker_effects1 %>%
-  do(bootstrap(x = .$b, y = .$g, fun = "cor")) %>%
-  mutate(significant = !between(0, ci_lower, ci_upper),
-         cor_toprint = str_c("r = ", round(base, 3), ifelse(significant, "*", "")))
-
-
-
-# Interesting - the correlation is stronger for GY > PH > HD
-g_mean_stab_marker_eff <- gs_marker_effects1 %>%
-  ggplot(aes(x = g, y = b)) +
-  geom_point() +
-  geom_text(data = marker_boot_cor, aes(x = Inf, y = -Inf, label = cor_toprint), vjust = -1, hjust = 1.1) + 
-  facet_wrap(~trait, ncol = 2, scales = "free_x") + 
-  ylab("Stability Marker Effect") +
-  xlab("Genotype Mean Marker Effect") + 
-  theme_bw() + theme(panel.grid = element_blank())
-
-
-## Save
-save_file <- file.path(result_dir, "marker_stability_varcomp.RData")
-save("mean_fw_varcomp", "mean_fw_martype_varcomp", file = save_file)
-
-
-
-
-
-
-## What is the relationship between marker effects for stability and marker effects
-## for the mean? What about marker effect stability versus marker effects for the mean?
-gs_marker_effects <- S2_MET_pheno_mean_fw %>% 
-  distinct(trait, line_name, g, b) %>%
-  gather(term, value, g:b) %>% 
-  group_by(trait, term) %>% 
-  do(data.frame(marker = colnames(M), effect = mixed.solve(y = .$value, Z = M)$u)) %>%
-  spread(term, effect)
-
-# Add the marker stability
-gs_marker_effects1 <- gs_marker_effects %>% 
-  left_join(., distinct(marker_mean_fw, trait, marker, a, c) %>% rename(marker_c = c, marker_a = a))
-
-## Correlate - bootstrap for significance
-marker_boot_cor <- gs_marker_effects1 %>%
-  do(bootstrap(x = .$b, y = .$g, fun = "cor")) %>%
-  mutate(significant = !between(0, ci_lower, ci_upper),
-         cor_toprint = str_c("r = ", round(base, 3), ifelse(significant, "*", "")))
-
-
-
-# Interesting - the correlation is stronger for GY > PH > HD
-g_mean_stab_marker_eff <- gs_marker_effects1 %>%
-  ggplot(aes(x = g, y = b)) +
-  geom_point() +
-  geom_text(data = marker_boot_cor, aes(x = Inf, y = -Inf, label = cor_toprint), vjust = -1, hjust = 1.1) + 
-  facet_wrap(~trait, ncol = 2, scales = "free_x") + 
-  ylab("Stability Marker Effect") +
-  xlab("Genotype Mean Marker Effect") + 
-  theme_bw() + theme(panel.grid = element_blank())
-
-# Save
-ggsave(filename = "mean_stab_marker_eff.jpg", plot = g_mean_stab_marker_eff,
-       path = fig_dir, height = 6, width = 6, dpi = 1000)
-       
-
-## The correlation for the intercept of marker effects and marker effects for the mean
-## is quote high.
-## The correlation for the slope of marker effects and marker effects for the slope is
-## quite high.
-gs_marker_effects1 %>% 
-  summarize(cor_ga = cor(g, marker_a), cor_bc = cor(b, marker_c),
-            cor_gb = cor(g, b), cor_ac = cor(marker_a, marker_c))
-
-
-## If the markers with the lowest and highest effect on stability are the most relevant,
-## is the same true for the genotype mean?
-gs_marker_effect_outliers <- gs_marker_effects %>% 
-  mutate(g_upper = quantile(g, 1 - (alpha / 2)), g_lower = quantile(g, alpha / 2),
-         significance = ifelse(g >= g_upper | g <= g_lower, "outlier", "normal"))
-  
-
-
-# Number of model fittings
-n_iter <- 100
-
-# Now for each trait, find the proportion of variation in the mean and stability
-# due to different marker groups
-geno_mean_martype_varcomp <- S2_MET_pheno_fw_uniq_trans %>%
-  group_by(trait, coef) %>%
-  do({
-    
-    df <- .
-    
-    # What is the trait we are dealing with
-    tr <- unique(df$trait)
-    
-    # Extract the markers for the particular trait and separate by average/stable/plastic
-    marker_types <- gs_marker_effect_outliers %>%
-      filter(trait == tr) %>% 
-      split(.$significance) %>% 
-      map("marker")
-    
-    # Use the plastic markers to make relationship matrices
-    K_out <- marker_types$outlier %>% M[,.,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
-    
-    # Sample size
-    sample_size <- length(marker_types$outlier)
-    
-    # Create random samples of the average markers
-    normal_marker_samples <- rerun(.n = n_iter, sample(marker_types$normal, size = sample_size))
-    
-    ## Fit using sommer
-    y <- df$value
-    X <- model.matrix(~ 1, df)
-    Z_g <- model.matrix(~ -1 + line_name, df) %>%
-      `colnames<-`(., colnames(K_out))
-    
-    # Iterate over the samples
-    var_comp_out <- normal_marker_samples %>%
-      map(function(marker_sample) {
-        
-        # Create a relationship matrix
-        K_norm <- M[,marker_sample,drop = F] %>% A.mat(X = ., min.MAF = 0, max.missing = 1)
-        
-        # Create a Z list
-        Z <- list(
-          normal = list(Z = Z_g, K = K_norm),
-          outlier = list(Z = Z_g, K = K_out)
-        )
-        
-        fit <- sommer::mmer(Y = y, X = X, Z = Z, silent = TRUE)
-        
-        # Extract and compute variance components
-        fit$var.comp %>% 
-          map_df(~unname(.))
-        
-      })
-    
-    
-    # Add the iteration number and output a data.frame
-    var_comp_out %>% 
-      list(., seq_along(.)) %>% 
-      pmap_df(~mutate(.x, iter = .y))
-    
-  })
-
-
-## Summarize
-# Separate variance components for stable, plastic, and average markers
-geno_mean_martype_varcomp_summ <- geno_mean_martype_varcomp %>% 
-  mutate(total = normal + outlier + units) %>% 
-  mutate_at(vars(normal:units), funs(. / total)) %>%
+mean_fw_random_varcomp_summ <- mean_fw_random_varcomp %>%
+  mutate(total = rand  + units) %>% # Add stab + plas together
+  mutate_at(vars(rand:units), funs(. / total)) %>%
   select(-units, -total) %>% 
-  gather(marker_type, prop_var, normal, outlier) %>%
+  gather(marker_type, prop_var, rand) %>%
   ungroup()
 
+# Combine
+mean_fw_varcomp_summ <- bind_rows(mean_fw_martype_varcomp_summ, mean_fw_random_varcomp_summ)
+
+colors_use <- set_names(color[c(1,3)], mar_type_replace[1:2])
+
 ## Plot
-g_geno_mean_varcomp <- geno_mean_martype_varcomp_summ %>% 
-  ggplot(aes(x = coef, y = prop_var, fill = marker_type)) + 
+g_mean_fw_varcomp <- mean_fw_varcomp_summ %>% 
+  filter(marker_type %in% names(mar_type_replace)) %>%
+  filter(marker_type != "rand") %>% # Remove random
+  mutate(marker_type = str_replace_all(marker_type, mar_type_replace),
+         marker_type = factor(marker_type, levels = mar_type_replace),
+         coef = str_replace_all(coef, coef_replace)) %>%
+  ggplot(aes(x = coef, y = prop_var, color = marker_type)) + 
   geom_boxplot(position = "dodge") + 
-  facet_wrap(~trait, ncol = 2) +
-  theme_bw() +
-  theme(legend.position = c(0.75, 0.25))
+  scale_color_manual(values = colors_use, name = "Marker\nGroup") + 
+  facet_wrap(~ trait, ncol = 1, strip.position = "left") +
+  ylab("Proportion of variance") +
+  ylim(c(0, 0.75)) + 
+  theme_pnas() +
+  theme(legend.position = c(0.90, 0.90), strip.placement = "outside",
+        panel.spacing.y = unit(x = 1, units = "lines"), axis.title.x = element_blank())
 
-## plot - just the mean
-mean_fw_martype_varcomp_summ %>% 
-  filter(coef == "g") %>%
-  ggplot(aes(x = trait, y = prop_var, fill = marker_type)) + 
-  geom_boxplot(position = "dodge") + 
-  theme_bw()
-
-ggsave(filename = "geno_mean_varcomp.jpg", plot = g_geno_mean_varcomp, path = fig_dir,
-       height = 5, width = 5, dpi = 1000)
+ggsave(filename = "mean_fw_marker_varcomp.jpg", plot = g_mean_fw_varcomp, path = fig_dir,
+       height = 10, width = 8.7, units = "cm", dpi = 1000)
 
 
+## Save
+save_file <- file.path(result_dir, "marker_stability_varcomp.RData")
+save("mean_fw_varcomp", "mean_fw_martype_varcomp", file = save_file)
 
 
 
-
-##### Marker stability as effect estimates for phenotypic stability
-# Use the marker stability estimates as marker effects - predict phenotypic stability
-
+## Predict stability using only the reaction norms of the most plastic markers
 # Create matrices with these "effects"
-marker_stability_effect <- marker_mean_fw %>% 
-  distinct(trait, marker, b) %>% 
+marker_stability_effect_plastic <- marker_mean_fw %>% 
+  left_join(., marker_mean_fw_sig) %>%
+  distinct(trait, marker, c, significance) %>% 
+  filter(significance == "Plastic") %>%
+  select(-significance) %>%
   split(.$trait) %>% 
   map(~select(., -trait) %>% as.data.frame() %>% column_to_rownames("marker") %>% as.matrix())
 
 # Split the phenotypic stability estimates
-pheno_mean_fw_split <- S2_MET_pheno_mean_fw %>% 
+pheno_mean_fw_split <- pheno_mean_fw %>% 
   distinct(trait, line_name, b) %>% 
   split(.$trait)
 
 ## Predictions of stability
-marker_stability_pred_acc <- list(marker_stability_effect, pheno_mean_fw_split) %>%
-  pmap(~mutate(.y, marker_b_pred = (M %*% (.x)) + 1)) %>%
+marker_stability_pred_acc <- list(marker_stability_effect_plastic, pheno_mean_fw_split) %>%
+  pmap(~mutate(.y, marker_b_pred = (M[,row.names(.x)] %*% (.x)) + 1)) %>%
   bind_rows()
 
 # Accuracy
-marker_stability_pred_acc %>% 
+marker_stability_pred_corr <- marker_stability_pred_acc %>% 
   group_by(trait) %>% 
-  summarize(marker_b_pred_acc = cor(b, marker_b_pred))
-
-### Pretty high!
-
+  summarize(marker_b_pred_acc = cor(b, marker_b_pred)) %>%
+  mutate(annotation = str_c("r = ", round(marker_b_pred_acc, 3)))
 
 
-## Predictions of stability
-marker_stability_pred_acc <- list(marker_stability_effect, pheno_mean_fw_split) %>%
-  pmap(~mutate(.y, marker_b_pred = (M %*% (.x)) + 1)) %>%
-  bind_rows()
 
-# Accuracy
-marker_stability_pred_acc %>% 
-  group_by(trait) %>% 
-  summarize(marker_b_pred_acc = cor(b, marker_b_pred))
 
-### Pretty high!
 
-# Plot
-g_marker_stability_pred <- marker_stability_pred_acc %>% 
-  ggplot(aes(x = b, y = marker_b_pred)) +
-  geom_point() +
-  facet_wrap(~ trait, ncol = 2) + 
-  xlab("Linear Phenotypic Stability") +
-  ylab("Predicted Linear Stability Using Marker Stability") +
-  theme_bw()
 
-ggsave(filename = "marker_stability_pred.jpg", plot = g_marker_stability_pred, path = fig_dir,
-       height = 6, width = 8, dpi = 1000)
+
+
+
+
 
 
 # Calculate marker effects for estimates and stability and compare them to the
@@ -1117,39 +1185,6 @@ g_sme_vs_mes <- sme_vs_mes %>%
 
 ggsave(filename = "marker_effect_stability_linear_stability.jpg", plot = g_sme_vs_mes, path = fig_dir,
        height = 6, width = 8, dpi = 1000)
-
-
-
-### If marker effects stability acts additively on phenotypic stability, then
-### we could look at different chromosomes to construct more stable genotypes
-# Get the allele stability states for all genotypes
-marker_stability_states <- marker_stability_effect %>% 
-  map(~M * c(. - 1)) %>%
-  map(~as.data.frame(.) %>% rownames_to_column("line_name") %>% gather(marker, effect_state, -line_name)) %>%
-  list(., names(.)) %>%
-  pmap_df(~mutate(.x, trait = .y))
-
-# Combine with marker metadata
-marker_stability_states1 <- marker_stability_states %>% 
-  left_join(., snp_info) %>%
-  as_data_frame()
-
-# For each line, sum the effects of each chromosome
-marker_stability_states_sum <- marker_stability_states1 %>%
-  group_by(trait, line_name, chrom) %>% 
-  summarize(chrom_sum = sum(effect_state))
-
-marker_stability_states_sum %>%
-  filter(trait == trait[1]) %>%
-  # Sort on line breeding program
-  left_join(., select(entry_list, line_name = Line, program = Program)) %>%
-  ggplot(aes(x = line_name, y = chrom, fill = chrom_sum)) +
-  geom_tile() +
-  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
-  facet_grid(~ program, scales = "free_x", space = "free_x") +
-  theme_bw() +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(),
-        panel.spacing.x = unit(0, "lines"))
 
 
 

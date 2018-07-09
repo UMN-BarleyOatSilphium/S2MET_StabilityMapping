@@ -455,9 +455,6 @@ qtl_meta_use_hd <- qtl_meta_use1 %>%
   mutate(gene_start = position, gene_end = position) %>%
   select(chrom, gene_start, gene_end, gene_id = marker)
 
-# Data.frame for Vrn1
-vrn1_data <- data.frame(chrom = 5, gene_start = 599135017, gene_end = 599147377, gene_id = "Vrn-H1")
-
 
 
 # First plot the results for mean per se

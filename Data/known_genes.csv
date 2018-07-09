@@ -1,0 +1,8 @@
+trait,gene,chrom,start,end,reference,note
+HeadingDate,Vrn-H1,5,599135017,599147377,_VonZitzewitz2005,
+HeadingDate,Ppd-H2,1,514098940,514100404,_Cuesta-Marcos2010,
+HeadingDate,eps7S,7,53441694,53441694,Laurie1995,marker11_21491
+HeadingDate,Vrn-H3,7,39678799,39681702,Yan2006,
+HeadingDate,denso,3,631827160,631827160,Laurie1995,
+HeadingDate,eps4L,4,595772167,595772167,Laurie1995,marker11_20197
+PlantHeight,denso,3,631827160,631827160,Laurie1995,

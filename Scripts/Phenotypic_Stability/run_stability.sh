@@ -1,7 +1,7 @@
 #!/bin/bash
 
-#PBS -l walltime=24:00:00,mem=24gb,nodes=1:ppn=16
-#PBS -N stability_genomic_prediction
+#PBS -l walltime=12:00:00,mem=24gb,nodes=1:ppn=16
+#PBS -N stability_genetic_correlation_permutation
 #PBS -M neyha001@umn.edu
 #PBS -m abe
 #PBS -r n
@@ -17,5 +17,8 @@ module load R/3.2.0_intel_mkl
 # Marker effect by environment computation
 # Rscript S2MET_marker_stability_computation.R
 
-# Stability prediction
-Rscript stability_prediction.R
+# # Stability prediction
+# Rscript stability_prediction.R
+
+# Stability genetic correlation
+Rscript stability_analysis_permutation.R
