@@ -65,7 +65,19 @@ S2_MET_BLUEs_tp %>%
 # 2 HeadingDate    33
 # 3 PlantHeight    35
 
+
+
+## TP and VP environments
+S2_MET_BLUEs_tpvp %>%
+  filter(line_name %in% vp) %>%
+  group_by(trait) %>%
+  summarize(n_env = n_distinct(environment))
+
+
+
 ## Interpretation: of the possible line x environment combinations in which at least one line was observed, the above is the proportion of the lines that were observed.
+
+
 
 
 ## Map of locations
@@ -114,10 +126,10 @@ usa_county <- usa_county %>%
 north_america <- bind_rows(usa_state, usa_county, canada)
 
 # Map
-(g_map <- ggplot(data = north_america, aes(x = long, y = lat, group = group)) +
+g_map <- ggplot(data = north_america, aes(x = long, y = lat, group = group)) +
   geom_polygon(fill = "white") +
-  geom_polygon(data = canada, fill = NA, color = "grey50", lwd = 0.1) + # Add canada
-  geom_polygon(data = usa_state, aes(x = long, y = lat, group = group), fill = NA, color = "grey50", lwd = 0.1) +
+  geom_polygon(data = canada, fill = NA, color = "grey50", lwd = 0.2) + # Add canada
+  geom_polygon(data = usa_state, aes(x = long, y = lat, group = group), fill = NA, color = "grey50", lwd = 0.2) +
   geom_point(data = trial_info_toplot, aes(x = longitude, y = latitude, group = location, color = location), size = 0.5) +
   geom_text_repel(data = trial_info_toplot, aes(x = longitude, y = latitude, label = environment), inherit.aes = FALSE, direction = "y", 
                   hjust = 1.2, vjust = 1, segment.size = 0.1, size = 1, box.padding = 0.02) + 
@@ -129,13 +141,63 @@ north_america <- bind_rows(usa_state, usa_county, canada)
   theme(panel.background = element_blank(),
         panel.grid = element_blank(),
         panel.border = element_blank(),
-        axis.line = element_blank(),
-        axis.title = element_blank()))
+        axis.line = element_blank())
 
 
 # Save the figure
 ggsave(filename = "trial_location_map.jpg", plot = g_map, path = fig_dir,
        width = 8.7, height = 5, units = "cm", dpi = 1000)
+
+
+
+
+
+## Make an additional map of the locations in which the TP and VP were evaluated
+# First create a df to plot
+trial_info_toplot <- S2_MET_BLUEs_tpvp %>% 
+  filter(line_name %in% vp) %>% 
+  distinct(environment) %>% 
+  left_join(trial_info) %>% 
+  distinct(environment, location, latitude, longitude)
+
+## Order environments on latitude
+# Sort on latitute
+loc_order <- trial_info_toplot %>% 
+  distinct(location, latitude) %>%
+  arrange(latitude, location) %>%
+  # distinct(environment, longitude) %>% 
+  # arrange(longitude, environment) %>% 
+  pull(location)
+
+# Create a gradient of colors
+f_colors <- colorRampPalette(colors = umn_palette(2)[3:5])
+colors_use <- set_names(f_colors(length(loc_order)), loc_order)
+
+
+
+# Map
+g_map_vp <- ggplot(data = north_america, aes(x = long, y = lat, group = group)) +
+  geom_polygon(fill = "white") +
+  geom_polygon(data = canada, fill = NA, color = "grey50", lwd = 0.2) + # Add canada
+  geom_polygon(data = usa_state, aes(x = long, y = lat, group = group), fill = NA, color = "grey50", lwd = 0.2) +
+  geom_point(data = trial_info_toplot, aes(x = longitude, y = latitude, group = location, color = location), size = 0.5) +
+  geom_text_repel(data = trial_info_toplot, aes(x = longitude, y = latitude, label = environment), inherit.aes = FALSE, direction = "y", 
+                  hjust = 1.2, vjust = 1, segment.size = 0.1, size = 1, box.padding = 0.02) + 
+  coord_fixed(ratio = 1.5, xlim = c(-125, -60), ylim = c(35, 50)) +
+  scale_color_manual(guide = FALSE, values = colors_use) + 
+  xlab("Longitude") +
+  ylab("Latitude") + 
+  theme_pnas() + 
+  theme(panel.background = element_blank(),
+        panel.grid = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_blank())
+
+# Save the figure
+ggsave(filename = "trial_location_vp_map.jpg", plot = g_map_vp, path = fig_dir,
+       width = 8.7, height = 5, units = "cm", dpi = 1000)
+
+
 
 
 
@@ -196,10 +258,14 @@ ggsave(filename = "met_trait_dist.jpg", plot = g_met_dist, path = fig_dir,
 
 
 ## Combine with the map
-g_map_and_dist <- plot_grid(g_map, g_met_dist, ncol = 1, labels = c("A", "B"), rel_heights = c(0.5, 1))
+g_map_and_dist <- plot_grid(
+  g_map + theme(axis.ticks = element_blank(), axis.title = element_blank(), axis.text = element_blank()),
+  g_met_dist, 
+  ncol = 1, labels = c("A", "B"), rel_heights = c(0.5, 1), label_size = 10)
+
 # Save it
-ggsave(filename = "map_and_trait_dist.jpg", plot = g_map_and_dist, path = fig_dir, 
-       width = 8.7, height = 15, units = "cm", dpi = 1000)
+ggsave(filename = "met_trait_dist_and_map.jpg", plot = g_map_and_dist, path = fig_dir, 
+       width = 8.7, height = 12, units = "cm", dpi = 1000)
 
 
 

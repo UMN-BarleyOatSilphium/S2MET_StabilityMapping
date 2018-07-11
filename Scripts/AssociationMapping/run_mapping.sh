@@ -7,7 +7,7 @@
 #PBS -r n
 
 # Change the working directory
-cd /panfs/roc/groups/6/smithkp/neyha001/QTLMapping/S2MET_Mapping/Scripts/GWAS
+cd /panfs/roc/groups/6/smithkp/neyha001/QTLMapping/S2MET_Mapping/Scripts/AssociationMapping
 
 #module load R/3.4.0
 module load R/3.2.0_intel_mkl

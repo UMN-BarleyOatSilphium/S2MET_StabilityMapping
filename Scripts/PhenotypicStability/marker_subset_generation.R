@@ -14,8 +14,6 @@ source(file.path(repo_dir, "source.R"))
 
 # Load the stability results
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
-# Load the marker effect by environment results
-load(file.path(result_dir, "marker_by_env_effects.RData"))
 # Load the marker reaction norm results
 load(file.path(result_dir, "marker_mean_fw_results.RData"))
 

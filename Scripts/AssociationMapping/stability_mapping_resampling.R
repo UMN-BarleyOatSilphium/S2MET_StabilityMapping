@@ -57,7 +57,7 @@ K_chr <- snps_by_chrom %>%
 
 ## Use the FW resampling data to determine the robustness of the mapping results
 # Tidy up for splitting by cores
-resample_phenos_use <- pheno_sample_mean_fw %>%
+resample_phenos_use <- pheno_samples_fw %>%
   # Convert delta to log_delta
   mutate(log_delta = log(delta)) %>% 
   # Tidy
@@ -98,8 +98,10 @@ resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, function(core_df
     # Filter and adjust pvalues
     gwas_sig_scores <- gwas_out_tidy %>%
       filter(pvalue < 1) %>% # Remove the p == 1 (missing)
+      group_by(coef) %>%
       mutate(padj = p.adjust(pvalue, method = "BH")) %>%
-      filter(padj <= alpha)
+      filter(padj <= alpha) %>%
+      ungroup()
     
     # Return a list
     results_out[[i]] <- list(gwas_sig = gwas_sig_scores, n_NA = group_by(gwas_out_tidy, coef) %>% 
@@ -116,7 +118,72 @@ resample_gwas_sig_out <- mclapply(X = resample_phenos_use_list, function(core_df
 
 
 
+
+
+## Now use the TP+VP estimates of stability
+resample_phenos_use <- pheno_samples_fw_tpvp %>%
+  # Convert delta to log_delta
+  mutate(log_delta = log(delta)) %>% 
+  # Tidy
+  select(-delta) %>% 
+  group_by(trait, p, iter) %>% 
+  nest()
+
+# Assign cores
+resample_phenos_use_list <- resample_phenos_use %>%
+  assign_cores(n_core = n_core) %>%
+  split(.$core)
+
+
+
+
+## Parallelize the association mapping runs using the resampling
+resample_gwas_sig_out_tpvp <- mclapply(X = resample_phenos_use_list, function(core_df) {
+  
+  # Output list
+  results_out <- vector("list", nrow(core_df))
+  
+  # Iterate over rows
+  for (i in seq(nrow(core_df))) {
+    
+    pheno <- as.data.frame(core_df$data[[i]])
+    
+    # Run the GWAS - "QG" model
+    gwas_out <- geno_use %>% 
+      split(.$chrom) %>%
+      list(., K_chr) %>%
+      pmap_df(~GWAS(pheno = pheno, geno = .x, K = .y, n.PC = 1, plot = FALSE))
+    
+    # Grab the scores, adjust the pvalues, then filter for those <= alpha
+    gwas_out_tidy <- gwas_out %>% 
+      gather(coef, neg_log_p, b, log_delta) %>% 
+      mutate(pvalue = 10^-neg_log_p)
+    
+    # Filter and adjust pvalues
+    gwas_sig_scores <- gwas_out_tidy %>%
+      filter(pvalue < 1) %>% # Remove the p == 1 (missing)
+      group_by(coef) %>%
+      mutate(padj = p.adjust(pvalue, method = "BH")) %>%
+      filter(padj <= alpha) %>%
+      ungroup()
+    
+    # Return a list
+    results_out[[i]] <- list(gwas_sig = gwas_sig_scores, n_NA = group_by(gwas_out_tidy, coef) %>% 
+                               summarize(n_NA = sum(pvalue == 1)))
+    
+  }
+  
+  # Add the results to the core_df and return
+  core_df %>% 
+    mutate(results = results_out) %>%
+    select(-data, -core)
+  
+}, mc.cores = n_core)
+
+
+
+
 # Save the results
 save_file <- file.path(result_dir, str_c("pheno_fw_gwas_resample_results.RData"))
-save("resample_gwas_sig_out", file = save_file)
+save("resample_gwas_sig_out", "resample_gwas_sig_out_tpvp", file = save_file)
 

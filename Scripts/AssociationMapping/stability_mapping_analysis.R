@@ -109,7 +109,7 @@ colors_use <- set_names(umn_palette(2)[3:7], unique(df_combined$Program))
 ## Plot
 g_pop_str <- df_combined %>% 
   ggplot(aes(x = xvalue, y = yvalue, col = Program)) + 
-  geom_point(size = 1) + 
+  geom_point(size = 0.5) + 
   facet_grid(y1 ~ x1, switch = "both") +
   scale_color_manual(name = "Breeding\nProgram", values = colors_use) +
   theme_pnas() +
@@ -118,7 +118,7 @@ g_pop_str <- df_combined %>%
 
 # Save this
 ggsave(filename = "population_structure.jpg", plot = g_pop_str, path = fig_dir,
-       width = 3.5, height = 3.5, dpi = 1000)
+       width = 8.7, height = 8, units = "cm", dpi = 1000)
 
 
 
@@ -128,6 +128,10 @@ ggsave(filename = "population_structure.jpg", plot = g_pop_str, path = fig_dir,
 
 # Load the genotype means and FW regression results
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
+
+pheno_mean_fw <- pheno_mean_fw_tpvp %>%
+  filter(line_name %in% tp)
+
 
 # Transform the delta statistic to log-delta
 pheno_mean_fw_trans <- pheno_mean_fw %>% 
@@ -153,6 +157,18 @@ trait_pop_str_corr <- trait_pop_str %>%
   mutate(significant = !between(0, ci_lower, ci_upper),
          sig_ann = ifelse(significant, "*", ""),
          annotation = str_c("r = ", formatC(base, digits = 3, format = "f"), sig_ann))
+
+## Parametric correlation test
+trait_pop_str_corr_param <- trait_pop_str %>% 
+  group_by(trait, PC, measure) %>% 
+  do(test = cor.test(x = .$value, y = .$eigenvalue)) %>%
+  ungroup() %>%
+  mutate(base = map_dbl(test, "estimate"),
+         pvalue = map_dbl(test, "p.value"),
+         significant = pvalue <= alpha,
+         sig_ann = ifelse(significant, "*", ""),
+         annotation = str_c("r = ", formatC(base, digits = 3, format = "f"), sig_ann))
+
 
 trait_pop_str_annotation <- trait_pop_str_corr %>%
   ungroup() %>%
@@ -213,6 +229,7 @@ g_PC1_v_traits <- trait_pop_str1 %>%
   geom_point(size = 0.2) + 
   geom_text(data = subset(trait_pop_str_annotation, PC == "PC1"), aes(x = Inf, y = Inf, label = annotation), 
             inherit.aes = FALSE, hjust = 1, vjust = 1.5, size = 2) + 
+  geom_smooth(method = "lm", se = FALSE, color = "black", lwd = 0.2) +
   scale_color_manual(values = colors_use, name = "Breeding\nProgram") +
   facet_wrap(trait ~ measure, scales = "free") +
   xlab("PC1") +
@@ -245,55 +262,22 @@ ggsave(filename = "population_structure_and_traits.jpg", plot = g_pop_str_fig, p
 ## Load the results of the genomewide scan
 load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 
-## 
+# Use the results from the TP+VP analysis
+gwas_pheno_mean_fw_tidy_adj <- gwas_pheno_mean_fw_tpvp_tidy_adj
+gwas_mlmm_final <- gwas_mlmm_final_tpvp
+
+
+## Select the desired model
 gwas_pheno_mean_fw_adj <- subset(gwas_pheno_mean_fw_tidy_adj, model == model_use)
-gwas_mlmm_model_adj <- subset(gwas_mlmm_model, model == model_use) %>%
-  mutate(mlmm_out = map(mlmm_out, "fit_out_reduced") %>% 
-           map(~mutate(subset(.$summary, term != "Q"), snp_r_squared = .$r_squared$snp_r_squared, 
-                       all_snp_r_squared = .$r_squared$fixed_r_squared["all_snps"]))) %>%
-  unnest(mlmm_out) %>%
+
+gwas_mlmm_model_adj <- subset(gwas_mlmm_final, model == model_use) %>%
   left_join(., select(snp_info, marker:pos), c("term" = "marker")) %>%
-  select(trait:model, marker = term, chrom:pos, beta:all_snp_r_squared)
-
-
-## Plot the results of the multi-locus mixed model
-
-# Find the trait-markers that are not in the 'gwas_mlmm_Gmodel' df
-gwas_pheno_mean_fw_adj_nonsig <- gwas_pheno_mean_fw_adj %>% 
-  select(marker, trait, coef) %>% 
-  setdiff(., select(ungroup(gwas_mlmm_model_adj), marker, trait, coef)) %>%
-  left_join(., gwas_pheno_mean_fw_adj) %>%
-  mutate(neg_log_q = 0)
-
-# Calculate the neg-log q values for the 'gwas_mlmm_Gmodel' df
-gwas_mlmm_model_adj1 <- gwas_mlmm_model_adj %>% 
-  select(trait:pos, pvalue = pvalue, qvalue) %>%
-  mutate(neg_log_q = -log10(qvalue))
-
-# Combine with the significant markers
-gwas_pheno_mean_fw_adj_mlmm <- bind_rows(gwas_pheno_mean_fw_adj_nonsig, gwas_mlmm_model_adj1) %>%
-  mutate(color = if_else(chrom %in% seq(1, 7, 2), "B", "G"),
-         plot_coef = str_replace_all(coef, coef_replace))
-
-
-
+  select(trait:model, marker = term, chrom:pos, beta, pvalue, qvalue, snp_r_squared = r_squared,
+          all_snp_r_squared = all_snps)
+  
 
 
 #### Summary of significant associations
-
-## What are the numbers of significant marker-trait assocations for each trait and type?
-gwas_sig_snp_summ <- gwas_pheno_mean_fw_adj %>% 
-  group_by(trait, coef, chrom) %>% 
-  summarize(GWAS_sig_SNP = sum(qvalue <= alpha))
-
-mlmm_sig_snp_summ <- gwas_mlmm_model_adj %>% 
-  select(trait:pos, qvalue) %>%
-  group_by(trait, coef, chrom) %>% 
-  summarize(MLMM_sig_SNP = sum(qvalue <= alpha, na.rm = T))
-
-# Combine with the multi-locus mixed model results
-gwas_pheno_mean_fw_sig <- full_join(gwas_sig_snp_summ, mlmm_sig_snp_summ) %>% 
-  mutate(MLMM_sig_SNP = ifelse(is.na(MLMM_sig_SNP), 0, MLMM_sig_SNP))
 
 # Sumarize
 gwas_pheno_mean_fw_sig %>% 
@@ -304,14 +288,15 @@ gwas_pheno_mean_fw_sig %>%
 # 1 GrainYield  b                    0            0
 # 2 GrainYield  g                    0            0
 # 3 GrainYield  log_delta            0            0
-# 4 HeadingDate b                   16            4
+# 4 HeadingDate b                   20            4
 # 5 HeadingDate g                   10            2
-# 6 HeadingDate log_delta            2            2
-# 7 PlantHeight b                   47            2
-# 8 PlantHeight g                    9            5
+# 6 HeadingDate log_delta            3            3
+# 7 PlantHeight b                   49            2
+# 8 PlantHeight g                    3            2
 # 9 PlantHeight log_delta            0            0
 
-
+## GWAS: 85
+## MLMM: 13
 
 # Look at the significant markers and assess the effect size, minor allele frequency, etc.
 
@@ -412,30 +397,30 @@ ggsave(filename = "gwas_manhattan_all_trait_QG.jpg", plot = g_all_gwas, path = f
 
 ### LD Heatmap
 
-# For each significant region, look at a LD heatmap of surrounding markers
-gwas_mlmm_LD <- gwas_mlmm_marker_prop %>%
-  ungroup() %>%
-  mutate(ld_heatmap = vector("list", nrow(.)))
-
-for (i in seq(nrow(gwas_mlmm_LD))) {
-  
-  snp <- gwas_mlmm_LD[i,]
-  
-  # Subset these SNPs and calculate LD
-  surrounding_snps <- snp_info %>% 
-    filter(chrom %in% snp$chrom, between(pos, mean(snp$pos) - window, mean(snp$pos) + window))
-  surrounding_snp_LD <- LD(x = M[,surrounding_snps$marker, drop = FALSE], df = FALSE)
-  
-  # Get the qvalues for these SNPs
-  surrounding_snp_qvalue <- gwas_pheno_mean_fw_adj %>% 
-    filter(marker %in% surrounding_snps$marker, trait %in% snp$trait, coef %in% snp$coef)
-  
-  gwas_mlmm_LD$ld_heatmap[[i]] <- LDheatmap(surrounding_snp_LD, surrounding_snps$pos, flip = TRUE,
-                          SNP.name = snp$marker) %>%
-    LDheatmap.addScatterplot(LDheatmap = ., P = surrounding_snp_qvalue$neg_log_q)
-  
-  
-}
+# # For each significant region, look at a LD heatmap of surrounding markers
+# gwas_mlmm_LD <- gwas_mlmm_marker_prop %>%
+#   ungroup() %>%
+#   mutate(ld_heatmap = vector("list", nrow(.)))
+# 
+# for (i in seq(nrow(gwas_mlmm_LD))) {
+#   
+#   snp <- gwas_mlmm_LD[i,]
+#   
+#   # Subset these SNPs and calculate LD
+#   surrounding_snps <- snp_info %>% 
+#     filter(chrom %in% snp$chrom, between(pos, mean(snp$pos) - window, mean(snp$pos) + window))
+#   surrounding_snp_LD <- LD(x = M[,surrounding_snps$marker, drop = FALSE], df = FALSE)
+#   
+#   # Get the qvalues for these SNPs
+#   surrounding_snp_qvalue <- gwas_pheno_mean_fw_adj %>% 
+#     filter(marker %in% surrounding_snps$marker, trait %in% snp$trait, coef %in% snp$coef)
+#   
+#   gwas_mlmm_LD$ld_heatmap[[i]] <- LDheatmap(surrounding_snp_LD, surrounding_snps$pos, flip = TRUE,
+#                           SNP.name = snp$marker) %>%
+#     LDheatmap.addScatterplot(LDheatmap = ., P = surrounding_snp_qvalue$neg_log_q)
+#   
+#   
+# }
 
  
 
@@ -455,32 +440,35 @@ gwas_sig_mar_grange <- gwas_sig_marker_info %>%
 
 
 
-## Split the mlmm grange by trait and coefficient and find any markers that overlap
-## 
-# Split by coefficient and create a GRangesList
-gwas_mlmm_grange_split <- gwas_mlmm_grange %>% 
-  as.data.frame() %>%
-  split(.$trait) %>%
-  map(~split(., .$coef) %>% map(~makeGRangesFromDataFrame(df = ., keep.extra.columns = TRUE)) %>% 
-        GRangesList())
+# ## Split the mlmm grange by trait and coefficient and find any markers that overlap
+# ## 
+# # Split by coefficient and create a GRangesList
+# gwas_mlmm_grange_split <- gwas_mlmm_grange %>% 
+#   as.data.frame() %>%
+#   split(.$trait) %>%
+#   map(~split(., .$coef) %>% map(~makeGRangesFromDataFrame(df = ., keep.extra.columns = TRUE)) %>% 
+#         GRangesList())
+# 
+# ## Find overlaps, then remove the self overlaps
+# gwas_mlmm_overlaps_list <- gwas_mlmm_grange_split %>%
+#   map(~findOverlaps(query = ., subject = .)) %>%
+#   map(~subset(., queryHits != subjectHits)) %>%
+#   map(~as.data.frame(.))
+# 
+# ## Explore the overlaps
+# gwas_mlmm_overlaps <- list(gwas_mlmm_overlaps_list, as.list(gwas_mlmm_grange_split)) %>%
+#   pmap(~apply(X = .x, MARGIN = 1, FUN = function(overlap) {
+#     if (nrow(.x) == 0) {
+#       return(NA)
+#     } else {
+#       mergeByOverlaps(query = as.list(.y)[[overlap[1]]], subject = as.list(.y)[[overlap[2]]])
+#     }}) %>% as.list() %>% do.call("rbind", .)) %>% 
+#   do.call("rbind", .) %>%
+#   subset(., , c(2, 3, 5, 16, 18)) %>%
+#   as_data_frame()
 
-## Find overlaps, then remove the self overlaps
-gwas_mlmm_overlaps_list <- gwas_mlmm_grange_split %>%
-  map(~findOverlaps(query = ., subject = .)) %>%
-  map(~subset(., queryHits != subjectHits)) %>%
-  map(~as.data.frame(.))
 
-## Explore the overlaps
-gwas_mlmm_overlaps <- list(gwas_mlmm_overlaps_list, as.list(gwas_mlmm_grange_split)) %>%
-  pmap(~apply(X = .x, MARGIN = 1, FUN = function(overlap) {
-    if (nrow(.x) == 0) {
-      return(NA)
-    } else {
-      mergeByOverlaps(query = as.list(.y)[[overlap[1]]], subject = as.list(.y)[[overlap[2]]])
-    }}) %>% as.list() %>% do.call("rbind", .)) %>% 
-  do.call("rbind", .) %>%
-  subset(., , c(2, 3, 5, 16, 18)) %>%
-  as_data_frame()
+## There were no MLMM markers for the mean that overlapped with stability
 
 
 
@@ -587,10 +575,20 @@ gwas_mlmm_marker_info_ann <- gwas_mlmm_marker_info %>%
   mutate(qtl_hits = map_dbl(annotation, ~ifelse(is.null(.), 0, nrow(.))))
 
 ## Count the significant markers with overlaps
-gwas_mlmm_marker_info_ann1 <- gwas_mlmm_marker_info_ann %>% 
+(gwas_mlmm_marker_info_ann1 <- gwas_mlmm_marker_info_ann %>% 
   group_by(trait, coef) %>% 
   summarize(prop_qtl_hits = mean(!map_lgl(annotation, is.null)), 
-            sum_qtl_hits = sum(qtl_hits))
+            sum_qtl_hits = sum(qtl_hits)))
+
+## These are the number of MLMM markers with overlap to known genes or QTL
+
+
+# trait       coef      prop_qtl_hits sum_qtl_hits
+# 1 HeadingDate b                 0.5              2
+# 2 HeadingDate g                 1                3
+# 3 HeadingDate log_delta         0.333            1
+# 4 PlantHeight b                 1                5
+# 5 PlantHeight g                 0.5              1
 
 gwas_sig_marker_info_ann <- gwas_sig_marker_info %>%
   left_join(., group_by(gwas_mlmm_qtl_meta_overlap, trait, coef, marker) %>% 
@@ -598,10 +596,18 @@ gwas_sig_marker_info_ann <- gwas_sig_marker_info %>%
   mutate(qtl_hits = map_dbl(annotation, ~ifelse(is.null(.), 0, nrow(.))))
   
 ## Count the significant markers with overlaps
-gwas_sig_marker_info_ann1 <- gwas_sig_marker_info_ann %>% 
+(gwas_sig_marker_info_ann1 <- gwas_sig_marker_info_ann %>% 
   group_by(trait, coef) %>% 
   summarize(prop_qtl_hits = mean(!map_lgl(annotation, is.null)), 
-            sum_qtl_hits = sum(qtl_hits))
+            sum_qtl_hits = sum(qtl_hits)))
+
+# trait       coef      prop_qtl_hits sum_qtl_hits
+# 1 HeadingDate b                0.1               2
+# 2 HeadingDate g                0.2               3
+# 3 HeadingDate log_delta        0.333             1
+# 4 PlantHeight b                0.0408            5
+# 5 PlantHeight g                0.333             1
+
 
 
 ## Output a table
@@ -667,6 +673,17 @@ known_genes_newpos1 <- known_genes_newpos %>%
   # Remove eps7S
   filter(gene != "eps7S")
 
+
+## Reformat the MLMM results to highlight as large points in the manhattan plot
+gwas_mlmm_marker_info_ann_toplot <- gwas_mlmm_marker_info_ann %>% 
+  left_join(snp_info_new_pos) %>% 
+  mutate(coef = str_replace_all(coef, coef_replace),
+         neg_log_q = -log10(qvalue)) %>% 
+  select(trait:pos, new_pos, neg_log_q)
+  
+
+
+
 # New colors
 colors_use <- set_names(umn_palette(2)[3:5], coef_replace)
 
@@ -684,6 +701,7 @@ g_all_gwas_annotated <- gwas_pheno_mean_fw_adj %>%
   geom_segment(data = chrom_pos_cumsum, aes(x = new_chrom_end, xend = new_chrom_end, y = 0, yend = 7), lwd = 0.25, inherit.aes = FALSE, color = "grey75") +
   geom_segment(data = qtl_meta_use1_newpos, aes(x = new_qtl_pos - 1e6, xend = new_qtl_pos + 1e6, y = -0.5, yend = -0.5), lwd = 2, inherit.aes = FALSE) +
   geom_point(size = 0.1) +
+  geom_point(data = gwas_mlmm_marker_info_ann_toplot, size = 0.8) + 
   # Chromosomes
   geom_text(data = chrom_pos_cumsum, aes(x = chrom_label_pos, y = -1.5, label = chrom), size = 2, vjust = 0.70, inherit.aes = FALSE) +
   # Known genes
@@ -697,7 +715,7 @@ g_all_gwas_annotated <- gwas_pheno_mean_fw_adj %>%
   scale_x_continuous(expand = c(0.005, 0)) + 
   # ylab(expression(-log[10](italic(p)))) + 
   ylab(expression(-log[10](italic(q)))) + 
-  ylim(c(-1.5, 7)) +
+  ylim(c(-1.5, 8)) +
   # xlim(c(0, 5e9)) +
   facet_grid(trait ~ ., switch = "y", space = "free_x") + 
   theme_pnas() +
@@ -764,7 +782,9 @@ gwas_pleio_pheno_mean_fw_tidy_adj <- gwas_pleio_pheno_mean_fw_tidy %>%
 
 # Combine the minor allele frequency information
 gwas_sig_pleio_marker_info <- gwas_pleio_pheno_mean_fw_tidy_adj %>% 
-  filter(significant) %>%
+  group_by(trait, trait2) %>%
+  top_n(n = 25, wt = min_neg_log_p) %>%
+  ungroup() %>%
   left_join(., af1) %>%
   select(-af)
 
@@ -789,14 +809,14 @@ common_traits <- intersect(names(gwas_sig_pleio_grange_split), names(qtl_meta_gr
 gwas_sig_pleio_qtl_meta_overlap <- list(gwas_sig_pleio_grange_split[common_traits], qtl_meta_grange[common_traits]) %>%
   pmap(., ~lapply(as.list(.x), function(mar) mergeByOverlaps(query = mar, subject = .y))) %>%
   map(~do.call("rbind", .)) %>% do.call("rbind", .) %>%
-  subset(x = ., , c(trait, trait2, marker, marker.1, gene, reference)) %>%
+  subset(x = ., , c(trait, trait2, marker, gene, reference)) %>%
   as_data_frame()
 
 
 ## Nest the marker overlaps and combine with the original data.frame for printing
 gwas_sig_pleio_marker_info_ann <- gwas_sig_pleio_marker_info %>%
   left_join(., group_by(gwas_sig_pleio_qtl_meta_overlap, trait, trait2, marker) %>% 
-              nest(marker.1:reference, .key = "annotation")) %>%
+              nest(marker:reference, .key = "annotation")) %>%
   mutate(qtl_hits = map_dbl(annotation, ~ifelse(is.null(.), 0, nrow(.))))
 
 ## Count the significant markers with overlaps

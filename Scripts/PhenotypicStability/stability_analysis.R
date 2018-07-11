@@ -152,8 +152,8 @@ ggsave(filename = "stability_estimate_distriubtions.jpg", plot = g_fw_dist, path
 
 
 # Plot the stability estimates as lines against g_i vs h_j
-colors_use <- set_names(umn_palette(2)[3:7], unique(pheno_fw_use$program))
-
+# colors_use <- set_names(umn_palette(2)[3:7], unique(pheno_fw_use$program))
+color_use <- umn_palette(2)[3]
 
 # Add the program information to the results
 pheno_fw_use_toplot <- pheno_fw_use %>% 
@@ -164,12 +164,12 @@ pheno_fw_use_toplot <- pheno_fw_use %>%
 
 # Plot the normal FW analysis plot (genotype mean against environmental effects)
 g_pheno_fw_b <- pheno_fw_use_toplot %>%
-  ggplot(aes(x = h, y = value, col = program, group = line_name)) + 
-  geom_point(size = 0.1) + 
-  geom_abline(aes(slope = b, intercept = g, col = program), alpha = 0.15) +
+  ggplot(aes(x = h, y = value, group = line_name)) + 
+  geom_point(size = 0.1, color = "black") + 
+  geom_abline(aes(slope = b, intercept = g), color = color_use, alpha = 0.15) +
   facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left") +
-  scale_color_manual(drop = FALSE, name = "Origin\nBreeding\nProgram", values = colors_use,
-                     guide = guide_legend(override.aes = list(size = 1), nrow = 1)) +
+  # scale_color_manual(drop = FALSE, name = "Origin\nBreeding\nProgram", values = colors_use,
+  #                    guide = guide_legend(override.aes = list(size = 1), nrow = 1)) +
   ylab("Phenotypic value") +
   xlab("Environmental mean") +
   # labs(title = "Linear Phenotypic Stability") +
@@ -223,10 +223,24 @@ stability_mean_corr <- pheno_fw_use %>%
          sig_ann = ifelse(significant, "*", ""),
          annotation = str_c("r = ", round(base, 3), sig_ann))
 
+
+# Use a parametric test
+stability_mean_corr_param <- pheno_fw_use %>%
+  distinct(trait, line_name, g, term, estimate) %>%
+  group_by(trait, term) %>% do(test = cor.test(.$g, .$estimate)) %>% 
+  ungroup() %>% 
+  mutate(base = map_dbl(test, "estimate"), 
+         pvalue = map_dbl(test, "p.value")) %>% 
+  select(-test) %>%
+  mutate(significant = pvalue <= alpha,
+         sig_ann = ifelse(significant, "*", ""),
+         annotation = str_c("r = ", round(base, 3), sig_ann))
+
+
 # Create a list of plot additions
-g_add <- list(geom_point(size = 0.1),
-              geom_smooth(method = "lm", se = FALSE, col = "black", lwd = 0.5),
-              scale_color_manual(name = "Program", values = colors_use, guide = FALSE),
+g_add <- list(geom_point(size = 0.1, color = "black"),
+              geom_smooth(method = "lm", se = FALSE, col = color_use, lwd = 0.5),
+              # scale_color_manual(name = "Program", values = colors_use, guide = FALSE),
               xlab("Genotype mean"),
               theme_pnas(),
               theme(strip.placement = "inside"))
@@ -234,8 +248,9 @@ g_add <- list(geom_point(size = 0.1),
 # Plot just the linear stability
 g_linear_stability_and_mean <- pheno_fw_use %>%
   filter(term == "b") %>%
-  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
-  geom_text(data = subset(stability_mean_corr, term == "b"), aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 2) +
+  ggplot(aes(x = g, y = estimate, group = FALSE)) +
+  geom_text(data = subset(stability_mean_corr_param, term == "b"), 
+            aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 1.5) +
   facet_wrap(~ trait, scales = "free_x", ncol = 1, strip.position = "left") +
   ylab("Linear stability estimate") +
   theme(legend.position = "right") +
@@ -244,41 +259,41 @@ g_linear_stability_and_mean <- pheno_fw_use %>%
 # Plot just the non-linear stability
 g_nonlinear_stability_and_mean <- pheno_fw_use %>%
   filter(term == "log_delta") %>%
-  ggplot(aes(x = g, y = estimate, col = program, group = FALSE)) +
-  geom_text(data = subset(stability_mean_corr, term == "log_delta"), aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 2) +
+  ggplot(aes(x = g, y = estimate, group = FALSE)) +
+  geom_text(data = subset(stability_mean_corr_param, term == "log_delta"),
+            aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 1.5) +
   facet_wrap(~ trait, scales = "free", ncol = 1, strip.position = "left")+
   ylab("Non-linear stability estimate") +
   theme(legend.position = "right") +
   g_add
 
 
+# Create a plot of just the strip
+g_strips <- g_pheno_fw_b + theme(legend.position = "none", strip.placement = "outside", axis.title = element_blank(), 
+                                 axis.text = element_blank(), axis.ticks = element_blank(), axis.line = element_blank(), 
+                                 panel.ontop = T)
+
+
 ## Plot the reaction norms, then the correlations together
 g_plotgrid <- plot_grid(
-  g_pheno_fw_b + theme(legend.position = "none"),
+  g_strips,
+  g_pheno_fw_b + theme(legend.position = "none", strip.placement = "inside", strip.background = element_blank(), 
+                       strip.text = element_blank()),
   g_linear_stability_and_mean + theme(strip.background = element_blank(), strip.text = element_blank()),
   g_nonlinear_stability_and_mean + theme(strip.background = element_blank(), strip.text = element_blank()),
-  ncol = 3, align = "hv", labels = LETTERS[1:3], axis = "tblr", label_size = 8
+  nrow = 1, align = "hv", labels = c("", LETTERS[1:3]), axis = "tblr", label_size = 8, rel_widths = c(0.15, 1, 1, 1)
 )
 
+
+
 # Add the legend
-g_plotgrid1 <- plot_grid(g_plotgrid, get_legend(g_pheno_fw_b), ncol = 1, rel_heights = c(1, 0.1))
+# g_plotgrid1 <- plot_grid(g_plotgrid, get_legend(g_pheno_fw_b), ncol = 1, rel_heights = c(1, 0.1))
 
 
-ggsave(filename = "reaction_norms_and_correlations.jpg", plot = g_plotgrid1, path = fig_dir, 
+ggsave(filename = "reaction_norms_and_correlations.jpg", plot = g_plotgrid, path = fig_dir, 
        width = 11.4, height = 8, units = "cm", dpi = 1000)
 
 
-
-
-
-# Combine plots
-g_pheno_fw_figure <- plot_grid(g_pheno_fw_b + scale_color_manual(drop = FALSE, guide = FALSE, values = colors_use), 
-                               g_pheno_fw_b_example, labels = c("A", "B"), align = "hv", axis = "lr", ncol = 2, hjust = -0.1)
-# Add legend
-g_pheno_fw_figure1 <- plot_grid(g_pheno_fw_figure, get_legend(g_pheno_fw_b), rel_heights = c(1, 0.1), ncol = 1)
-
-ggsave(filename = "pheno_fw_linear_combined.jpg", plot = g_pheno_fw_figure1, path = fig_dir,
-       width = 8.7, height = 10,  units = "cm", dpi = 1000)
 
 
 
@@ -314,22 +329,93 @@ pheno_fw_gen_corr <- pheno_fw_use_tomodel %>%
     rhoG_hat <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
     
     # Return
-    data_frame(trait1 = "g", trait2 = unique(df$term), corG = rhoG_hat)
+    data_frame(trait1 = "g", trait2 = unique(df$term), corG = rhoG_hat, df = nrow(df) - 2)
   })
 
 
+## Use a t-distribution to compute a p-value
+pheno_fw_gen_corr_sig <- pheno_fw_gen_corr %>% 
+  ungroup() %>% 
+  mutate(stat = sqrt(df) * corG/sqrt(1 - corG^2), 
+         pvalue = 2 * pt(q = abs(stat), df = df, lower.tail = FALSE))
+
+# trait       term      trait1 trait2       corG    df    stat   pvalue
+# 1 GrainYield  b         g      b          0.646    181  11.4   5.13e-23
+# 2 GrainYield  log_delta g      log_delta  0.310    181   4.38  1.99e- 5
+# 3 HeadingDate b         g      b          0.0217   181   0.291 7.71e- 1
+# 4 HeadingDate log_delta g      log_delta -0.289    181  -4.07  7.10e- 5
+# 5 PlantHeight b         g      b          0.472    181   7.19  1.61e-11
+# 6 PlantHeight log_delta g      log_delta  0.566    181   9.23  7.30e-17
 
 
-# Add the original estimates and calculate a p value
-pheno_fw_gen_corr_perm_sig <- pheno_fw_gen_corr_perm1 %>% 
-  mutate(trait1 = "g") %>% 
-  rename(trait2 = term, corrG_NULL = corrG) %>%
-  left_join(., pheno_fw_gen_corr) %>% 
-  group_by(trait, trait1, trait2) %>% 
-  mutate(n_sig = corrG_NULL >= corG | corrG_NULL <= -corG) %>% 
-  summarize(pvalue = mean(n_sig))
+## Combine the phenotypic correlations and genetic correlations and output a table
+stability_mean_corr_toprint <- pheno_fw_gen_corr_sig %>% 
+  left_join(., stability_mean_corr_param, by = c("trait", "term")) %>% 
+  select(Trait = trait, Character1 = trait1, Character2 = trait2, corP = base, 
+         pvalue_P = pvalue.y, corG, pvalue_G = pvalue.x) %>%
+  mutate_at(vars(contains("Character")), funs(str_replace_all(., coef_replace))) %>%
+  mutate(PhenotypicCorrelation = str_c(round(corP, 3), " (p = ", formatC(pvalue_P, digits = 3, format = "e"), ")"),
+         GeneticCorrelation = str_c(round(corG, 3), " (p = ", formatC(pvalue_G, digits = 3, format = "e"), ")")) %>%
+  select(-contains("pvalue"), -contains("cor", ignore.case = FALSE))
+
+# Print
+write_csv(x = stability_mean_corr_toprint, path = file.path(fig_dir, "stability_mean_correlation.csv"))
 
 
+## Calculate the genetic correlation after correcting for significant GWAS markers
+# Load the GWAS results
+load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
+
+
+
+# Iterate over each trait and term
+pheno_fw_gen_corr_snp <- pheno_fw_use_tomodel %>%
+  group_by(trait, term) %>%
+  do({
+    df <- .
+    # Create a model.frame
+    mf <- model.frame(estimate ~ line_name, df)
+    
+    # Create model matrices
+    Z <- model.matrix(~ -1 + line_name, mf)
+    Xmu <- model.matrix(~ 1, mf)
+    
+    ## Get the significant SNPs for this trait/term combination
+    # snps <- subset(gwas_mlmm_final_tpvp, model == "QG" & trait == unique(df$trait) & coef == unique(df$term), term, drop = T)
+    snps <- subset(gwas_mlmm_final_tpvp, model == "QG" & trait == unique(df$trait) & coef %in% c("g", unique(df$term)), term, drop = T)
+    
+    X_snp <- M[,snps]
+    X <- cbind(Xmu, X_snp)
+    
+    # Create the response matrix
+    Y <- as.matrix(select(df, g, estimate))
+    
+    # Fit the model
+    fit <- emmremlMultivariate(Y = t(Y), X = t(X), Z = t(Z), K = K)
+    vcovG <- fit$Vg
+    
+    # Estimate the correlation using the formula for correlation
+    # covariance / (sd1 * sd2)
+    rhoG_hat <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
+    
+    # Return
+    data_frame(trait1 = "g", trait2 = unique(df$term), corG = rhoG_hat, df = nrow(df) - 2)
+  })
+
+
+## Use a t-distribution to compute a p-value
+pheno_fw_gen_corr_snp_sig <- pheno_fw_gen_corr_snp %>% 
+  ungroup() %>% 
+  mutate(stat = sqrt(df) * corG/sqrt(1 - corG^2), 
+         pvalue = 2 * pt(q = abs(stat), df = df, lower.tail = FALSE))
+
+# trait       term      trait1 trait2      corG    df   stat   pvalue
+# 1 GrainYield  b         g      b          0.646   181  11.4  5.13e-23
+# 2 GrainYield  log_delta g      log_delta  0.310   181   4.38 1.99e- 5
+# 3 HeadingDate b         g      b         -0.443   181  -6.66 3.24e-10
+# 4 HeadingDate log_delta g      log_delta -0.426   181  -6.34 1.80e- 9
+# 5 PlantHeight b         g      b          0.412   181   6.08 6.96e- 9
+# 6 PlantHeight log_delta g      log_delta  0.700   181  13.2  2.87e-28
 
 
 
@@ -387,9 +473,9 @@ pheno_fw_nXO %>%
   summarize(mean = mean(meanCO))
 
 # trait        mean
-# 1 GrainYield  0.418
-# 2 HeadingDate 0.125
-# 3 PlantHeight 0.372
+# 1 GrainYield  0.415
+# 2 HeadingDate 0.124
+# 3 PlantHeight 0.374
 
 # Visualize
 pheno_fw_nXO %>% 

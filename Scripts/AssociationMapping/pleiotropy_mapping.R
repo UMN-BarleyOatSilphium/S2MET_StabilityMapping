@@ -14,6 +14,7 @@ source(file.path(repo_dir, "source.R"))
 
 library(EMMREML)
 library(qvalue)
+library(parallel)
 
 
 # Extract the SNP information for later use
@@ -36,9 +37,12 @@ geno_use <- S2TP_imputed_multi_genos_hmp %>%
   rename(marker = rs) %>%
   as.data.frame()
 
+pheno_mean_fw <- pheno_mean_fw_tpvp %>%
+  filter(line_name %in% tp)
+
 
 # Format for modeling
-pheno_to_model <- S2_MET_pheno_mean_fw %>% 
+pheno_to_model <- pheno_mean_fw %>% 
   distinct(line_name, trait, g, b, delta) %>% 
   mutate(log_delta = log(delta)) %>%
   select(-delta) %>%
@@ -85,21 +89,21 @@ pheno_to_model_plei_split <- pheno_to_model_plei %>%
   split(list(.$trait, .$stab_coef)) %>%
   map(~spread(., stab_coef, value) %>% select(-trait))
 
-## Run the GWAS for pleiotropy
-# K and QK models
-gwas_mv_scan_QK <- pheno_to_model_plei_split %>%
-  map(~mv_gwas(pheno = ., geno = geno_use, K = K, n.PC = 1))
-gwas_mv_scan_QK1 <- gwas_mv_scan_QK %>% 
-  list(., names(.)) %>% 
-  pmap_df(~mutate(.x, trait = .y)) %>%
-  mutate(model = "QK", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
+# ## Run the GWAS for pleiotropy
+# # K and QK models
+# gwas_mv_scan_QK <- pheno_to_model_plei_split %>%
+#   map(~mv_gwas(pheno = ., geno = geno_use, K = K, n.PC = 1))
+# gwas_mv_scan_QK1 <- gwas_mv_scan_QK %>% 
+#   list(., names(.)) %>% 
+#   pmap_df(~mutate(.x, trait = .y)) %>%
+#   mutate(model = "QK", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
 
-gwas_mv_scan_K <- pheno_to_model_plei_split %>%
-  map(~mv_gwas(pheno = ., geno = geno_use, K = K, n.PC = 0))
-gwas_mv_scan_K1 <- gwas_mv_scan_K %>% 
-  list(., names(.)) %>% 
-  pmap_df(~mutate(.x, trait = .y)) %>%
-  mutate(model = "K", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
+# gwas_mv_scan_K <- pheno_to_model_plei_split %>%
+#   map(~mv_gwas(pheno = ., geno = geno_use, K = K, n.PC = 0))
+# gwas_mv_scan_K1 <- gwas_mv_scan_K %>% 
+#   list(., names(.)) %>% 
+#   pmap_df(~mutate(.x, trait = .y)) %>%
+#   mutate(model = "K", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
 
 # Separate markers per chromosome
 markers_per_chrom <- geno_use %>% split(.$chrom) %>% map("marker")
@@ -124,24 +128,28 @@ gwas_mv_scan_QG1 <- gwas_mv_scan_QG %>%
   mutate(model = "QG", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
 
 
-gwas_mv_scan_G <- pheno_to_model_plei_split %>%
-  map(function(p) {
-    
-    geno_use %>% 
-      split(.$chrom) %>%
-      list(., K_per_chrom) %>%
-      pmap(~mv_gwas(pheno = p, geno = .x, K = .y, n.PC = 0)) %>%
-      bind_rows()
-    
-  })
-
-gwas_mv_scan_G1 <- gwas_mv_scan_G %>% 
-  list(., names(.)) %>% 
-  pmap_df(~mutate(.x, trait = .y)) %>%
-  mutate(model = "G", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
+# gwas_mv_scan_G <- pheno_to_model_plei_split %>%
+#   map(function(p) {
+#     
+#     geno_use %>% 
+#       split(.$chrom) %>%
+#       list(., K_per_chrom) %>%
+#       pmap(~mv_gwas(pheno = p, geno = .x, K = .y, n.PC = 0)) %>%
+#       bind_rows()
+#     
+#   })
+# 
+# gwas_mv_scan_G1 <- gwas_mv_scan_G %>% 
+#   list(., names(.)) %>% 
+#   pmap_df(~mutate(.x, trait = .y)) %>%
+#   mutate(model = "G", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
 
 ## Combine all the results
-gwas_pleio_pheno_mean_fw <- bind_rows(gwas_mv_scan_K1, gwas_mv_scan_G1, gwas_mv_scan_QK1, gwas_mv_scan_QG1) %>%
+gwas_pleio_pheno_mean_fw <- bind_rows(
+  # gwas_mv_scan_K1, 
+  # gwas_mv_scan_G1, 
+  # gwas_mv_scan_QK1, 
+  gwas_mv_scan_QG1) %>%
   select(trait, model, names(.))
 
 
@@ -192,9 +200,8 @@ g_gwas_pleio_qq <- gwas_pleio_pheno_mean_fw_qq %>%
   facet_grid(coef_pair ~ trait) +
   theme_bw()
 
-# Save
-ggsave(filename = "pheno_fw_mean_gwas_pleio_qq.jpg", plot = g_gwas_pleio_qq, path = fig_dir,
-       width = 8, height = 5, dpi = 1000)
+
+
 
 
 # Convert p-value to q-values
@@ -206,6 +213,7 @@ gwas_pleio_pheno_mean_fw_tidy_adj <- gwas_pleio_pheno_mean_fw1 %>%
          empirical_cutoff = quantile(min_neg_log_p, 1 - ((alpha / 10) / 2)),
          significant = min_neg_log_p > empirical_cutoff) %>%
   ungroup()
+
 
 
 # Plot modifier
@@ -229,7 +237,7 @@ for (mod in unique(gwas_pleio_pheno_mean_fw_tidy_adj$model)) {
   # Create the plot
   g_gwas_manhattan <- gwas_pleio_pheno_mean_fw_tidy_adj %>%
     filter(model == mod) %>%
-    ggplot(aes(x = pos / 1e6, y = , group = chrom, col = color)) + 
+    ggplot(aes(x = pos / 1e6, y = min_neg_log_p, group = chrom, col = color)) + 
     facet_grid(trait + coef_pair ~ chrom, switch = "x", scales = "free", space = "free_x") +
     g_mod_man
   
@@ -253,16 +261,4 @@ for (tr in unique(gwas_pleio_pheno_mean_fw_tidy_adj$trait)) {
          path = fig_dir, height = 12, width = 8, dpi = 1000)
   
 }
-
-
-
-
-
-
-
-
-
-
-
-
 
