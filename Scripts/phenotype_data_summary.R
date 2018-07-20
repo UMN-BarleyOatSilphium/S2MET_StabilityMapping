@@ -132,7 +132,7 @@ g_map <- ggplot(data = north_america, aes(x = long, y = lat, group = group)) +
   geom_polygon(data = usa_state, aes(x = long, y = lat, group = group), fill = NA, color = "grey50", lwd = 0.2) +
   geom_point(data = trial_info_toplot, aes(x = longitude, y = latitude, group = location, color = location), size = 0.5) +
   geom_text_repel(data = trial_info_toplot, aes(x = longitude, y = latitude, label = environment), inherit.aes = FALSE, direction = "y", 
-                  hjust = 1.2, vjust = 1, segment.size = 0.1, size = 1, box.padding = 0.02) + 
+                  hjust = 1.2, vjust = 1, segment.size = 0.1, size = 1.5, box.padding = 0.02) + 
   coord_fixed(ratio = 1.5, xlim = c(-125, -60), ylim = c(35, 50)) +
   scale_color_manual(guide = FALSE, values = colors_use) + 
   xlab("Longitude") +
@@ -182,7 +182,7 @@ g_map_vp <- ggplot(data = north_america, aes(x = long, y = lat, group = group)) 
   geom_polygon(data = usa_state, aes(x = long, y = lat, group = group), fill = NA, color = "grey50", lwd = 0.2) +
   geom_point(data = trial_info_toplot, aes(x = longitude, y = latitude, group = location, color = location), size = 0.5) +
   geom_text_repel(data = trial_info_toplot, aes(x = longitude, y = latitude, label = environment), inherit.aes = FALSE, direction = "y", 
-                  hjust = 1.2, vjust = 1, segment.size = 0.1, size = 1, box.padding = 0.02) + 
+                  hjust = 1.2, vjust = 1, segment.size = 0.1, size = 2, box.padding = 0.02) + 
   coord_fixed(ratio = 1.5, xlim = c(-125, -60), ylim = c(35, 50)) +
   scale_color_manual(guide = FALSE, values = colors_use) + 
   xlab("Longitude") +

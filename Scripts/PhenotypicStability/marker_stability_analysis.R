@@ -17,7 +17,7 @@ library(sommer)
 # Load the stability results
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 # Load the marker effect by environment results
-load(file.path(result_dir, "marker_by_env_effects.RData"))
+load(file.path(result_dir, "marker_mean_fw_results.RData"))
 # Load the GWAS results
 load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 # Marker subsets 
@@ -48,9 +48,6 @@ n_iter <- 100
 
 
 ### Load the marker effect stability results
-
-
-load(file.path(result_dir, "marker_mean_fw_results.RData"))
 
 ## Transform
 marker_mean_fw_trans <- marker_mean_fw %>% 
@@ -96,7 +93,7 @@ marker_mean_fw_example <- marker_mean_fw %>%
                           c == max(c) ~ "Positive plastic",
                           TRUE ~ "Stable"))
 
-colors <- umn_palette(2)[3:5]
+colors <- set_names(umn_palette(2)[3:5], c("Positive plastic", "Stable", "Negative plastic"))
 colors <- set_names(x = grey.colors(n = 3, start = 0.2, end = 0.8), 
                     nm = c("Positive plastic", "Stable", "Negative plastic"))
 

@@ -329,8 +329,8 @@ calc_gh <- function(df) {
   
   # Return
   df1 <- df %>% 
-    left_join(., geno_blues) %>% 
-    left_join(., env_blups)
+    left_join(., geno_blues, by = "line_name") %>% 
+    left_join(., env_blups, by = "environment")
   
   return(df1)
   

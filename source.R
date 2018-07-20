@@ -12,8 +12,8 @@ library(neyhart)
 
 
 ## The Google Drive directory
-# gdrive_dir <- "C:/Users/Jeff/GoogleDrive"
-gdrive_dir <- "/Users/neyha001/Google Drive/"
+gdrive_dir <- "C:/Users/jln54/GoogleDrive/"
+# gdrive_dir <- "/Users/neyha001/Google Drive/"
 
 # Project and other directories
 proj_dir <- repo_dir

@@ -440,21 +440,21 @@ gwas_sig_mar_grange <- gwas_sig_marker_info %>%
 
 
 
-# ## Split the mlmm grange by trait and coefficient and find any markers that overlap
-# ## 
-# # Split by coefficient and create a GRangesList
-# gwas_mlmm_grange_split <- gwas_mlmm_grange %>% 
-#   as.data.frame() %>%
-#   split(.$trait) %>%
-#   map(~split(., .$coef) %>% map(~makeGRangesFromDataFrame(df = ., keep.extra.columns = TRUE)) %>% 
-#         GRangesList())
-# 
-# ## Find overlaps, then remove the self overlaps
-# gwas_mlmm_overlaps_list <- gwas_mlmm_grange_split %>%
-#   map(~findOverlaps(query = ., subject = .)) %>%
-#   map(~subset(., queryHits != subjectHits)) %>%
-#   map(~as.data.frame(.))
-# 
+## Split the mlmm grange by trait and coefficient and find any markers that overlap
+##
+# Split by coefficient and create a GRangesList
+gwas_mlmm_grange_split <- gwas_mlmm_grange %>%
+  as.data.frame() %>%
+  split(.$trait) %>%
+  map(~split(., .$coef) %>% map(~makeGRangesFromDataFrame(df = ., keep.extra.columns = TRUE)) %>%
+        GRangesList())
+
+## Find overlaps, then remove the self overlaps
+gwas_mlmm_overlaps_list <- gwas_mlmm_grange_split %>%
+  map(~findOverlaps(query = ., subject = .)) %>%
+  map(~subset(., queryHits != subjectHits)) %>%
+  map(~as.data.frame(.))
+
 # ## Explore the overlaps
 # gwas_mlmm_overlaps <- list(gwas_mlmm_overlaps_list, as.list(gwas_mlmm_grange_split)) %>%
 #   pmap(~apply(X = .x, MARGIN = 1, FUN = function(overlap) {
@@ -462,7 +462,7 @@ gwas_sig_mar_grange <- gwas_sig_marker_info %>%
 #       return(NA)
 #     } else {
 #       mergeByOverlaps(query = as.list(.y)[[overlap[1]]], subject = as.list(.y)[[overlap[2]]])
-#     }}) %>% as.list() %>% do.call("rbind", .)) %>% 
+#     }}) %>% as.list() %>% do.call("rbind", .)) %>%
 #   do.call("rbind", .) %>%
 #   subset(., , c(2, 3, 5, 16, 18)) %>%
 #   as_data_frame()
@@ -671,7 +671,7 @@ known_genes_newpos1 <- known_genes_newpos %>%
          label_pos = ifelse(gene %in% c("Ppd-H2", "denso", "eps4L", "Vrn-H1"), label_pos - 2e8, label_pos),
          label_pos = ifelse(gene %in% c("eps7S", "Vrn-H3"), label_pos + 2e8, label_pos)) %>%
   # Remove eps7S
-  filter(gene != "eps7S")
+  filter(!gene %in% c("eps7S", "eps2"))
 
 
 ## Reformat the MLMM results to highlight as large points in the manhattan plot
@@ -702,8 +702,6 @@ g_all_gwas_annotated <- gwas_pheno_mean_fw_adj %>%
   geom_segment(data = qtl_meta_use1_newpos, aes(x = new_qtl_pos - 1e6, xend = new_qtl_pos + 1e6, y = -0.5, yend = -0.5), lwd = 2, inherit.aes = FALSE) +
   geom_point(size = 0.1) +
   geom_point(data = gwas_mlmm_marker_info_ann_toplot, size = 0.8) + 
-  # Chromosomes
-  geom_text(data = chrom_pos_cumsum, aes(x = chrom_label_pos, y = -1.5, label = chrom), size = 2, vjust = 0.70, inherit.aes = FALSE) +
   # Known genes
   geom_text(data = known_genes_newpos1, aes(x = label_pos, y = 4, label = gene, fontface = "italic"), inherit.aes = FALSE, 
             check_overlap = TRUE, size = 2) + 
@@ -712,21 +710,22 @@ g_all_gwas_annotated <- gwas_pheno_mean_fw_adj %>%
   scale_shape_discrete(name = NULL) +
   # Remove annoying whitespace
   # scale_y_continuous(expand = c(0, 0)) + 
-  scale_x_continuous(expand = c(0.005, 0)) + 
+  scale_x_continuous(expand = c(0.005, 0), breaks = chrom_pos_cumsum$chrom_label_pos, labels = chrom_pos_cumsum$chrom) + 
   # ylab(expression(-log[10](italic(p)))) + 
   ylab(expression(-log[10](italic(q)))) + 
-  ylim(c(-1.5, 8)) +
+  ylim(c(-1, 8)) +
   # xlim(c(0, 5e9)) +
   facet_grid(trait ~ ., switch = "y", space = "free_x") + 
   theme_pnas() +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
+  theme(axis.ticks.x = element_blank(), axis.title.x = element_blank(), 
         legend.position = "bottom", legend.margin = margin(t = -5, unit = "pt"), legend.key.height = unit(0.75, "lines"),
-        axis.line.x = element_blank(), strip.placement = "outside")
+        axis.line.x = element_blank(), strip.placement = "outside", panel.spacing.y = unit(0.5, "line"))
+
 
 
 # Save
 ggsave(filename = "gwas_manhattan_all_trait_QG_annotated.jpg", plot = g_all_gwas_annotated, path = fig_dir, 
-       height = 8, width = 11.7, units = "cm", dpi = 1000)
+       height = 8, width = 8.7, units = "cm", dpi = 1000)
 
 
 

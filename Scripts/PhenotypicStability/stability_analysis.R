@@ -339,6 +339,7 @@ pheno_fw_gen_corr_sig <- pheno_fw_gen_corr %>%
   mutate(stat = sqrt(df) * corG/sqrt(1 - corG^2), 
          pvalue = 2 * pt(q = abs(stat), df = df, lower.tail = FALSE))
 
+
 # trait       term      trait1 trait2       corG    df    stat   pvalue
 # 1 GrainYield  b         g      b          0.646    181  11.4   5.13e-23
 # 2 GrainYield  log_delta g      log_delta  0.310    181   4.38  1.99e- 5
@@ -348,18 +349,7 @@ pheno_fw_gen_corr_sig <- pheno_fw_gen_corr %>%
 # 6 PlantHeight log_delta g      log_delta  0.566    181   9.23  7.30e-17
 
 
-## Combine the phenotypic correlations and genetic correlations and output a table
-stability_mean_corr_toprint <- pheno_fw_gen_corr_sig %>% 
-  left_join(., stability_mean_corr_param, by = c("trait", "term")) %>% 
-  select(Trait = trait, Character1 = trait1, Character2 = trait2, corP = base, 
-         pvalue_P = pvalue.y, corG, pvalue_G = pvalue.x) %>%
-  mutate_at(vars(contains("Character")), funs(str_replace_all(., coef_replace))) %>%
-  mutate(PhenotypicCorrelation = str_c(round(corP, 3), " (p = ", formatC(pvalue_P, digits = 3, format = "e"), ")"),
-         GeneticCorrelation = str_c(round(corG, 3), " (p = ", formatC(pvalue_G, digits = 3, format = "e"), ")")) %>%
-  select(-contains("pvalue"), -contains("cor", ignore.case = FALSE))
 
-# Print
-write_csv(x = stability_mean_corr_toprint, path = file.path(fig_dir, "stability_mean_correlation.csv"))
 
 
 ## Calculate the genetic correlation after correcting for significant GWAS markers
@@ -416,6 +406,26 @@ pheno_fw_gen_corr_snp_sig <- pheno_fw_gen_corr_snp %>%
 # 4 HeadingDate log_delta g      log_delta -0.426   181  -6.34 1.80e- 9
 # 5 PlantHeight b         g      b          0.412   181   6.08 6.96e- 9
 # 6 PlantHeight log_delta g      log_delta  0.700   181  13.2  2.87e-28
+
+
+
+## Combine the phenotypic correlations and genetic correlations and output a table
+stability_mean_corr_toprint <- pheno_fw_gen_corr_sig %>% 
+  left_join(., stability_mean_corr_param, by = c("trait", "term")) %>% 
+  left_join(., pheno_fw_gen_corr_snp_sig, by = c("trait", "term", "trait1", "trait2")) %>%
+  select(Trait = trait, Character1 = trait1, Character2 = trait2, corP = base, 
+         pvalue_P = pvalue.y, corG = corG.x, pvalue_G = pvalue.x, corG_adj = corG.y, pvalue_Gadj = pvalue) %>%
+  mutate_at(vars(contains("Character")), funs(str_replace_all(., coef_replace))) %>%
+  mutate(PhenotypicCorrelation = str_c(round(corP, 3), " (p = ", formatC(pvalue_P, digits = 3, format = "e"), ")"),
+         GeneticCorrelation = str_c(round(corG, 3), " (p = ", formatC(pvalue_G, digits = 3, format = "e"), ")"),
+         AdjustedGeneticCorrelation = str_c(round(corG_adj, 3), " (p = ", formatC(pvalue_Gadj, digits = 3, format = "e"), ")")) %>%
+  select(-contains("pvalue"), -contains("cor", ignore.case = FALSE))
+
+# Print
+write_csv(x = stability_mean_corr_toprint, path = file.path(fig_dir, "stability_mean_correlation.csv"))
+
+
+
 
 
 
@@ -497,39 +507,100 @@ pheno_fw_nXO %>%
 # Read in the results
 load(file.path(result_dir, "pheno_fw_resampling.RData"))
 
-pheno_sample_fw_tomodel <- pheno_sample_mean_fw %>%
+# # Results from the TP
+# pheno_sample_fw_tomodel <- pheno_samples_fw %>%
+#   mutate(log_delta = log(delta)) %>%
+#   select(-delta) %>%
+#   gather(coef, value, b:log_delta)
+
+# Results from TP + VP
+pheno_sample_fw_tomodel <- pheno_samples_fw_tpvp %>%
   mutate(log_delta = log(delta)) %>%
   select(-delta) %>%
-  gather(coef, value, b:log_delta)
+  gather(coef, value, g:log_delta)
 
-# Fit a fixed-effect model
-repeatability_fit <- pheno_sample_fw_tomodel %>% 
-  filter(!is.infinite(value)) %>% 
-  # filter(iter %in% c(1:40)) %>%
-  group_by(trait, p, coef) %>% 
-  do(fit = lm(value ~ line_name, .))
 
-## Summarize
-repeatability_summ <- repeatability_fit %>% 
-  ungroup() %>% 
-  mutate(anova = map(fit, ~tidy(anova(.)))) %>% 
-  unnest(anova) %>% 
-  group_by(trait, p, coef) %>% 
-  summarize(repeatability = meansq[1] / sum(meansq))
+## For each individual, calculate a coefficient of determination over all samples
+estimate_cv <- pheno_sample_fw_tomodel %>% 
+  mutate(p = as.factor(p)) %>%
+  filter(!is.infinite(value),
+         line_name != "07MT-10") %>% # Remove a line giving weird results
+  group_by(trait, p, coef, line_name) %>% 
+  summarize(estimate_cv = sd(value) / abs(mean(value)))
 
-# Plot
-g_fw_repeatability <- repeatability_summ %>% 
-  ggplot(aes(x = p, y = repeatability, group = 1)) + 
-  geom_point() + 
-  geom_line(stat = "identity") + 
-  ylab("Repeatability") +
-  xlab("Proportion of Environments") + 
-  facet_grid(coef~ trait) + 
-  theme_bw()
+estimate_cv_summ <- estimate_cv %>%
+  filter(estimate_cv <= 2) %>%
+  summarize(mean_cv = mean(estimate_cv),
+            lower = quantile(estimate_cv, alpha / 2),
+            upper = quantile(estimate_cv, 1 - (alpha / 2))) # Calculate the mean variance and CI
+
+
+## Plot mean and CI
+g_estimate_cv_summ <- estimate_cv_summ %>%
+  ungroup() %>%
+  mutate(coef = str_replace_all(coef, coef_replace)) %>%
+  ggplot(aes(x = p, y = mean_cv, ymin = lower, ymax = upper, group = 1)) + 
+  geom_point(size = 0.2) +
+  geom_line(stat = "identity", lwd = 0.2) +
+  geom_errorbar(width = 0.3, lwd = 0.2) +
+  ylab("Coefficient of variation") +
+  xlab("Proportion of environments") + 
+  facet_grid(coef~ trait, scales = "free_y", switch = "y") + 
+  theme_pnas() +
+  theme()
 
 # Save
-ggsave(filename = "pheno_fw_resample_repeatability.jpg", path = fig_dir, plot = g_fw_repeatability,
-       height = 4, width = 6, dpi = 1000)
+ggsave(filename = "pheno_fw_resample_cv.jpg", path = fig_dir, plot = g_estimate_cv_summ,
+       height = 8, width = 8.7, units = "cm", dpi = 1000)
+
+
+## Alternatively, find the mean squared deviation of each sample from the estimate using all environments
+pheno_sample_fw_tomodel1 <- pheno_sample_fw_tomodel %>% 
+  left_join(., distinct(pheno_mean_fw, trait, line_name, g, b, delta) %>%
+              mutate(log_delta = log(delta)) %>% 
+              select(-delta) %>% 
+              gather(coef, true_value, g:log_delta))
+
+# Calculate deviations, then summarize
+estimate_deviations <- pheno_sample_fw_tomodel1 %>% 
+  mutate(p = as.factor(p)) %>%
+  filter(!is.infinite(value),
+         line_name != "07MT-10") %>% # Remove a line giving weird results
+  group_by(trait, p, coef, line_name) %>% 
+  mutate(deviation = (value - true_value)^2) %>% 
+  summarize(mean_deviation = mean(deviation))
+
+estimate_deviations_summ <- estimate_deviations %>%
+  summarize(mean_sqr_deviation = mean(mean_deviation),
+            lower = quantile(mean_deviation, alpha / 2),
+            upper = quantile(mean_deviation, 1 - (alpha / 2))) # Calculate the mean variance and CI
+
+## Plot mean and CI
+g_fw_deviation_summ <- estimate_deviations_summ %>%
+  ungroup() %>%
+  mutate(coef = str_replace_all(coef, coef_replace)) %>%
+  ggplot(aes(x = p, y = mean_sqr_deviation, ymin = lower, ymax = upper, group = 1)) + 
+  geom_point(size = 0.2) +
+  geom_line(stat = "identity", lwd = 0.2) +
+  geom_errorbar(width = 0.3, lwd = 0.2) +
+  ylab("Mean squared deviation of estimate") +
+  xlab("Proportion of environments") + 
+  facet_wrap(coef~ trait, scales = "free_y", ncol = 3) + 
+  theme_pnas() +
+  theme()
+
+# Save
+ggsave(filename = "pheno_fw_resample_deviation.jpg", path = fig_dir, plot = g_fw_deviation_summ,
+       height = 8, width = 8.7, units = "cm", dpi = 1000)
+
+
+
+
+
+
+
+
+
 
 
 
@@ -572,15 +643,61 @@ g_rand <- rand_marker_prop_varcomp %>%
   theme_bw()
 
 
-## Calculate marker effects and assess accuracy
-pheno_fw_me <- pheno_fw_use %>% 
-  distinct(trait, line_name, term, estimate) %>% 
-  filter(term == "b") %>%
-  group_by(trait) %>% 
-  do(me = mixed.solve(y = .$estimate, Z = M)$u)
 
-# Predict
 
+
+
+
+
+## Calculate marker effects and assess correlation
+pheno_fw_mar_eff <- pheno_fw_use %>% 
+  distinct(trait, line_name, g, term, estimate) %>% 
+  spread(term, estimate) %>%
+  gather(coef, value, g:log_delta) %>%
+  group_by(trait, coef) %>% 
+  do(data_frame(marker = colnames(M), effect = mixed.solve(y = .$value, Z = M)$u))
+
+# Correlate
+pheno_fw_mar_eff %>% 
+  spread(coef, effect) %>% 
+  summarize(cor_gb = cor(g, b),
+            cor_gl = cor(g, log_delta),
+            cor_bl = cor(b, log_delta))
+
+# Plot
+pheno_fw_mar_eff_toplot <- pheno_fw_mar_eff %>% 
+  nest(marker, effect) %>% 
+  crossing(., .) %>%
+  filter(trait == trait1, coef != coef1) %>% 
+  unnest()
+
+g_marker_eff_corr <- pheno_fw_mar_eff_toplot %>%
+  filter(coef == "g", coef1 != "g") %>%
+  mutate_at(vars(contains("coef")), funs(str_replace_all(., coef_replace))) %>%
+  ggplot(aes(x = effect, y = effect1)) +
+  geom_point(size = 0.1) +
+  facet_wrap(trait ~ coef1, scales = "free", ncol = 2) +
+  theme_pnas() +
+  theme(axis.title = element_blank())
+
+## Save
+ggsave(filename = "marker_effect_correlation.jpg", plot = g_marker_eff_corr, path = fig_dir,
+       height = 8, width = 8.7, units = "cm", dpi = 1000)
+
+
+
+## Correlation simulation
+Z <- replicate(1000, ifelse(runif(n = 100) < 0.5, -1, 1))
+a <- rnorm(n = 1000, mean = 0, sd = 0.01)
+R <- matrix(c(1, 0.5, 0.5, 1), byrow = T, ncol = 2)
+a_small <- cbind(a, sample(a)) %*% chol(R)
+g_small <- Z %*% a_small
+(cor_small <- cor(g_small))
+
+a_big <- a_small
+a_big[rbind(cbind(sample(seq_along(a), 50), 1), cbind(sample(seq_along(a), 50), 2))] <- rnorm(n = 100, sd = 0.025)
+g_big <- Z %*% a_big
+(cor_big <- cor(g_big))
 
 
 

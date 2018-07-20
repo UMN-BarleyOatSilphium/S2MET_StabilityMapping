@@ -17,9 +17,6 @@ repo_dir <- getwd()
 # Project and other directories
 source(file.path(repo_dir, "source.R"))
 
-n_cores <- detectCores()
-
-
 ## Calculate stability using only the TP
 
 # For each list, what are the number of environments and number of unique lines?
@@ -317,7 +314,7 @@ ggsave(filename = "env_mean_corr.jpg", plot = g_env_mean_corr, path = fig_dir,
 p_env <- seq(0.2, 0.8, by = 0.2) %>%
   set_names(., str_c("p_env_", .))
 # Number of resample iterations
-n_iter <- 250
+n_iter <- 100
 
 
 
@@ -354,26 +351,19 @@ pheno_samples <- p_env %>%
   }) %>% list(., names(.)) %>% pmap_df(~mutate(.x, p = .y))
 
 
-# Iterate over samples and calculate the stability coefficients
-pheno_samples_fit_out <- pheno_samples$data %>%
-  map(~{
-    df <- .
-    # Group by line name and fit the models
-    df %>%
-      group_by(line_name) %>%
-      do({
-        # Fit the linear model 
-        fit <- lm(value ~ h, .)
-        data.frame(b = coef(fit)[2], delta = mean(resid(fit)^2), row.names = NULL, stringsAsFactors = FALSE)
-      }) %>% ungroup()
-  })
+
+pheno_samples_fit_out <- pheno_samples %>%
+  unnest() %>%
+  group_by(trait, iter, p, line_name) %>%
+  do({
+    # Fit the linear model 
+    fit <- lm(value ~ h, .)
+    data.frame(g = coef(fit)[1], b = coef(fit)[2], delta = mean(resid(fit)^2), row.names = NULL, stringsAsFactors = FALSE)
+  }) %>% ungroup()
 
 ## Add the results to the samples df
-pheno_samples_fw <- pheno_samples %>%
-  mutate(p = parse_number(p),
-         out = pheno_samples_fit_out) %>%
-  select(-data) %>%
-  unnest()
+pheno_samples_fw <- pheno_samples_fit_out %>%
+  mutate(p = parse_number(p))
   
   
   
@@ -411,25 +401,18 @@ pheno_samples <- p_env %>%
 
 
 # Iterate over samples and calculate the stability coefficients
-pheno_samples_fit_out <- pheno_samples$data %>%
-  map(~{
-    df <- .
-    # Group by line name and fit the models
-    df %>%
-      group_by(line_name) %>%
-      do({
-        # Fit the linear model 
-        fit <- lm(value ~ h, .)
-        data.frame(b = coef(fit)[2], delta = mean(resid(fit)^2), row.names = NULL, stringsAsFactors = FALSE)
-      }) %>% ungroup()
-  })
+pheno_samples_fit_out <- pheno_samples %>%
+  unnest() %>%
+  group_by(trait, iter, p, line_name) %>%
+  do({
+    # Fit the linear model 
+    fit <- lm(value ~ h, .)
+    data.frame(g = coef(fit)[1], b = coef(fit)[2], delta = mean(resid(fit)^2), row.names = NULL, stringsAsFactors = FALSE)
+  }) %>% ungroup()
 
 ## Add the results to the samples df
-pheno_samples_fw_tpvp <- pheno_samples %>%
-  mutate(p = parse_number(p),
-         out = pheno_samples_fit_out) %>%
-  select(-data) %>%
-  unnest()
+pheno_samples_fw_tpvp <- pheno_samples_fit_out %>%
+  mutate(p = parse_number(p))
 
   
 
