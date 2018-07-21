@@ -60,7 +60,7 @@ pheno_fw_use_tomodel <- pheno_fw_use %>%
 
 
 ## Use a permutation test to determine significance
-n_perm_iter <- 1000
+n_perm_iter <- 5000
 
 # Generate the permutations
 pheno_fw_use_tomodel_perm <- pheno_fw_use_tomodel %>%

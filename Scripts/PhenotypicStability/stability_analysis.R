@@ -299,6 +299,8 @@ ggsave(filename = "reaction_norms_and_correlations.jpg", plot = g_plotgrid, path
 
 ### Use a bi-variate model and the genomic relationship matrix to estimate genetic correlation
 library(EMMREML)
+# Load permutation results
+load(file.path(result_dir, "stability_correlation_permutation.RData"))
 
 # Create a df for modeling
 pheno_fw_use_tomodel <- pheno_fw_use %>%
@@ -347,6 +349,11 @@ pheno_fw_gen_corr_sig <- pheno_fw_gen_corr %>%
 # 4 HeadingDate log_delta g      log_delta -0.289    181  -4.07  7.10e- 5
 # 5 PlantHeight b         g      b          0.472    181   7.19  1.61e-11
 # 6 PlantHeight log_delta g      log_delta  0.566    181   9.23  7.30e-17
+
+# Two-tailed test
+left_join(pheno_fw_gen_corr_perm, pheno_fw_gen_corr) %>% 
+  group_by(trait, term) %>% 
+  summarize(p_value = mean(corrG >= abs(corG) | corrG <= -abs(corG)))
 
 
 

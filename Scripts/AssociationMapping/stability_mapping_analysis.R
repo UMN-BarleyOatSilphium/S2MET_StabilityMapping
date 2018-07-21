@@ -70,7 +70,7 @@ K_prcomp <- prcomp(K)
 # Tidy, calculate lambda, then add program information
 K_prcomp_df <- tidy(K_prcomp) %>%
   mutate(PC = str_c("PC", PC)) %>%
-  rename(line_name = row) %>%
+  dplyr::rename(line_name = row) %>%
   left_join(entry_list, by = c("line_name" = "Line"))
 
 # Extract lambda and calculate variance explained
@@ -152,7 +152,7 @@ trait_pop_str <- K_prcomp_df %>%
 ## Use a bootstrap to estimate confidence interval
 trait_pop_str_corr <- trait_pop_str %>% 
   group_by(trait, PC, measure) %>% 
-  do(bootstrap(x = .$value, y = .$eigenvalue, fun = "cor", boot.reps = 1000)) %>%
+  do(neyhart::bootstrap(x = .$value, y = .$eigenvalue, fun = "cor", boot.reps = 1000)) %>%
   # Which ones are significant
   mutate(significant = !between(0, ci_lower, ci_upper),
          sig_ann = ifelse(significant, "*", ""),
@@ -241,12 +241,12 @@ g_PC1_v_traits <- trait_pop_str1 %>%
 g_pop_str_fig <- plot_grid(
   g_pop_str + ylab(""),
   g_PC1_v_traits + theme(legend.position = "none"),
-  ncol = 1, labels = LETTERS[1:2], align = "hv", axis = "lr", hjust = 0.001
+  ncol = 2, labels = LETTERS[1:2], align = "hv", axis = "lr", hjust = 0.001
 )
 
 # Save
 ggsave(filename = "population_structure_and_traits.jpg", plot = g_pop_str_fig, path = fig_dir,
-       width = 3.5, height = 7, dpi = 1000)
+       width = 17.8, height = 8, unit = "cm", dpi = 1000)
 
 
 
