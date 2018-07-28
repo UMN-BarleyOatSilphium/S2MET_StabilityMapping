@@ -15,11 +15,6 @@ repo_dir <- getwd()
 source(file.path(repo_dir, "source.R"))
 
 
-# Extract the SNP information for later use
-snp_info <- S2TP_imputed_multi_genos_hmp %>%
-  select(marker = rs, chrom, pos, cM_pos)
-
-
 # Load the FW results
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 # Load the FW sampling results
@@ -35,13 +30,11 @@ n_cores <- detectCores()
 
 
 # Format the genotype data for use
-geno_use <- S2TP_imputed_multi_genos_hmp %>%
-  select(-alleles, -cM_pos) %>%
-  rename(marker = rs) %>%
-  as.data.frame()
+geno_use <- cbind(snp_info, t(s2tp_genos_imputed)) %>%
+  select(marker, chrom, pos, tp)
 
 # K matrix
-M <- S2TP_imputed_multi_genos_mat
+M <- s2tp_genos_imputed
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 
@@ -72,9 +65,12 @@ gwas_scan_K1 <- gwas_scan_K %>%
   mutate(model = "K")
 
 # Separate markers per chromosome
-markers_per_chrom <- geno_use %>% split(.$chrom) %>% map("marker")
-K_per_chrom <- markers_per_chrom %>% map(~setdiff(geno_use$marker, .)) %>% 
-  map(~A.mat(X = S2TP_imputed_multi_genos_mat[,.], min.MAF = 0, max.missing = 1))
+markers_per_chrom <- geno_use %>% 
+  split(.$chrom) %>% 
+  map("marker")
+K_per_chrom <- markers_per_chrom %>% 
+  map(~setdiff(geno_use$marker, .)) %>% 
+  map(~A.mat(X = s2tp_genos_imputed[,.], min.MAF = 0, max.missing = 1))
 
 # QG model
 gwas_scan_QG <- pheno_to_model %>%
@@ -313,23 +309,18 @@ pheno_to_model <- pheno_mean_fw_tpvp %>%
 ## Use the GWAS function in rrBLUP
 ## K and QK models
 gwas_scan_QK <- pheno_to_model %>%
-  map(~GWAS(pheno = ., geno = geno_use, K = K, n.PC = 1, min.MAF = 0, plot = FALSE, n.core = n_cores))
+  map(~GWAS(pheno = ., geno = geno_use, K = K, n.PC = 1, min.MAF = 0, plot = FALSE))
 gwas_scan_QK1 <- gwas_scan_QK %>% 
   list(., names(.)) %>% 
   pmap_df(~mutate(.x, trait = .y)) %>%
   mutate(model = "QK")
 
 gwas_scan_K <- pheno_to_model %>%
-  map(~GWAS(pheno = ., geno = geno_use, K = K, n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores))
+  map(~GWAS(pheno = ., geno = geno_use, K = K, n.PC = 0, min.MAF = 0, plot = FALSE))
 gwas_scan_K1 <- gwas_scan_K %>% 
   list(., names(.)) %>% 
   pmap_df(~mutate(.x, trait = .y)) %>%
   mutate(model = "K")
-
-# Separate markers per chromosome
-markers_per_chrom <- geno_use %>% split(.$chrom) %>% map("marker")
-K_per_chrom <- markers_per_chrom %>% map(~setdiff(geno_use$marker, .)) %>% 
-  map(~A.mat(X = S2TP_imputed_multi_genos_mat[,.], min.MAF = 0, max.missing = 1))
 
 # QG model
 gwas_scan_QG <- pheno_to_model %>%
@@ -338,7 +329,7 @@ gwas_scan_QG <- pheno_to_model %>%
     geno_use %>% 
       split(.$chrom) %>%
       list(., K_per_chrom) %>%
-      pmap(~GWAS(pheno = p, geno = .x, K = .y, n.PC = 1, min.MAF = 0, plot = FALSE, n.core = n_cores)) %>%
+      pmap(~GWAS(pheno = p, geno = .x, K = .y, n.PC = 1, min.MAF = 0, plot = FALSE)) %>%
       bind_rows()
     
   })
@@ -355,7 +346,7 @@ gwas_scan_G <- pheno_to_model %>%
     geno_use %>% 
       split(.$chrom) %>%
       list(., K_per_chrom) %>%
-      pmap(~GWAS(pheno = p, geno = .x, K = .y, n.PC = 0, min.MAF = 0, plot = FALSE, n.core = n_cores)) %>%
+      pmap(~GWAS(pheno = p, geno = .x, K = .y, n.PC = 0, min.MAF = 0, plot = FALSE)) %>%
       bind_rows()
     
   })

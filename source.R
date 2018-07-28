@@ -90,7 +90,7 @@ vp <- subset(entry_list, Class == "S2C1R", Line, drop = TRUE)
   
 
 # Find the tp lines in the genotype matrix
-tp_geno <- intersect(tp, row.names(S2TP_imputed_multi_genos_mat))
+tp_geno <- intersect(tp, row.names(s2tp_genos_imputed))
 
 # Find the tp and vp lines in the other genotype matrix
 tp_geno1 <- intersect(tp, row.names(s2_imputed_mat))
@@ -120,7 +120,7 @@ trial_info <- read_csv(file = file.path(file.path(alt_proj_dir, "Data/"), "trial
 
 
 ## Create a snp information df
-snp_info <- S2TP_imputed_multi_genos_hmp %>% 
+snp_info <- s2tp_genos_hmp %>% 
   select(marker = 1, chrom:cM_pos)
 
 # Same for GBS snps

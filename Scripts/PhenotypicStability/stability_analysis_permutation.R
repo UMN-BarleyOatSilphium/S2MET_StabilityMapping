@@ -19,7 +19,7 @@ source(file.path(repo_dir, "source_MSI.R"))
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 
 # Relationship matrix
-M <- S2TP_imputed_multi_genos_mat
+M <- s2tp_genos_imputed
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 # Significance threshold
@@ -60,7 +60,7 @@ pheno_fw_use_tomodel <- pheno_fw_use %>%
 
 
 ## Use a permutation test to determine significance
-n_perm_iter <- 5000
+n_perm_iter <- 10000
 
 # Generate the permutations
 pheno_fw_use_tomodel_perm <- pheno_fw_use_tomodel %>%
@@ -80,15 +80,18 @@ pheno_fw_gen_corr_perm <- mclapply(X = pheno_fw_use_tomodel_perm_split, FUN = fu
   
   # Create the model matrices
   mf <- model.frame(g ~ line_name, as.data.frame(core_df$perm[[1]]))
-  Z <- t(model.matrix(~ -1 + line_name, mf))
+  Z <- t(model.matrix(~ -1 + line_name, mf)) %>%
+    `rownames<-`(., colnames(K))
   X <- t(model.matrix(~ 1, mf))
   
   # Iterate
   for (i in seq_along(corr_out)) {
     Y <- t(as.matrix(as.data.frame(core_df$perm[[i]])[,c("g", "estimate")]))
-    fit <- emmremlMultivariate(Y = Y, X = X, Z = Z, K = K)
-    vcovG <- fit$Vg
+    # fit <- emmremlMultivariate(Y = Y, X = X, Z = Z, K = K)
+    # vcovG <- fit$Vg
     
+    fit <- sommer::mmer(Y = t(Y), X = t(X), Z = list(gen = list(Z = t(Z), K = K)))
+    vcovG <- fit$var.comp$gen
     corr_out[i] <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
     
   }

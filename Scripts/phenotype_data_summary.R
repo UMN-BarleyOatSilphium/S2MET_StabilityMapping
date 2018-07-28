@@ -26,7 +26,6 @@ library(pbr)
 ### Look at the number of lines per environment
 
 # Find the total number of possible line x environment combinations and find
-# the proportion that are observed for each trait
 observed <- S2_MET_BLUEs_tp %>% 
   distinct(trait, environment, line_name) %>%
   mutate(observed = TRUE) %>%

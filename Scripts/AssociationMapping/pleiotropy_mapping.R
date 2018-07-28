@@ -17,11 +17,6 @@ library(qvalue)
 library(parallel)
 
 
-# Extract the SNP information for later use
-snp_info <- S2TP_imputed_multi_genos_hmp %>%
-  select(marker = rs, chrom, pos, cM_pos)
-
-
 # Load the FW results
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 # Load the FW sampling results
@@ -32,9 +27,8 @@ n_core <- ifelse(Sys.info()["sysname"] == "Windows", 1, detectCores())
 
 
 # Format the genotype data for use
-geno_use <- S2TP_imputed_multi_genos_hmp %>%
+geno_use <- s2tp_genos_imputed_hmp %>%
   select(-alleles, -cM_pos) %>%
-  rename(marker = rs) %>%
   as.data.frame()
 
 pheno_mean_fw <- pheno_mean_fw_tpvp %>%
@@ -51,15 +45,18 @@ pheno_to_model <- pheno_mean_fw %>%
   map(as.data.frame)
 
 # K matrix
-M <- S2TP_imputed_multi_genos_mat
+M <- s2tp_genos_imputed
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 # Q vector
 Q <- eigen(x = K)$vector[,1]
 
 # K matrix by chromosome
-markers_per_chrom <- geno_use %>% split(.$chrom) %>% map("marker")
-K_per_chrom <- markers_per_chrom %>% map(~setdiff(geno_use$marker, .)) %>% 
-  map(~A.mat(X = S2TP_imputed_multi_genos_mat[,.], min.MAF = 0, max.missing = 1))
+markers_per_chrom <- geno_use %>% 
+  split(.$chrom) %>% 
+  map("marker")
+K_per_chrom <- markers_per_chrom %>% 
+  map(~setdiff(geno_use$marker, .)) %>% 
+  map(~A.mat(X = s2tp_genos_imputed[,.], min.MAF = 0, max.missing = 1))
 Q_per_chrom <- map(K_per_chrom, ~eigen(x = .)$vector[,1])
 
 
@@ -86,6 +83,7 @@ pheno_to_model_plei <- pheno_to_model %>%
 
 # Split up the data for iterations
 pheno_to_model_plei_split <- pheno_to_model_plei %>%
+  filter(stab_coef == "b") %>%
   split(list(.$trait, .$stab_coef)) %>%
   map(~spread(., stab_coef, value) %>% select(-trait))
 
@@ -105,10 +103,6 @@ pheno_to_model_plei_split <- pheno_to_model_plei %>%
 #   pmap_df(~mutate(.x, trait = .y)) %>%
 #   mutate(model = "K", trait = str_replace(string = trait, pattern = "\\.log_delta|\\.b", ""))
 
-# Separate markers per chromosome
-markers_per_chrom <- geno_use %>% split(.$chrom) %>% map("marker")
-K_per_chrom <- markers_per_chrom %>% map(~setdiff(geno_use$marker, .)) %>% 
-  map(~A.mat(X = M[,.], min.MAF = 0, max.missing = 1))
 
 # QG and G models
 gwas_mv_scan_QG <- pheno_to_model_plei_split %>%
@@ -164,13 +158,16 @@ save("gwas_pleio_pheno_mean_fw", file = save_file)
 ## Load the data
 load(file.path(result_dir, "pheno_fw_gwas_pleiotropy_results.RData"))
 
-## Run a shortcut of the intersection-union test by grabbing the minimum -log10(p)
-gwas_pleio_pheno_mean_fw1 <- gwas_pleio_pheno_mean_fw %>% 
-  mutate(coef_pair = pmap(list(g, b, log_delta), ~which(!is.na(c(..1, ..2, ..3)))) %>% 
-           map(~c("g", "b", "log_delta")[.]) %>% map_chr(~paste0(., collapse = ":")),
-         min_neg_log_p = pmap_dbl(list(g, b, log_delta), min, na.rm = T)) %>%
-  select(-g:-log_delta)
-  
+# ## Run a shortcut of the intersection-union test by grabbing the minimum -log10(p)
+# gwas_pleio_pheno_mean_fw1 <- gwas_pleio_pheno_mean_fw %>% 
+#   mutate(coef_pair = pmap(list(g, b, log_delta), ~which(!is.na(c(..1, ..2, ..3)))) %>% 
+#            map(~c("g", "b", "log_delta")[.]) %>% map_chr(~paste0(., collapse = ":")),
+#          min_neg_log_p = pmap_dbl(list(g, b, log_delta), min, na.rm = T)) %>%
+#   select(-g:-log_delta)
+
+
+gwas_pleio_pheno_mean_fw1 <- gwas_pleio_pheno_mean_fw %>%
+  gather(coef_pair, min_neg_log_p, -trait:-pos)
 
 
 
@@ -210,8 +207,7 @@ gwas_pleio_pheno_mean_fw_tidy_adj <- gwas_pleio_pheno_mean_fw1 %>%
   mutate(qvalue = qvalue(p = 10^-min_neg_log_p)$qvalue, 
          neg_log_q = -log10(qvalue),
          color = if_else(chrom %in% seq(1, 7, 2), "B", "G"),
-         empirical_cutoff = quantile(min_neg_log_p, 1 - ((alpha / 10) / 2)),
-         significant = min_neg_log_p > empirical_cutoff) %>%
+         empirical_cutoff = quantile(x = 10^-min_neg_log_p, probs = alpha / 2)) %>%
   ungroup()
 
 
@@ -221,7 +217,7 @@ gwas_pleio_pheno_mean_fw_tidy_adj <- gwas_pleio_pheno_mean_fw1 %>%
 g_mod_man <- list(
   geom_point(),
   # geom_hline(yintercept = -log10(alpha), lty = 2),
-  geom_hline(aes(yintercept = empirical_cutoff), lty = 2),
+  geom_hline(aes(yintercept = -log10(empirical_cutoff)), lty = 2),
   # geom_hline(aes(yintercept = neg_log10_fdr10, lty = "FDR 10%")),
   scale_color_manual(values = color, guide = FALSE),
   ylab(expression(-log[10](italic(p)))),
@@ -237,7 +233,8 @@ for (mod in unique(gwas_pleio_pheno_mean_fw_tidy_adj$model)) {
   # Create the plot
   g_gwas_manhattan <- gwas_pleio_pheno_mean_fw_tidy_adj %>%
     filter(model == mod) %>%
-    ggplot(aes(x = pos / 1e6, y = min_neg_log_p, group = chrom, col = color)) + 
+    ggplot(aes(x = pos / 1e6, y = min_neg_log_p, group = chrom, col = color)) +
+    # ggplot(aes(x = pos / 1e6, y = neg_log_q, group = chrom, col = color)) + 
     facet_grid(trait + coef_pair ~ chrom, switch = "x", scales = "free", space = "free_x") +
     g_mod_man
   
@@ -246,19 +243,4 @@ for (mod in unique(gwas_pleio_pheno_mean_fw_tidy_adj$model)) {
   
 }
 
-
-## Iterate over traits and plot
-for (tr in unique(gwas_pleio_pheno_mean_fw_tidy_adj$trait)) {
-  
-  # Create the plot
-  g_gwas_manhattan <- gwas_pleio_pheno_mean_fw_tidy_adj %>%
-    filter(trait == tr) %>%
-    ggplot(aes(x = pos / 1e6, y = min_neg_log_p, group = chrom, col = color)) + 
-    facet_grid(coef_pair + model ~ chrom, switch = "x", scales = "free", space = "free_x") +
-    g_mod_man
-  
-  ggsave(filename = str_c("gwas_pleio_manhattan_allmod_", tr, ".jpg"), plot = g_gwas_manhattan,
-         path = fig_dir, height = 12, width = 8, dpi = 1000)
-  
-}
 

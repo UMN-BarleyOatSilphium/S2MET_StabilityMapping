@@ -14,11 +14,11 @@ source(file.path(repo_dir, "source.R"))
 
 
 # Rename the marker matrix
-M <- S2TP_imputed_multi_genos_mat
+M <- s2tp_genos_imputed
 
 # Get the marker information
-snp_info <- S2TP_imputed_multi_genos_hmp %>%
-  select(marker = rs, chrom, pos, cM_pos) %>%
+snp_info <- s2tp_genos_hmp %>%
+  select(marker, chrom:cM_pos) %>%
   # Correct the cM position for BOPA snps
   mutate(cM_pos = if_else(str_detect(marker, "^S"), cM_pos, cM_pos / 1000))
 

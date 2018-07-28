@@ -21,7 +21,7 @@ source(file.path(repo_dir, "source.R"))
 load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 
 # Relationship matrix
-M <- S2TP_imputed_multi_genos_mat
+M <- s2tp_genos_imputed
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 # Significance threshold
@@ -213,28 +213,40 @@ g_pheno_fw_b <- pheno_fw_use_toplot %>%
 ## Plot the relationship between the genotypic effect and the sensitivity
 set.seed(415)
 
-# Calculate the correlation between genotype mean and the stability estimate
-stability_mean_corr <- pheno_fw_use %>%
+n_perm <- 10000
+
+## Use permutation to estimate the correlation
+stability_mean_corr_perm <- pheno_fw_use %>%
   distinct(trait, line_name, g, term, estimate) %>%
-  group_by(trait, term) %>% 
-  # Bootstrap the correlation
-  do(neyhart::bootstrap(x = .$g, y = .$estimate, fun = "cor")) %>%
+  group_by(trait, term) %>%
+  do({
+    df <- .
+    
+    # Estimate the base correlation
+    base_cor <- cor(df$g, df$estimate)
+    
+    perms <- permute(data = df, n = n_perm, estimate)
+    perm_cor <- map_dbl(perms$perm, ~{
+      d <- as.data.frame(.)
+      cor(d$g, d$estimate)
+    })
+    
+    # Estimate the p-value
+    pvalue <- mean(perm_cor >= abs(base_cor) | perm_cor <= -abs(base_cor))
+    
+    # Confidence intervals
+    ci <- quantile(perm_cor, c(alpha / 2, 1 - (alpha / 2))) + base_cor
+    ci_lower <- ci[1]
+    ci_upper <- ci[2]
+    
+    data_frame(base = base_cor, pvalue = pvalue, ci_lower = ci_lower, ci_upper = ci_upper)
+    
+  }) %>%
+  # Add annotation
   mutate(significant = !between(0, ci_lower, ci_upper),
          sig_ann = ifelse(significant, "*", ""),
          annotation = str_c("r = ", round(base, 3), sig_ann))
-
-
-# Use a parametric test
-stability_mean_corr_param <- pheno_fw_use %>%
-  distinct(trait, line_name, g, term, estimate) %>%
-  group_by(trait, term) %>% do(test = cor.test(.$g, .$estimate)) %>% 
-  ungroup() %>% 
-  mutate(base = map_dbl(test, "estimate"), 
-         pvalue = map_dbl(test, "p.value")) %>% 
-  select(-test) %>%
-  mutate(significant = pvalue <= alpha,
-         sig_ann = ifelse(significant, "*", ""),
-         annotation = str_c("r = ", round(base, 3), sig_ann))
+  
 
 
 # Create a list of plot additions
@@ -249,7 +261,7 @@ g_add <- list(geom_point(size = 0.1, color = "black"),
 g_linear_stability_and_mean <- pheno_fw_use %>%
   filter(term == "b") %>%
   ggplot(aes(x = g, y = estimate, group = FALSE)) +
-  geom_text(data = subset(stability_mean_corr_param, term == "b"), 
+  geom_text(data = subset(stability_mean_corr_perm, term == "b"), 
             aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 1.5) +
   facet_wrap(~ trait, scales = "free_x", ncol = 1, strip.position = "left") +
   ylab("Linear stability estimate") +
@@ -260,7 +272,7 @@ g_linear_stability_and_mean <- pheno_fw_use %>%
 g_nonlinear_stability_and_mean <- pheno_fw_use %>%
   filter(term == "log_delta") %>%
   ggplot(aes(x = g, y = estimate, group = FALSE)) +
-  geom_text(data = subset(stability_mean_corr_param, term == "log_delta"),
+  geom_text(data = subset(stability_mean_corr_perm, term == "log_delta"),
             aes(x = Inf, y = -Inf, label = annotation, vjust = -1, hjust = 1.2), col = "black", size = 1.5) +
   facet_wrap(~ trait, scales = "free", ncol = 1, strip.position = "left")+
   ylab("Non-linear stability estimate") +
@@ -298,7 +310,6 @@ ggsave(filename = "reaction_norms_and_correlations.jpg", plot = g_plotgrid, path
 
 
 ### Use a bi-variate model and the genomic relationship matrix to estimate genetic correlation
-library(EMMREML)
 # Load permutation results
 load(file.path(result_dir, "stability_correlation_permutation.RData"))
 
@@ -316,7 +327,8 @@ pheno_fw_gen_corr <- pheno_fw_use_tomodel %>%
     mf <- model.frame(estimate ~ line_name, df)
     
     # Create model matrices
-    Z <- model.matrix(~ -1 + line_name, mf)
+    Z <- model.matrix(~ -1 + line_name, mf) %>%
+      `colnames<-`(., colnames(K))
     X <- model.matrix(~ 1, mf)
     
     # Create the response matrix
@@ -343,12 +355,12 @@ pheno_fw_gen_corr_sig <- pheno_fw_gen_corr %>%
 
 
 # trait       term      trait1 trait2       corG    df    stat   pvalue
-# 1 GrainYield  b         g      b          0.646    181  11.4   5.13e-23
-# 2 GrainYield  log_delta g      log_delta  0.310    181   4.38  1.99e- 5
-# 3 HeadingDate b         g      b          0.0217   181   0.291 7.71e- 1
-# 4 HeadingDate log_delta g      log_delta -0.289    181  -4.07  7.10e- 5
-# 5 PlantHeight b         g      b          0.472    181   7.19  1.61e-11
-# 6 PlantHeight log_delta g      log_delta  0.566    181   9.23  7.30e-17
+# 1 GrainYield  b         g      b          0.639    181  11.2   2.37e-22
+# 2 GrainYield  log_delta g      log_delta  0.322    181   4.58  8.66e- 6
+# 3 HeadingDate b         g      b          0.0420   181   0.565 5.73e- 1
+# 4 HeadingDate log_delta g      log_delta -0.283    181  -3.96  1.06e- 4
+# 5 PlantHeight b         g      b          0.371    181   5.37  2.41e- 7
+# 6 PlantHeight log_delta g      log_delta  0.740    181  14.8   5.78e-33
 
 # Two-tailed test
 left_join(pheno_fw_gen_corr_perm, pheno_fw_gen_corr) %>% 
@@ -369,6 +381,7 @@ load(file.path(result_dir, "pheno_fw_mean_gwas_results.RData"))
 pheno_fw_gen_corr_snp <- pheno_fw_use_tomodel %>%
   group_by(trait, term) %>%
   do({
+    
     df <- .
     # Create a model.frame
     mf <- model.frame(estimate ~ line_name, df)
@@ -407,12 +420,12 @@ pheno_fw_gen_corr_snp_sig <- pheno_fw_gen_corr_snp %>%
          pvalue = 2 * pt(q = abs(stat), df = df, lower.tail = FALSE))
 
 # trait       term      trait1 trait2      corG    df   stat   pvalue
-# 1 GrainYield  b         g      b          0.646   181  11.4  5.13e-23
-# 2 GrainYield  log_delta g      log_delta  0.310   181   4.38 1.99e- 5
-# 3 HeadingDate b         g      b         -0.443   181  -6.66 3.24e-10
-# 4 HeadingDate log_delta g      log_delta -0.426   181  -6.34 1.80e- 9
-# 5 PlantHeight b         g      b          0.412   181   6.08 6.96e- 9
-# 6 PlantHeight log_delta g      log_delta  0.700   181  13.2  2.87e-28
+# 1 GrainYield  b         g      b          0.639   181  11.2  2.37e-22
+# 2 GrainYield  log_delta g      log_delta  0.322   181   4.58 8.66e- 6
+# 3 HeadingDate b         g      b         -0.430   181  -6.41 1.24e- 9
+# 4 HeadingDate log_delta g      log_delta -0.239   181  -3.31 1.11e- 3
+# 5 PlantHeight b         g      b          0.418   181   6.19 3.83e- 9
+# 6 PlantHeight log_delta g      log_delta  0.686   181  12.7  8.98e-27
 
 
 
@@ -437,72 +450,72 @@ write_csv(x = stability_mean_corr_toprint, path = file.path(fig_dir, "stability_
 
 
 
-
-# Count the number of cross-overs per genotype
-
-# Group by trait
-pheno_fw_nXO <- pheno_fw_use_toplot %>% 
-  group_by(trait) %>% 
-  do({
-    df <- .
-    
-    # What is the range in environemntal values?
-    h_range <- range(df$h)
-    
-    # Get the distinct values of b and g for all lines
-    df1 <- distinct(df, line_name, g, b)
-    
-    # List of genotypes
-    line_names <- unique(df1$line_name)
-    
-    # Create a df
-    cross_over_count <- expand.grid(geno1 = line_names, geno2 = line_names) %>%
-      filter(geno1 != geno2)
-    
-    # Iterate over the data.frame
-    cross_over_count1 <- apply(X = cross_over_count, MARGIN = 1, FUN = function(i) {
-        
-      # Subset the information
-      df1_sub <- subset(df1, line_name %in% c(i), c(b, g))
-      
-      # Create a square matrix
-      A <- cbind(c(1, 1), -df1_sub$b)
-      b <- df1_sub$g
-      
-      # Solve
-      x <- solve(A, b)
-      
-      # Get the x value
-      x1 <- x[2]
-      
-      # Is the value within the environment range?
-      between(x1, h_range[1], h_range[2]) })
-    
-    # Combine the dfs
-    cbind(cross_over_count, cross_over_count1) })
-
-
-# Find the average proportion of crossovers per trait
-pheno_fw_nXO %>% 
-  group_by(trait, geno1) %>% 
-  summarize(nCO = sum(cross_over_count1), 
-            meanCO = mean(cross_over_count1)) %>% 
-  summarize(mean = mean(meanCO))
-
-# trait        mean
-# 1 GrainYield  0.415
-# 2 HeadingDate 0.124
-# 3 PlantHeight 0.374
-
-# Visualize
-pheno_fw_nXO %>% 
-  group_by(trait, geno1) %>% 
-  summarize(nCO = sum(cross_over_count1), 
-            meanCO = mean(cross_over_count1)) %>% 
-  ggplot(aes(x = trait, y = meanCO)) + 
-  geom_boxplot() + 
-  theme_bw()
-
+# 
+# # Count the number of cross-overs per genotype
+# 
+# # Group by trait
+# pheno_fw_nXO <- pheno_fw_use_toplot %>% 
+#   group_by(trait) %>% 
+#   do({
+#     df <- .
+#     
+#     # What is the range in environemntal values?
+#     h_range <- range(df$h)
+#     
+#     # Get the distinct values of b and g for all lines
+#     df1 <- distinct(df, line_name, g, b)
+#     
+#     # List of genotypes
+#     line_names <- unique(df1$line_name)
+#     
+#     # Create a df
+#     cross_over_count <- expand.grid(geno1 = line_names, geno2 = line_names) %>%
+#       filter(geno1 != geno2)
+#     
+#     # Iterate over the data.frame
+#     cross_over_count1 <- apply(X = cross_over_count, MARGIN = 1, FUN = function(i) {
+#         
+#       # Subset the information
+#       df1_sub <- subset(df1, line_name %in% c(i), c(b, g))
+#       
+#       # Create a square matrix
+#       A <- cbind(c(1, 1), -df1_sub$b)
+#       b <- df1_sub$g
+#       
+#       # Solve
+#       x <- solve(A, b)
+#       
+#       # Get the x value
+#       x1 <- x[2]
+#       
+#       # Is the value within the environment range?
+#       between(x1, h_range[1], h_range[2]) })
+#     
+#     # Combine the dfs
+#     cbind(cross_over_count, cross_over_count1) })
+# 
+# 
+# # Find the average proportion of crossovers per trait
+# pheno_fw_nXO %>% 
+#   group_by(trait, geno1) %>% 
+#   summarize(nCO = sum(cross_over_count1), 
+#             meanCO = mean(cross_over_count1)) %>% 
+#   summarize(mean = mean(meanCO))
+# 
+# # trait        mean
+# # 1 GrainYield  0.415
+# # 2 HeadingDate 0.124
+# # 3 PlantHeight 0.374
+# 
+# # Visualize
+# pheno_fw_nXO %>% 
+#   group_by(trait, geno1) %>% 
+#   summarize(nCO = sum(cross_over_count1), 
+#             meanCO = mean(cross_over_count1)) %>% 
+#   ggplot(aes(x = trait, y = meanCO)) + 
+#   geom_boxplot() + 
+#   theme_bw()
+# 
 
 
 

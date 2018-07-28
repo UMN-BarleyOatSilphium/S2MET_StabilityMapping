@@ -83,6 +83,8 @@ cv_results_alldata <- pheno_mean_fw_tomodel_cv %>%
       select(-train:-.id)
     
   })
+
+
   
 
 
@@ -215,8 +217,7 @@ cv_results_env <- pheno_mean_fw_tomodel_cv %>%
       select(trait, iter, pred_gb, pred_pheno)
     
   })
-   
- 
+
 
 
 
