@@ -367,7 +367,9 @@ pheno_fw_gen_corr_perm %>%
   filter(!is.na(corrG)) %>%
   left_join(., pheno_fw_gen_corr) %>% 
   group_by(trait, term) %>% 
-  summarize(p_value = mean(corrG >= abs(corG) | corrG <= -abs(corG)))
+  summarize(p_value = mean(corrG >= abs(corG) | corrG <= -abs(corG)),
+            p_value_upper = mean(corrG >= corG),
+            p_value_lower = mean(corrG <= corG))
 
 
 
