@@ -60,7 +60,7 @@ pheno_fw_use_tomodel <- pheno_fw_use %>%
 
 
 ## Use a permutation test to determine significance
-n_perm_iter <- 10000
+n_perm_iter <- 5000
 
 # Generate the permutations
 pheno_fw_use_tomodel_perm <- pheno_fw_use_tomodel %>%
@@ -87,11 +87,11 @@ pheno_fw_gen_corr_perm <- mclapply(X = pheno_fw_use_tomodel_perm_split, FUN = fu
   # Iterate
   for (i in seq_along(corr_out)) {
     Y <- t(as.matrix(as.data.frame(core_df$perm[[i]])[,c("g", "estimate")]))
-    # fit <- emmremlMultivariate(Y = Y, X = X, Z = Z, K = K)
-    # vcovG <- fit$Vg
+    fit <- emmremlMultivariate(Y = Y, X = X, Z = Z, K = K)
+    vcovG <- fit$Vg
     
-    fit <- sommer::mmer(Y = t(Y), X = t(X), Z = list(gen = list(Z = t(Z), K = K)))
-    vcovG <- fit$var.comp$gen
+    # fit <- sommer::mmer(Y = t(Y), X = t(X), Z = list(gen = list(Z = t(Z), K = K)), silent = TRUE)
+    # vcovG <- fit$var.comp$gen
     corr_out[i] <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
     
   }

@@ -362,8 +362,10 @@ pheno_fw_gen_corr_sig <- pheno_fw_gen_corr %>%
 # 5 PlantHeight b         g      b          0.371    181   5.37  2.41e- 7
 # 6 PlantHeight log_delta g      log_delta  0.740    181  14.8   5.78e-33
 
-# Two-tailed test
-left_join(pheno_fw_gen_corr_perm, pheno_fw_gen_corr) %>% 
+# Two-tailed test using permutation results
+pheno_fw_gen_corr_perm %>%
+  filter(!is.na(corrG)) %>%
+  left_join(., pheno_fw_gen_corr) %>% 
   group_by(trait, term) %>% 
   summarize(p_value = mean(corrG >= abs(corG) | corrG <= -abs(corG)))
 
