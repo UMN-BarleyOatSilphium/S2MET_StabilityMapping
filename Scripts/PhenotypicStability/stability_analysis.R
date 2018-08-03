@@ -120,7 +120,7 @@ pheno_fw_uniq <- pheno_fw_use %>%
 g_mod <- list(
   geom_density(aes(fill = "blue")),
   xlab("Estimate"),
-  theme_bw() +
+  theme_pnas() +
   theme(axis.title.y = element_blank()) )
 
 # Just plot linear stability
@@ -143,10 +143,10 @@ g_pheno_fw_dens_delta <- pheno_fw_uniq %>%
   g_mod
 
 # Add the plots together
-g_fw_dist <- plot_grid(g_pheno_fw_dens_b, g_pheno_fw_dens_delta, ncol = 2)
+g_fw_dist <- plot_grid(g_pheno_fw_dens_b, g_pheno_fw_dens_delta, ncol = 2, align = "hv")
 
 ggsave(filename = "stability_estimate_distriubtions.jpg", plot = g_fw_dist, path = fig_dir,
-       height = 10, width = 5, dpi = 1000)
+       height = 10, width = 8.7, units = "cm", dpi = 1000)
 
 
 
@@ -210,7 +210,7 @@ g_pheno_fw_b <- pheno_fw_use_toplot %>%
 
 
 
-## Plot the relationship between the genotypic effect and the sensitivity
+## Plot the correlation between the genotypic effect and the sensitivity
 set.seed(415)
 
 n_perm <- 10000

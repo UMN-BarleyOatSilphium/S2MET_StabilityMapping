@@ -31,7 +31,7 @@ n_cores <- detectCores()
 
 # Format the genotype data for use
 geno_use <- cbind(snp_info, t(s2tp_genos_imputed)) %>%
-  select(marker, chrom, pos, tp)
+  select(marker, chrom, pos, tp_geno)
 
 # K matrix
 M <- s2tp_genos_imputed
@@ -40,6 +40,7 @@ K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
 # Format for modeling
 pheno_to_model <- pheno_mean_fw %>% 
+  filter(line_name %in% tp_geno) %>%
   distinct(line_name, trait, g, b, delta) %>% 
   mutate(log_delta = log(delta)) %>%
   select(-delta) %>%
@@ -298,7 +299,7 @@ gwas_mlmm_final <- gwas_mlmm_model %>%
 # Format for modeling
 pheno_to_model <- pheno_mean_fw_tpvp %>% 
   distinct(line_name, trait, g, b, delta) %>% 
-  filter(line_name %in% tp) %>%
+  filter(line_name %in% tp_geno) %>%
   mutate(log_delta = log(delta)) %>%
   select(-delta) %>%
   split(.$trait) %>%

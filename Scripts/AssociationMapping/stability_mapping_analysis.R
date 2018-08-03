@@ -26,13 +26,7 @@ source(file.path(repo_dir, "source.R"))
 
 
 # Rename the marker matrix
-M <- S2TP_imputed_multi_genos_mat
-
-# Get the marker information
-snp_info <- S2TP_imputed_multi_genos_hmp %>%
-  select(marker = rs, chrom, pos, cM_pos) %>%
-  # Correct the cM position for BOPA snps
-  mutate(cM_pos = if_else(str_detect(marker, "^S"), cM_pos, cM_pos / 1000))
+M <- s2tp_genos_mat
 
 # Subset the entry list for the tp
 tp_entry_list <- entry_list %>%
@@ -67,35 +61,36 @@ K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 ## Visualize pop structure
 K_prcomp <- prcomp(K)
 
+
 # Tidy, calculate lambda, then add program information
 K_prcomp_df <- tidy(K_prcomp) %>%
   mutate(PC = str_c("PC", PC)) %>%
   dplyr::rename(line_name = row) %>%
   left_join(entry_list, by = c("line_name" = "Line"))
 
-# Extract lambda and calculate variance explained
-var_exp <- K_prcomp$sdev %>% 
-  set_names(str_c("PC", seq_along(.))) %>%
-  {. / sum(.)}
+## Extract the variance explained by each PC
+var_exp <- summary(K_prcomp)$importance[2,]
+
+
 
 ## Combine data.frame to plot
 df_PC1_PC2 <- K_prcomp_df %>% 
   filter(PC %in% c("PC1", "PC2")) %>% 
   spread(PC, value) %>%
   mutate(x = "PC1", y = "PC2", var_expx = var_exp["PC1"], var_expy = var_exp["PC2"]) %>%
-  dplyr::rename(xvalue = PC1, yvalue = PC2)
+  rename(xvalue = PC1, yvalue = PC2)
 
 df_PC1_PC3 <- K_prcomp_df %>% 
   filter(PC %in% c("PC1", "PC3")) %>% 
   spread(PC, value) %>%
   mutate(x = "PC1", y = "PC3", var_expx = var_exp["PC1"], var_expy = var_exp["PC3"]) %>%
-  dplyr::rename(xvalue = PC1, yvalue = PC3)
+  rename(xvalue = PC1, yvalue = PC3)
 
 df_PC2_PC3 <- K_prcomp_df %>% 
   filter(PC %in% c("PC2", "PC3")) %>% 
   spread(PC, value) %>%
   mutate(x = "PC2", y = "PC3", var_expx = var_exp["PC2"], var_expy = var_exp["PC3"]) %>%
-  dplyr::rename(xvalue = PC2, yvalue = PC3)
+  rename(xvalue = PC2, yvalue = PC3)
 
 ## Combine the data frames and combine the variance explained with
 ## the PC

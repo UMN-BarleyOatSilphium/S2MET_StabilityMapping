@@ -40,11 +40,11 @@ load(file.path(result_dir, "pheno_mean_fw_results.RData"))
 
 # Use the environment mean estimates from the TP and VP
 pheno_mean_fw <- pheno_mean_fw_tpvp %>% 
-  filter(line_name %in% tp)
+  filter(line_name %in% tp_geno)
 
 
 ## Calculate marker effects separately for each environment
-marker_by_env_effects <- S2_MET_BLUEs_tp %>%
+marker_by_env_effects <- pheno_mean_fw %>%
   mutate(line_name = as.factor(line_name)) %>%
   group_by(trait, environment) %>%
   do({

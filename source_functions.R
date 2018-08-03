@@ -142,17 +142,18 @@ mv_gwas <- function(pheno, geno, fixed = NULL, K, n.PC) {
   Z <- model.matrix(form, pheno)
   colnames(Z) <- colnames(K)
   
-  # Y_use <- Y
-  Y_use <- scale(Y)
+  Y_use <- Y
+  # Y_use <- scale(Y)
   
   K_use <- K
   # K_use <- K_stand
   
-  ## Fit the model
-  # fit_base <- emmremlMultivariate(Y = t(Y), X = t(X), Z = t(Z), K = K)
-  fit_base <- sommer::mmer(Y = Y_use, X = X, Z = list(gen = list(Z = Z, K = K_use)), check.model = FALSE, silent = TRUE, draw = FALSE)
+  # ## Fit the model
+  # fit_base <- emmremlMultivariate(Y = t(Y_use), X = t(X), Z = t(Z), K = K_use)
+  # varG <- fit_base$Vg
+  # varR <- fit_base$Ve
   
-  # Get the genetic and residual variance components
+  fit_base <- sommer::mmer(Y = Y_use, X = X, Z = list(gen = list(Z = Z, K = K_use)), check.model = FALSE, silent = TRUE, draw = FALSE)
   varG <- fit_base$var.comp$gen
   varR <- fit_base$var.comp$units
   
@@ -160,93 +161,49 @@ mv_gwas <- function(pheno, geno, fixed = NULL, K, n.PC) {
   K_comb <- kronecker(varG, K_use)
   I_comb <- kronecker(varR, diag(nrow(Y_use)))
   bigK <- K_comb + I_comb
-  Mmat <- solve(chol(bigK))
+  Mmat <- solve(bigK)
   
-  Y_t <- crossprod(Mmat, as.vector(Y_use))
-  cof_t <- crossprod(Mmat, rbind(X, X))
+  # Vectorize Y matrix
+  Yvec <- as.vector(Y_use)
+  # Incidence for mean
+  X1 <- cbind(kronecker(diag(d), mu), kronecker(diag(d), PCs))
   
-  ## Calculate the RSS for the null model
-  RSS_fixed <- sum(lsfit(x = cof_t, y = Y_t, intercept = FALSE)$residuals^2)
+  # Number of samples and parameters
+  n <- nrow(Y)
+  p <- ncol(Y) + (ncol(Y) * ncol(PCs)) + 1 # Number of intercepts + beta_PC + beta_snp
+  v2 <- n - p
+
+  marker_score <- apply(X = M, MARGIN = 2, FUN = function(snp) {
   
+    ## Combine with SNPs
+    X2 <- cbind(X1, snp = rep(snp, d))
+    
+    W <- crossprod(X2, Mmat %*% X2)
+    Winv <- try(solve(W), silent = TRUE)
+    
+    if (class(Winv) != "try-error") {
+      
+      # Stolen from GWAS function in rrBLUP
+      beta <- t(Winv %*% crossprod(X2, Mmat %*% Yvec))
+      resid <- Yvec - X2 %*% t(beta)
+      
+      s2 <- as.double(crossprod(resid, Mmat %*% resid))/v2
+      CovBeta <- s2 * Winv
+      
+      # Wald test
+      Fstat <- beta[p]^2/CovBeta[p, p]
+      pvalue <- pchisq(q = Fstat, df = 1, lower.tail = FALSE)
+    } else {
+      pvalue <- NA
+    }
+    
+    return(pvalue)
+    
+  })
   
-  
-  print("Variance components estimated. Testing markers.")
-  
-  # Scale the SNPs by multiplying by the standard deviation of each trait
-  M_scale <- map(sqrt(diag(varG)), ~M * .)
-  # Bind
-  M_use <- do.call("rbind", M_scale)
-  
-  # Calculate the RSS of each SNP for the full model
-  RSS_full <- apply(X = M_use, MARGIN = 2, FUN = function(snp) sum(lsfit(x = cbind(cof_t, snp), y = Y_t, intercept = FALSE)$residuals^2) )
-  
-  # Determine the degrees of freedom for the F-test
-  n <- nrow(Y_use)
-  # Number of fixed effects (without SNPs)
-  p1 <- ncol(X)
-  # Number of fixed effects (with SNPs)
-  p2 <- p1 + 1
-  # Degrees of freedom
-  df_fixed <- (2 * n) - p1
-  df_full <- (2 * n) - p2
-  
-  ## F test
-  F_full <- (((RSS_fixed / RSS_full) - 1) * ((2 * n) - p2)) / (p2 - p1)
-  pvalue <- pf(q = F_full, df1 = df_fixed - df_full, df2 = df_full, lower.tail = FALSE)
-  
-# 
-#   
-#   # Calculate the Hinv matrix
-#   ZKZt <- (Z %*% K %*% t(Z))
-#   Hinv_mv <- solve(kronecker(ZKZt, varG) + kronecker(diag(nrow(ZKZt)), varR))
-#   
-#   # Vectorize the Y matrix
-#   Yvec <- Y[rep(seq(nrow(Y)), each = d),,drop = FALSE]
-#   mu_vec <- kronecker(mu, diag(d))
-#   
-#   # Number of samples and parameters
-#   n <- length(Y)
-#   p <- ncol(Y) * (ncol(X) + 1)
-#   v2 <- n - p
-#   seq_p <- setdiff(seq(p), seq(ncol(X) * d))
-#   
-#   print("Variance components estimated. Testing markers.")
-#   
-#   ## Iterate over the markers
-#   marker_score <- apply(X = M, MARGIN = 2, FUN = function(snp) {
-#     
-#     # Create a new X matrix
-#     X1 <- cbind(X, snp)
-#     # Replicate
-#     X1_use <- X1[rep(seq(nrow(X1)), each = d),,drop = FALSE]
-#     # Vectorize the X1
-#     Xforvec <- (kronecker(X1, diag(d)))
-#     
-#     W <- crossprod(X1_use, Hinv_mv %*% X1_use)
-#     Winv <- try(solve(W), silent = TRUE)
-#     if (class(Winv) != "try-error") {
-#       beta <- t(Winv %*% crossprod(X1_use, Hinv_mv %*% Yvec))
-#       CovBeta <- solve(crossprod(Xforvec, Hinv_mv %*% Xforvec))
-#       
-#       fitted <- (X1 %*% t(beta)) + t(blup_base)
-#       # Residuals
-#       resid <- Y - fitted
-#       ssr <- colSums(resid^2)
-#       
-#       # Fstat <- ((ssr_base - ssr) / ssr) / (df_base - (df_base - 1)) / (df_base - 1)
-#       # pvalue <- pf(q = Fstat, df1 = 1, df2 = df_base - 1, lower.tail = FALSE)
-#     
-#       # Conduct Wald test
-#       statistic <- as.vector(beta[seq_p])^2 / diag(CovBeta)[seq_p]
-#       pvalue <- pchisq(q = statistic, df = 1, lower.tail = FALSE)
-#     } else {
-#       pvalue <- NA
-#     }
-#     
-#     return(pvalue) })
   
   # Transpose and add column names
-  marker_score1 <- -log10(pvalue)
+  marker_score1 <- -log10(marker_score)
   
   # Combine with the SNP information and return
   out <- cbind(snp_info, marker_score1)
@@ -399,31 +356,6 @@ calc_gh <- function(df) {
     left_join(., env_blups, by = "environment")
   
   return(df1)
-  
-}
-
-
-
-# Write a function that takes a train and test set and predicts using rrBLUP	+
-predict_RR <- function(train, test, K) {	
-  
-  # Convert to df	
-  train_df <- as.data.frame(train)	
-  test_df <- as.data.frame(test)	
-  
-  # Create the model matrix	
-  mf <- model.frame(value ~ line_name, train_df)	
-  y <- model.response(mf)	
-  Z <- model.matrix(~ -1 + line_name, mf)	
-  
-  fit <- mixed.solve(y = y, Z = Z, K = K)	
-  
-  # Tidy	
-  u_hat_tidy <- fit$u %>% 	
-    data.frame(line_name = names(.), pred_value = ., stringsAsFactors = FALSE, row.names = NULL)	
-  
-  # Combine and return the predictions	
-  suppressWarnings(left_join(test_df, u_hat_tidy, by = "line_name"))	
   
 }
 

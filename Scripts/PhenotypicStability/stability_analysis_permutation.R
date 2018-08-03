@@ -79,39 +79,44 @@ pheno_fw_use_tomodel_perm_split <- pheno_fw_use_tomodel_perm %>%
   assign_cores(n_cores) %>%
   split(.$core)
 
-# Parallelize
-pheno_fw_gen_corr_perm <- mclapply(X = pheno_fw_use_tomodel_perm_split, FUN = function(core_df) {
-  # Empty vector
-  corr_out <- numeric(nrow(core_df))
-  
-  # Create the model matrices
-  mf <- model.frame(g ~ line_name, as.data.frame(core_df$perm[[1]]))
-  Z <- t(model.matrix(~ -1 + line_name, mf)) %>%
-    `rownames<-`(., colnames(K))
-  X <- t(model.matrix(~ 1, mf))
-  
-  # Iterate
-  for (i in seq_along(corr_out)) {
-    Y <- t(as.matrix(as.data.frame(core_df$perm[[i]])[,c("g", "estimate")]))
-    fit <- emmremlMultivariate(Y = Y, X = X, Z = Z, K = K)
-    vcovG <- fit$Vg
-    
-    # fit <- sommer::mmer(Y = t(Y), X = t(X), Z = list(gen = list(Z = t(Z), K = K)), silent = TRUE)
-    # vcovG <- fit$var.comp$gen
-    corr_out[i] <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
-    
-  }
-  
-  # Add the vector to the df and return
-  core_df %>% 
-    mutate(corrG = corr_out) %>% 
-    select(trait, term, iter = .id, corrG)
-  
-}, mc.cores = n_cores)
+# # Parallelize
+# pheno_fw_gen_corr_perm <- mclapply(X = pheno_fw_use_tomodel_perm_split, FUN = function(core_df) {
+#   # Empty vector
+#   corr_out <- numeric(nrow(core_df))
+#   
+#   # Create the model matrices
+#   mf <- model.frame(g ~ line_name, as.data.frame(core_df$perm[[1]]))
+#   Z <- t(model.matrix(~ -1 + line_name, mf)) %>%
+#     `rownames<-`(., colnames(K))
+#   X <- t(model.matrix(~ 1, mf))
+#   
+#   # Iterate
+#   for (i in seq_along(corr_out)) {
+#     Y <- t(as.matrix(as.data.frame(core_df$perm[[i]])[,c("g", "estimate")]))
+#     fit <- emmremlMultivariate(Y = Y, X = X, Z = Z, K = K)
+#     vcovG <- fit$Vg
+#     
+#     # fit <- sommer::mmer(Y = t(Y), X = t(X), Z = list(gen = list(Z = t(Z), K = K)), silent = TRUE)
+#     # vcovG <- fit$var.comp$gen
+#     corr_out[i] <- vcovG[1,2] / prod(sqrt(diag(vcovG)))
+#     
+#   }
+#   
+#   # Add the vector to the df and return
+#   core_df %>% 
+#     mutate(corrG = corr_out) %>% 
+#     select(trait, term, iter = .id, corrG)
+#   
+# }, mc.cores = n_cores)
+# 
+# 
+# ## Collapse
+# pheno_fw_gen_corr_perm <- bind_rows(pheno_fw_gen_corr_perm)
+# 
+# # Save
+# save_file <- file.path(result_dir, "stability_correlation_permutation.RData")
+# save("pheno_fw_gen_corr_perm", file = save_file)
 
-
-## Collapse
-pheno_fw_gen_corr_perm <- bind_rows(pheno_fw_gen_corr_perm)
 
 
 ## Use the significant GWAS results to correct for large-effect QTL
@@ -167,5 +172,5 @@ pheno_fw_gen_corr_qtl_perm <- bind_rows(pheno_fw_gen_corr_qtl_perm)
 
 # Save
 save_file <- file.path(result_dir, "stability_correlation_permutation.RData")
-save("pheno_fw_gen_corr_perm", "pheno_fw_gen_corr_qtl_perm", file = save_file)
+save("pheno_fw_gen_corr_qtl_perm", file = save_file)
 

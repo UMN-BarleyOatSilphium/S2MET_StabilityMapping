@@ -20,7 +20,6 @@ source(file.path(repo_dir, "source.R"))
 ## Part 2 - Calculating genotype mean and stability
 # source(file.path(script_dir, "PhenotypicStability/trait_mean_stability_computation.R"))  # Calculates trait mean and stability estimates
 # source(file.path(script_dir, "PhenotypicStability/marker_effect_by_env_and_stability.R"))    # Calculates marker effect stability
-# source(file.path(script_dir, "PhenotypicStability/marker_subset_generation.R"))    # Generates different marker subsets for predictions (may be removed)
 
 ## Part 3 - Association Mapping
 # source(file.path(script_dir, "AssociationMapping/stability_mapping.R"))   # Main script for association mapping and MLMM

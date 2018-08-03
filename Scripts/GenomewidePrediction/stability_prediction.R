@@ -30,7 +30,7 @@ n_cores <- detectCores()
 
 
 # Rename the marker matrix
-M <- S2TP_imputed_multi_genos_mat[tp_geno,]
+M <- s2tp_genos_mat
 # Overall K
 K <- A.mat(X = M, min.MAF = 0, max.missing = 1)
 
@@ -47,7 +47,7 @@ p_train <- 0.60
 
 # Use the TP + VP data
 pheno_mean_fw <- pheno_mean_fw_tpvp %>%
-  filter(line_name %in% tp)
+  filter(line_name %in% tp_geno)
 
 
 # Create a tidy data.frame for modeling
@@ -413,191 +413,4 @@ vp_prediction_env <- pheno_mean_fw_tomodel_pov %>%
 save_file <- file.path(result_dir, "genomewide_prediction_results.RData")
 save("cv_results_alldata", "cv_results_env", "vp_prediction_all_data", "vp_prediction_env",
      file = save_file)
-
-
-
-
-## Use marker subsets to predict stability  
-# Load the marker subsets
-load(file.path(result_dir, "marker_subsets_tpvp.RData"))
-
-## Top markers
-top_rank_markers_predictions <- top_rank_markers_tpvp %>%
-  map(function(marker_df) {
-    
-    pheno_mean_fw_tomodel %>% 
-      mutate(line_name = as.factor(line_name)) %>%
-      group_by(trait, coef) %>%
-      do({
-        df <- .
-        
-        # Grab the markers
-        markers_use <- subset(marker_df, trait == unique(df$trait) & coef == unique(df$coef), marker, drop = TRUE)
-        # Create relationship matrix
-        K_mat <- A.mat(X = M[,markers_use], min.MAF = 0, max.missing = 1)
-        
-        # Separate the training from validation
-        df_train <- filter(df, line_name %in% tp_geno1)
-        mf <- model.frame(value ~ line_name, df_train)
-        y <- model.response(mf)
-        Z <- model.matrix(~ -1 + line_name, mf)
-        
-        # Fit the model
-        fit <- mixed.solve(y = y, Z = Z, K = K_mat)
-        
-        # Return the BLUPs
-        blups <- data.frame(line_name = names(fit$u), pred_value = fit$u, row.names = NULL, stringsAsFactors = FALSE)
-        # Just the vp
-        filter(df, line_name %in% vp_geno1) %>%
-          left_join(., blups, by = "line_name")
-        
-      })
-    
-  })
-    
-
-
-## Top, evenly-spaced markers
-tesm_markers_predictions <- top_rank_evenly_spaced_markers_tpvp %>%
-  map(function(marker_df) {
-    
-    pheno_mean_fw_tomodel %>% 
-      mutate(line_name = as.factor(line_name)) %>%
-      group_by(trait, coef) %>%
-      do({
-        df <- .
-        
-        # Grab the markers
-        markers_use <- subset(marker_df, trait == unique(df$trait) & coef == unique(df$coef), marker, drop = TRUE)
-        # Create relationship matrix
-        K_mat <- A.mat(X = M[,markers_use], min.MAF = 0, max.missing = 1)
-        
-        # Separate the training from validation
-        df_train <- filter(df, line_name %in% tp_geno1)
-        mf <- model.frame(value ~ line_name, df_train)
-        y <- model.response(mf)
-        Z <- model.matrix(~ -1 + line_name, mf)
-        
-        # Fit the model
-        fit <- mixed.solve(y = y, Z = Z, K = K_mat)
-        
-        # Return the BLUPs
-        blups <- data.frame(line_name = names(fit$u), pred_value = fit$u, row.names = NULL, stringsAsFactors = FALSE)
-        # Just the vp
-        filter(df, line_name %in% vp_geno1) %>%
-          left_join(., blups, by = "line_name")
-        
-      })
-    
-  })
-
-
-## Evenly-spaced markers
-esm_markers_predictions <- evenly_spaced_markers_tpvp %>%
-  map(function(marker_df) {
-    
-    # Grab the markers
-    markers_use <- subset(marker_df, , marker, drop = TRUE)
-    # Create relationship matrix
-    K_mat <- A.mat(X = M[,markers_use], min.MAF = 0, max.missing = 1)
-    
-    pheno_mean_fw_tomodel %>% 
-      mutate(line_name = as.factor(line_name)) %>%
-      group_by(trait, coef) %>%
-      do({
-        df <- .
-        
-        # Separate the training from validation
-        df_train <- filter(df, line_name %in% tp_geno1)
-        mf <- model.frame(value ~ line_name, df_train)
-        y <- model.response(mf)
-        Z <- model.matrix(~ -1 + line_name, mf)
-        
-        # Fit the model
-        fit <- mixed.solve(y = y, Z = Z, K = K_mat)
-        
-        # Return the BLUPs
-        blups <- data.frame(line_name = names(fit$u), pred_value = fit$u, row.names = NULL, stringsAsFactors = FALSE)
-        # Just the vp
-        filter(df, line_name %in% vp_geno1) %>%
-          left_join(., blups, by = "line_name")
-        
-      })
-    
-  })
-
-
-## Random markers
-# Create a df to parallelize
-random_markers_split <- data_frame(nmar = names(random_markers_tpvp), random_markers_tpvp) %>% 
-  unnest() %>% 
-  group_by(nmar) %>%
-  mutate(iter = seq(n())) %>% 
-  ungroup() %>%
-  assign_cores(n_cores) %>%
-  split(.$core)
-
-# Parallelize
-rand_marker_predction_out <- mclapply(X = random_markers_split, FUN = function(core_df) {
-  
-  # Map over the markers
-  out <- core_df$random_markers_tpvp %>%
-    map("marker") %>%
-    map(~{
-      
-      K_mat <- A.mat(X = M[,.], min.MAF = 0, max.missing = 1)
-      
-      pheno_mean_fw_tomodel %>% 
-        mutate(line_name = as.factor(line_name)) %>%
-        group_by(trait, coef) %>%
-        do({
-          df <- .
-          
-          # Separate the training from validation
-          df_train <- filter(df, line_name %in% tp_geno1)
-          mf <- model.frame(value ~ line_name, df_train)
-          y <- model.response(mf)
-          Z <- model.matrix(~ -1 + line_name, mf)
-          
-          # Fit the model
-          fit <- mixed.solve(y = y, Z = Z, K = K_mat)
-          
-          # Return the BLUPs
-          blups <- data.frame(line_name = names(fit$u), pred_value = fit$u, row.names = NULL, stringsAsFactors = FALSE)
-          # Just the vp
-          filter(df, line_name %in% vp_geno1) %>%
-            left_join(., blups, by = "line_name")
-          
-        })
-      
-    })
-  
-  core_df %>%
-    mutate(results = out) %>%
-    select(-random_markers_tpvp, -core)
-  
-}, mc.cores = n_cores)
-
-
-rand_marker_predctions <- bind_rows(rand_marker_predction_out)
-
-
-## Save everything
-all_marker_prediction_results <- list(
-  vp_prediction_all_data = vp_prediction_all_data,
-  vp_prediction_loyo = vp_prediction_loyo,
-  vp_prediction_rand_env = vp_prediction_rand_env
-)
-
-marker_subset_prediction_results <- list(
-  top_rank_markers_predictions = top_rank_markers_predictions,
-  tesm_markers_predictions = tesm_markers_predictions,
-  esm_markers_predictions = esm_markers_predictions,
-  rand_marker_predctions = rand_marker_predctions
-)
-
-save("all_marker_prediction_results", "marker_subset_prediction_results", 
-     file = file.path(result_dir, "vp_stability_prediction.RData"))
-
-
 
