@@ -34,7 +34,7 @@ n_cores <- detectCores()
 # Substitute the estimates of stability using just the TP with estimates using
 # both the TP and VP
 pheno_mean_fw <- pheno_mean_fw_tpvp %>%
-  filter(line_name %in% tp)
+  filter(line_name %in% tp_geno)
 
 
 # Extract the unique stability coefficients
@@ -122,6 +122,9 @@ pheno_fw_use_tomodel_perm_split <- pheno_fw_use_tomodel_perm %>%
 ## Use the significant GWAS results to correct for large-effect QTL
 # Parallelize
 pheno_fw_gen_corr_qtl_perm <- mclapply(X = pheno_fw_use_tomodel_perm_split, FUN = function(core_df) {
+  
+  # core_df <- pheno_fw_use_tomodel_perm_split[[1]]
+
   # Empty vector
   corr_out <- numeric(nrow(core_df))
   
