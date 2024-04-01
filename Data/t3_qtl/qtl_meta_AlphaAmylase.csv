@@ -1,0 +1,12 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"alpha amylase","SCRI_RS_141314","chr5H",666505826,"HORVU5Hr1G124500","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2EDV2]",2.1747255539192
+"alpha amylase","SCRI_RS_106456","chr7H",31337461,"HORVU7Hr1G021800.1","transcript, nontranslating_CDS",2.1267266974764
+"alpha amylase","12_30382","chr5H",668438485,"HORVU5Hr1G125290","gene, protein_coding",2.0785823233394
+"alpha amylase","SCRI_RS_207382","chr5H",666825812,"HORVU5Hr1G124610","gene, protein_coding",2.078467068644
+"alpha amylase","SCRI_RS_165349","chr5H",666826588,"HORVU5Hr1G124610","gene, protein_coding",2.0691183417811
+"alpha amylase","SCRI_RS_10702","chr5H",668442300,"HORVU5Hr1G125300","gene, protein_coding",2.0145957275139
+"alpha amylase","SCRI_RS_151407","chr5H",663945928,"HORVU5Hr1G123400","gene, protein_coding",1.7539353011189
+"alpha amylase","12_30958","chr5H",666823127,"HORVU5Hr1G124610","gene, protein_coding",1.6956244497267
+"alpha amylase","12_10322","chr5H",668721862,"HORVU5Hr1G125460","gene, protein_coding",1.6883021297477
+"alpha amylase","11_10451","chr7H",31340804,"HORVU7Hr1G021800.2","transcript, nontranslating_CDS",1.6329613210894
+"alpha amylase","12_31123","chrUn",79564613,"HORVU0Hr1G014520","gene, protein_coding",1.6217684719658

@@ -1,0 +1,20 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"kernel weight","11_20340","chr2H",651058560,"HORVU2Hr1G092080","gene, protein_coding",2.1004252347976
+"kernel weight","SCRI_RS_137263","chr2H",653415585,"HORVU2Hr1G092430","gene, protein_coding",1.9084172325695
+"kernel weight","12_20685","chr7H",549645656,"HORVU7Hr1G090290","gene, protein_coding",1.8905021155105
+"kernel weight","SCRI_RS_4930","chr2H",648825898,"HORVU2Hr1G091630","gene, protein_coding",1.8197578075559
+"kernel weight","11_10287","chr2H",651372755,"HORVU2Hr1G092180","gene, protein_coding",1.809084444752
+"kernel weight","SCRI_RS_171032","chr2H",650676570,"HORVU2Hr1G092060","gene, protein_coding",1.7717398041685
+"kernel weight","SCRI_RS_91810","chr2H",651051990,"HORVU2Hr1G092080","gene, protein_coding",1.7502027232127
+"kernel weight","12_30896","chr2H",652032221,"HORVU2Hr1G092290","gene, protein_coding",1.7404771734751
+"kernel weight","SCRI_RS_206700","chr2H",697857154,"HORVU2Hr1G102740","gene, protein_coding",1.6359598377252
+"kernel weight","12_30499","chr1H",381209230,"HORVU1Hr1G051420","gene, protein_coding",1.6349833943178
+"kernel weight","SCRI_RS_165473","chr2H",653930640,"HORVU2Hr1G092520","gene, protein_coding",1.5985656584518
+"kernel weight","SCRI_RS_189254","chr6H",70584701,"HORVU6Hr1G022340","gene, protein_coding",1.569053720404
+"kernel weight","12_31059","chr5H",600091569,"HORVU5Hr1G095960","gene, protein_coding, Putative cleavage stimulation factor subunit 1 [Source:UniProtKB/TrEMBL;Acc:Q9ARL8]",1.546056483686
+"kernel weight","SCRI_RS_196853","chrUNK",2220,"","",1.48605003691
+"kernel weight","12_30897","chr2H",652031329,"HORVU2Hr1G092290","gene, protein_coding",1.4083089473816
+"kernel weight","12_30147","chr1H",478177990,"HORVU1Hr1G067460","gene, protein_coding",1.3920048610534
+"kernel weight","SCRI_RS_72983","chrUNK",2850,"","",1.3593252027897
+"kernel weight","12_30901","chr2H",652094174,"HORVU2Hr1G092300","gene, protein_coding",1.3367274541308
+"kernel weight","12_30298","chrUn",145637888,"","",1.2634179261493

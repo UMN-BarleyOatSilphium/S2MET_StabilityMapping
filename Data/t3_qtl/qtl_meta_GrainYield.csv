@@ -1,0 +1,109 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"grain yield","11_21259","chr3H",48467899,"HORVU3Hr1G018530","gene, protein_coding",2.1251661111887
+"grain yield","SCRI_RS_3336","chrUNK",2790,"","",1.8196034624904
+"grain yield","12_30870","chr2H",29126143,"HORVU2Hr1G013400","gene, protein_coding",1.7412122549832
+"grain yield","12_30872","chr2H",29124597,"HORVU2Hr1G013400","gene, protein_coding",1.6260783226811
+"grain yield","SCRI_RS_133026","chr7H",530981943,"HORVU7Hr1G087940","gene, protein_coding, Serine/threonine-protein phosphatase 2A 55 kDa regulatory subunit B [Source:UniProtKB/TrEMBL;Acc:F2CVE0]",1.617896323661
+"grain yield","SCRI_RS_219581","chr7H",534010525,"HORVU7Hr1G088210","gene, protein_coding",1.6131029002369
+"grain yield","11_21390","chr5H",564846729,"HORVU5Hr1G081500","gene, protein_coding",1.5958357950967
+"grain yield","SCRI_RS_229585","chr7H",523658014,"HORVU7Hr1G086810","gene, protein_coding",1.5878757841646
+"grain yield","SCRI_RS_7523","chrUNK",2880,"","",1.5859444786522
+"grain yield","SCRI_RS_231912","chrUNK",2640,"","",1.5604078947827
+"grain yield","SCRI_RS_122512","chr7H",522444718,"HORVU7Hr1G086570","gene, protein_coding",1.5509225633102
+"grain yield","SCRI_RS_207238","chr7H",528585294,"HORVU7Hr1G087700","gene, protein_coding",1.534304895852
+"grain yield","SCRI_RS_181725","chr4H",595795292,"HORVU4Hr1G074830","gene, protein_coding",1.5229306298627
+"grain yield","SCRI_RS_230083","chr7H",520952853,"HORVU7Hr1G086170","gene, protein_coding",1.5127524128686
+"grain yield","SCRI_RS_103902","chr7H",521506516,"","",1.4937996149233
+"grain yield","SCRI_RS_204771","chr7H",521707430,"","",1.4896217966805
+"grain yield","11_20568","chr5H",617780015,"HORVU5Hr1G103890","gene, protein_coding",1.4689183571811
+"grain yield","11_10283","chr3H",694263172,"HORVU3Hr1G115820","gene, protein_coding",1.4659240661736
+"grain yield","SCRI_RS_181154","chr7H",521772846,"HORVU7Hr1G086420","gene, protein_coding",1.4566345615834
+"grain yield","SCRI_RS_143118","chr7H",521771595,"HORVU7Hr1G086420","gene, protein_coding",1.4414067416802
+"grain yield","12_30871","chr2H",29127021,"HORVU2Hr1G013400","gene, protein_coding",1.4288557479021
+"grain yield","11_20023","chr3H",617763235,"HORVU3Hr1G086540","gene, protein_coding",1.4177782981274
+"grain yield","12_10777","chr2H",26199616,"HORVU2Hr1G012440","gene, protein_coding",1.4099243299685
+"grain yield","12_20345","chr3H",694227911,"HORVU3Hr1G115820","gene, protein_coding",1.4033750749744
+"grain yield","12_10982","chr7H",488307674,"HORVU7Hr1G081770","gene, protein_coding",1.3946042641237
+"grain yield","SCRI_RS_190352","chr7H",518163653,"HORVU7Hr1G085660","gene, protein_coding",1.3840809933361
+"grain yield","11_11448","chr5H",600139654,"HORVU5Hr1G095990","gene, protein_coding",1.3821449567148
+"grain yield","11_20236","chr5H",509768671,"HORVU5Hr1G066960","gene, protein_coding",1.3756619425265
+"grain yield","12_10125","chr7H",489497799,"HORVU7Hr1G081930","gene, protein_coding",1.3687210012405
+"grain yield","11_11405","chr4H",54542552,"HORVU4Hr1G014730","gene, protein_coding",1.3664653693396
+"grain yield","11_20356","chr3H",55590274,"HORVU3Hr1G019540","gene, protein_coding",1.3651044670291
+"grain yield","12_30790","chr7H",496253471,"HORVU7Hr1G082540","gene, protein_coding",1.3631137932393
+"grain yield","11_21212","chr3H",617339425,"HORVU3Hr1G086480","gene, protein_coding",1.3504678858753
+"grain yield","11_21161","chr3H",617523850,"HORVU3Hr1G086510","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DZW3]",1.3439739237453
+"grain yield","12_30135","chr3H",695935673,"HORVU3Hr1G116470","gene, protein_coding",1.3418157526382
+"grain yield","12_30999","chr7H",528801086,"","",1.3361062183774
+"grain yield","12_30880","chr7H",67729137,"HORVU7Hr1G033230","gene, protein_coding",1.3354515032679
+"grain yield","12_30199","chr7H",522445562,"HORVU7Hr1G086570","gene, protein_coding",1.3320189210269
+"grain yield","12_30505","chr1H",471473363,"HORVU1Hr1G066240","gene, protein_coding",1.3306561438489
+"grain yield","11_20896","chr7H",521711088,"HORVU7Hr1G086410","gene, protein_coding, Serine/threonine-protein phosphatase [Source:UniProtKB/TrEMBL;Acc:F2D6R2]",1.3302232969151
+"grain yield","11_10303","chr7H",532185376,"HORVU7Hr1G088080","gene, protein_coding",1.328080855487
+"grain yield","12_30864","chr4H",23604127,"HORVU4Hr1G008610","gene, protein_coding, Phytochrome [Source:UniProtKB/TrEMBL;Acc:Q2I7M3]",1.326191023209
+"grain yield","11_10095","chr5H",601142082,"HORVU5Hr1G096370","gene, protein_coding, UDP-glucose 6-dehydrogenase [Source:UniProtKB/TrEMBL;Acc:F2D0E7]",1.3261138275635
+"grain yield","12_30854","chr5H",559462764,"HORVU5Hr1G080230","gene, protein_coding, C-repeat binding factor 9 [Source:UniProtKB/TrEMBL;Acc:Q3T5P1]",1.317585059769
+"grain yield","12_30064","chr3H",54793358,"HORVU3Hr1G019480","gene, protein_coding",1.313398532723
+"grain yield","11_20042","chrUn",113178429,"","",1.3098323920093
+"grain yield","12_30106","chr2H",727956635,"HORVU2Hr1G113260","gene, protein_coding",1.3093154956237
+"grain yield","12_30793","chr4H",15668942,"","",1.3089671871384
+"grain yield","11_20188","chr5H",599123281,"HORVU5Hr1G095630","gene, protein_coding",1.3069215545716
+"grain yield","11_11080","chr5H",598917589,"HORVU5Hr1G095580","gene, protein_coding",1.3039607959603
+"grain yield","11_10069","chr7H",492206525,"HORVU7Hr1G082240","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CZL7]",1.3020032594586
+"grain yield","12_20685","chr7H",549645656,"HORVU7Hr1G090290","gene, protein_coding",1.2972601803682
+"grain yield","12_30605","chr4H",461460469,"HORVU4Hr1G055040","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DLQ1]",1.2906214740088
+"grain yield","11_10050","chr7H",78305253,"HORVU7Hr1G035450","gene, protein_coding",1.287822927904
+"grain yield","12_10696","chr7H",62559292,"HORVU7Hr1G030930","gene, protein_coding",1.2864079092941
+"grain yield","11_11114","chr4H",459813388,"HORVU4Hr1G054870","gene, protein_coding",1.2857865576402
+"grain yield","11_11445","chr7H",505361481,"HORVU7Hr1G083860","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DR72]",1.2846674949965
+"grain yield","12_30645","chr7H",460352713,"HORVU7Hr1G078410","gene, protein_coding",1.2803477689289
+"grain yield","12_31452","chr7H",141857069,"HORVU7Hr1G045090.1","transcript, nontranslating_CDS",1.2754907430121
+"grain yield","11_20880","chr7H",509844383,"","",1.2720457223863
+"grain yield","11_21265","chr2H",34864969,"HORVU2Hr1G015670","gene, protein_coding",1.2485163448263
+"grain yield","12_11437","chr7H",554017857,"HORVU7Hr1G090900","gene, protein_coding",1.2473959167041
+"grain yield","11_21241","chr5H",600459885,"HORVU5Hr1G096050.1","transcript, nontranslating_CDS",1.2439635570145
+"grain yield","12_10089","chr7H",524390486,"HORVU7Hr1G087050","gene, protein_coding",1.2424009239173
+"grain yield","11_10531","chr7H",502239891,"HORVU7Hr1G083370","gene, protein_coding",1.2343046707134
+"grain yield","12_30997","chr7H",130414063,"HORVU7Hr1G043300","gene, protein_coding",1.229751176576
+"grain yield","11_20671","chr7H",95639213,"HORVU7Hr1G038270","gene, protein_coding",1.2287703611491
+"grain yield","12_31054","chrUNK",130,"","",1.2273531618402
+"grain yield","11_21138","chrUNK",70,"","",1.2261519069489
+"grain yield","12_30639","chrUn",103945094,"","",1.2215412426294
+"grain yield","11_11014","chr7H",67727614,"HORVU7Hr1G033230","gene, protein_coding",1.2185702328016
+"grain yield","12_30998","chr7H",509844516,"","",1.2164174665355
+"grain yield","11_10143","chr7H",537951420,"HORVU7Hr1G088580","gene, protein_coding",1.2151686216679
+"grain yield","12_10655","chr7H",218524405,"HORVU7Hr1G054530","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CSC9]",1.2054377560803
+"grain yield","11_10783","chr5H",598250952,"HORVU5Hr1G095410","gene, protein_coding",1.2031915280828
+"grain yield","11_11219","chr7H",440745784,"HORVU7Hr1G075760","gene, protein_coding",1.2027336377523
+"grain yield","12_31055","chr7H",428681743,"HORVU7Hr1G074690","gene, protein_coding",1.2025751547836
+"grain yield","12_30595","chr7H",202235859,"HORVU7Hr1G052720","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CSI6]",1.1987294674514
+"grain yield","11_20195","chr7H",111292841,"HORVU7Hr1G040740","gene, protein_coding",1.1974283098495
+"grain yield","11_10700","chr7H",428682740,"HORVU7Hr1G074690","gene, protein_coding",1.1967066892507
+"grain yield","12_30344","chr7H",180474019,"HORVU7Hr1G050270","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D600]",1.1959351368794
+"grain yield","11_11348","chr7H",93153567,"HORVU7Hr1G038060","gene, protein_coding",1.1955769709285
+"grain yield","11_10705","chr5H",597797164,"HORVU5Hr1G095150","gene, protein_coding",1.1910392055827
+"grain yield","11_20885","chr7H",176154907,"HORVU7Hr1G049870","gene, protein_coding",1.1895938417959
+"grain yield","12_10605","chrUn",103838756,"HORVU0Hr1G019700","gene, protein_coding",1.1886301923312
+"grain yield","12_30574","chr7H",435465480,"HORVU7Hr1G075240","gene, protein_coding",1.1882896491297
+"grain yield","11_20897","chr5H",657884383,"HORVU5Hr1G120600","gene, protein_coding",1.1829077520625
+"grain yield","11_10534","chr7H",448912368,"HORVU7Hr1G076780","gene, protein_coding",1.17768647645
+"grain yield","12_10369","chr7H",457219384,"HORVU7Hr1G077860","gene, protein_coding",1.1765173422332
+"grain yield","12_30475","chr7H",430903967,"HORVU7Hr1G074890","gene, protein_coding, Succinate dehydrogenase [ubiquinone] iron-sulfur subunit, mitochondrial [Source:UniProtKB/TrEMBL;Acc:M0Y6W8]",1.1745385263449
+"grain yield","11_20460","chr7H",440882500,"HORVU7Hr1G075770","gene, protein_coding",1.1720648176595
+"grain yield","12_30346","chrUn",88362635,"HORVU0Hr1G016430","gene, protein_coding",1.1636050496248
+"grain yield","12_10581","chr7H",444623640,"HORVU7Hr1G076150","gene, protein_coding",1.1614230504397
+"grain yield","12_11146","chr7H",430314726,"HORVU7Hr1G074850","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DH88]",1.156351201663
+"grain yield","12_11499","chr7H",498937414,"","",1.1553370941453
+"grain yield","12_30589","chr7H",449173785,"HORVU7Hr1G076790","gene, protein_coding",1.1532521413437
+"grain yield","11_20349","chr7H",516840406,"HORVU7Hr1G085450","gene, protein_coding",1.1490362495587
+"grain yield","12_31441","chr7H",93121008,"HORVU7Hr1G038040","gene, protein_coding, HVA22-like protein [Source:UniProtKB/TrEMBL;Acc:F2DJK2]",1.1486842143587
+"grain yield","11_11461","chr7H",483574783,"HORVU7Hr1G081290","gene, protein_coding",1.1468427583778
+"grain yield","12_30879","chr7H",67729209,"HORVU7Hr1G033230","gene, protein_coding",1.1380827028306
+"grain yield","11_20750","chr7H",82213270,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.1310819693887
+"grain yield","11_10721","chr7H",75226809,"HORVU7Hr1G035020","gene, protein_coding",1.1261454248419
+"grain yield","12_31120","chr7H",176885969,"","",1.1247095711728
+"grain yield","12_10657","chr7H",82213134,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.1211043785641
+"grain yield","12_31513","chr7H",475182581,"","",1.1208682872649
+"grain yield","12_11257","chr7H",114751411,"HORVU7Hr1G041460","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CWD8]",1.108736366493
+"grain yield","12_30565","chr7H",481655599,"HORVU7Hr1G080990","gene, protein_coding",1.1052072334884
+"grain yield","12_21115","chr7H",471268170,"HORVU7Hr1G079810","gene, protein_coding",1.0483373379236

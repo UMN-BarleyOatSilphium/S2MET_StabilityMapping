@@ -1,0 +1,56 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"grain protein","11_11153","chr6H",351737563,"HORVU6Hr1G055250","gene, protein_coding",2.1441710769552
+"grain protein","12_30186","chr6H",41138051,"HORVU6Hr1G017390","gene, protein_coding",1.7683808647686
+"grain protein","12_30658","chr6H",50346904,"HORVU6Hr1G019130","gene, protein_coding",1.7095024527869
+"grain protein","12_30793","chr4H",15668942,"","",1.7017676093458
+"grain protein","11_11205","chr6H",91401417,"HORVU6Hr1G025280","gene, protein_coding",1.6993800029323
+"grain protein","11_10003","chr6H",109201337,"","",1.6542112176798
+"grain protein","11_11097","chr6H",47978634,"HORVU6Hr1G018670","gene, protein_coding",1.6402449142461
+"grain protein","11_20656","chr6H",151845854,"HORVU6Hr1G033350","gene, protein_coding",1.5494403207095
+"grain protein","11_21070","chr4H",18337769,"HORVU4Hr1G007090","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CUK2]",1.5299537921787
+"grain protein","11_20422","chr4H",18759288,"HORVU4Hr1G007170","gene, protein_coding",1.5270771918024
+"grain protein","12_10395","chr4H",15277708,"HORVU4Hr1G006450","gene, protein_coding",1.5217255899228
+"grain protein","11_20302","chr4H",16669632,"HORVU4Hr1G006930","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2E7E0]",1.5044040629206
+"grain protein","11_20192","chr7H",33043618,"HORVU7Hr1G022570","gene, protein_coding",1.4973317091605
+"grain protein","11_20109","chr4H",19753671,"HORVU4Hr1G007530","gene, protein_coding",1.4875237695209
+"grain protein","11_20720","chr6H",132308036,"HORVU6Hr1G031370","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2E6G6]",1.4711009380771
+"grain protein","11_10635","chr6H",546608851,"HORVU6Hr1G081850","gene, protein_coding",1.4533813386297
+"grain protein","12_30569","chr6H",115112608,"HORVU6Hr1G028730","gene, protein_coding",1.4530111083847
+"grain protein","11_20600","chr6H",182973407,"HORVU6Hr1G036810","gene, protein_coding",1.4424230106292
+"grain protein","11_21213","chrUNK",90,"","",1.4420944286162
+"grain protein","11_20651","chr6H",165918717,"HORVU6Hr1G034990","gene, protein_coding",1.430543365277
+"grain protein","11_21418","chr4H",19183790,"HORVU4Hr1G007370","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CRF1]",1.4155594522337
+"grain protein","12_10459","chr7H",316867142,"HORVU7Hr1G064100","gene, protein_coding",1.4096219164569
+"grain protein","11_21346","chr2H",745335865,"HORVU2Hr1G119540","gene, protein_coding",1.3998577068112
+"grain protein","11_21339","chrUn",191449960,"HORVU0Hr1G032130","gene, protein_coding, Tonoplast intrinsic protein [Source:UniProtKB/TrEMBL;Acc:D2KZ39]",1.3996912540245
+"grain protein","12_10713","chr7H",363319046,"HORVU7Hr1G068630","gene, protein_coding",1.3994937115381
+"grain protein","12_11536","chr7H",382557243,"HORVU7Hr1G070450","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2EAY2]",1.3980466969848
+"grain protein","12_31140","chr7H",411695093,"HORVU7Hr1G073060","gene, protein_coding",1.3967590156474
+"grain protein","11_20680","chr4H",19087562,"HORVU4Hr1G007260","gene, protein_coding",1.3930965809488
+"grain protein","11_20266","chrUn",95056833,"HORVU0Hr1G018300","gene, protein_coding",1.3928264543883
+"grain protein","12_30835","chr7H",363318879,"HORVU7Hr1G068630","gene, protein_coding",1.3851939236967
+"grain protein","11_10954","chrUNK",30,"","",1.3844119073313
+"grain protein","12_30563","chr7H",321637487,"HORVU7Hr1G064830","gene, protein_coding",1.3806552201534
+"grain protein","12_30492","chr7H",264361753,"HORVU7Hr1G059240.2","transcript, nontranslating_CDS",1.3798150062488
+"grain protein","12_30004","chr7H",374008168,"","",1.3798150062488
+"grain protein","12_31418","chr7H",367767660,"HORVU7Hr1G069090","gene, protein_coding",1.3723443117687
+"grain protein","11_20567","chr6H",336809299,"HORVU6Hr1G053710","gene, protein_coding, NAR2.3 [Source:UniProtKB/TrEMBL;Acc:Q6X677]",1.3714309886966
+"grain protein","11_20572","chr6H",335738837,"HORVU6Hr1G053640.1","transcript, nontranslating_CDS",1.3714309886966
+"grain protein","12_30449","chr7H",416618712,"HORVU7Hr1G073460","gene, protein_coding",1.3686964627932
+"grain protein","11_21473","chr6H",126212354,"HORVU6Hr1G030390","gene, protein_coding",1.3673828550955
+"grain protein","11_20799","chr6H",335741736,"HORVU6Hr1G053650.1","transcript, nontranslating_CDS",1.3670565251017
+"grain protein","11_20946","chr6H",340035678,"HORVU6Hr1G054000","gene, protein_coding",1.3660199143241
+"grain protein","12_31000","chr7H",333776350,"HORVU7Hr1G066170","gene, protein_coding",1.361887304268
+"grain protein","12_11477","chr7H",261448913,"HORVU7Hr1G058850","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CW75]",1.361887304268
+"grain protein","12_31345","chrUn",111397448,"HORVU0Hr1G021230","gene, protein_coding",1.3615354996975
+"grain protein","11_20334","chr5H",640334690,"","",1.3499273075209
+"grain protein","11_20329","chr6H",336379278,"HORVU6Hr1G053680","gene, protein_coding",1.3491850747904
+"grain protein","12_30316","chr6H",50801220,"HORVU6Hr1G019190","gene, protein_coding",1.3436596878065
+"grain protein","11_10461","chr6H",56162524,"","",1.3360966827678
+"grain protein","12_30317","chr6H",46946031,"","",1.309724058567
+"grain protein","11_11312","chr6H",228201719,"HORVU6Hr1G041430","gene, protein_coding",1.301748247671
+"grain protein","11_10323","chr6H",341712225,"HORVU6Hr1G054100","gene, protein_coding",1.2955974988358
+"grain protein","11_10041","chr1H",552906938,"HORVU1Hr1G093390","gene, protein_coding",1.2507946482784
+"grain protein","11_10539","chr6H",48979750,"HORVU6Hr1G018830","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DLH9]",1.2430687888246
+"grain protein","11_20707","chr6H",47261864,"HORVU6Hr1G018480","gene, protein_coding",1.2425495378838
+"grain protein","11_10817","chr6H",47366298,"HORVU6Hr1G018520","gene, protein_coding",1.2408413463209

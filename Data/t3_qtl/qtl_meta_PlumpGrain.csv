@@ -1,0 +1,104 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"plump grain","12_11044","chr7H",583586119,"HORVU7Hr1G095720","gene, protein_coding, Peptidyl-prolyl cis-trans isomerase [Source:UniProtKB/TrEMBL;Acc:F2D4W1]",2.6581008954955
+"plump grain","12_30790","chr7H",496253471,"HORVU7Hr1G082540","gene, protein_coding",2.5154228074317
+"plump grain","12_20685","chr7H",549645656,"HORVU7Hr1G090290","gene, protein_coding",2.5154228074317
+"plump grain","12_21479","chr7H",587069444,"HORVU7Hr1G096250","gene, protein_coding",2.1094826092196
+"plump grain","12_30257","chr1H",534125766,"HORVU1Hr1G084520","gene, protein_coding",1.8945787849787
+"plump grain","12_20403","chr5H",554474864,"HORVU5Hr1G078120","gene, protein_coding",1.8302719144359
+"plump grain","11_11200","chrUNK",70,"","",1.8263475592903
+"plump grain","11_20885","chr7H",176154907,"HORVU7Hr1G049870","gene, protein_coding",1.7734158603687
+"plump grain","11_20076","chrUNK",120,"","",1.7434399837332
+"plump grain","11_20671","chr7H",95639213,"HORVU7Hr1G038270","gene, protein_coding",1.7270483982122
+"plump grain","12_30639","chrUn",103945094,"","",1.688485608478
+"plump grain","12_30894","chrUn",176739518,"","",1.663637208651
+"plump grain","12_10564","chr3H",672922972,"HORVU3Hr1G107290","gene, protein_coding",1.6576878742316
+"plump grain","12_30895","chrUn",176739404,"","",1.6425407851899
+"plump grain","11_10050","chr7H",78305253,"HORVU7Hr1G035450","gene, protein_coding",1.6220530262162
+"plump grain","12_31120","chr7H",176885969,"","",1.6022150464021
+"plump grain","12_10278","chr6H",356677926,"HORVU6Hr1G055960","gene, protein_coding, Bidirectional sugar transporter SWEET [Source:UniProtKB/TrEMBL;Acc:M0VVT3]",1.5991178745372
+"plump grain","12_30920","chr3H",23189958,"HORVU3Hr1G010540.5","transcript, nontranslating_CDS",1.5859132619658
+"plump grain","12_30997","chr7H",130414063,"HORVU7Hr1G043300","gene, protein_coding",1.5813320758958
+"plump grain","12_30278","chr3H",571162239,"HORVU3Hr1G077030","gene, protein_coding, Diacylglycerol kinase [Source:UniProtKB/TrEMBL;Acc:F2DY02]",1.5755838248672
+"plump grain","12_10369","chr7H",457219384,"HORVU7Hr1G077860","gene, protein_coding",1.5554205983573
+"plump grain","12_30113","chr3H",14833004,"","",1.555261748263
+"plump grain","11_20460","chr7H",440882500,"HORVU7Hr1G075770","gene, protein_coding",1.5535757929954
+"plump grain","11_20750","chr7H",82213270,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.5518351321655
+"plump grain","12_11437","chr7H",554017857,"HORVU7Hr1G090900","gene, protein_coding",1.5450745890492
+"plump grain","12_31513","chr7H",475182581,"","",1.5377956647945
+"plump grain","12_30002","chr3H",427506664,"HORVU3Hr1G057090","gene, protein_coding",1.5363644894525
+"plump grain","12_11257","chr7H",114751411,"HORVU7Hr1G041460","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CWD8]",1.5207739507131
+"plump grain","12_30748","chrUn",248456062,"HORVU0Hr1G039270","gene, protein_coding",1.5184662542484
+"plump grain","12_30879","chr7H",67729209,"HORVU7Hr1G033230","gene, protein_coding",1.5009958617644
+"plump grain","11_20349","chr7H",516840406,"HORVU7Hr1G085450","gene, protein_coding",1.4976125641599
+"plump grain","11_10069","chr7H",492206525,"HORVU7Hr1G082240","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CZL7]",1.496703275331
+"plump grain","12_30589","chr7H",449173785,"HORVU7Hr1G076790","gene, protein_coding",1.4917883898925
+"plump grain","11_10721","chr7H",75226809,"HORVU7Hr1G035020","gene, protein_coding",1.4873842822424
+"plump grain","11_11348","chr7H",93153567,"HORVU7Hr1G038060","gene, protein_coding",1.4871665749167
+"plump grain","12_21386","chr3H",661418411,"HORVU3Hr1G099360","gene, protein_coding",1.4835383059965
+"plump grain","12_30402","chr2H",16751427,"HORVU2Hr1G007980.3","transcript, nontranslating_CDS",1.4761862460947
+"plump grain","12_10605","chrUn",103838756,"HORVU0Hr1G019700","gene, protein_coding",1.4744675924175
+"plump grain","12_31441","chr7H",93121008,"HORVU7Hr1G038040","gene, protein_coding, HVA22-like protein [Source:UniProtKB/TrEMBL;Acc:F2DJK2]",1.4730759234945
+"plump grain","11_20195","chr7H",111292841,"HORVU7Hr1G040740","gene, protein_coding",1.4723915323808
+"plump grain","12_30105","chr5H",55775968,"","",1.466722369604
+"plump grain","11_10531","chr7H",502239891,"HORVU7Hr1G083370","gene, protein_coding",1.4626229183044
+"plump grain","11_10534","chr7H",448912368,"HORVU7Hr1G076780","gene, protein_coding",1.4562073630132
+"plump grain","12_31500","chr3H",671180259,"HORVU3Hr1G106650","gene, protein_coding",1.4507520194068
+"plump grain","12_30893","chrUn",176739725,"","",1.447399215708
+"plump grain","12_30645","chr7H",460352713,"HORVU7Hr1G078410","gene, protein_coding",1.444469738563
+"plump grain","11_10855","chr5H",603086611,"HORVU5Hr1G097060","gene, protein_coding",1.4324202016079
+"plump grain","11_20880","chr7H",509844383,"","",1.4299262670779
+"plump grain","11_10283","chr3H",694263172,"HORVU3Hr1G115820","gene, protein_coding",1.4295798943937
+"plump grain","12_10657","chr7H",82213134,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.4291496023785
+"plump grain","12_11146","chr7H",430314726,"HORVU7Hr1G074850","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DH88]",1.427872085578
+"plump grain","11_11249","chr5H",484879282,"HORVU5Hr1G062290","gene, protein_coding",1.4259425841131
+"plump grain","12_31467","chr1H",66850934,"","",1.4181262830857
+"plump grain","11_11445","chr7H",505361481,"HORVU7Hr1G083860","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DR72]",1.4128632460549
+"plump grain","12_21115","chr7H",471268170,"HORVU7Hr1G079810","gene, protein_coding",1.4110813403103
+"plump grain","12_10581","chr7H",444623640,"HORVU7Hr1G076150","gene, protein_coding",1.4108154106802
+"plump grain","12_20489","chr2H",639062553,"HORVU2Hr1G089440","gene, protein_coding",1.4053690787581
+"plump grain","11_20623","chr7H",608261319,"HORVU7Hr1G101270","gene, protein_coding",1.4029865371957
+"plump grain","12_10125","chr7H",489497799,"HORVU7Hr1G081930","gene, protein_coding",1.4006500838153
+"plump grain","11_20092","chr7H",607662553,"","",1.3999020368111
+"plump grain","11_11461","chr7H",483574783,"HORVU7Hr1G081290","gene, protein_coding",1.3989899280841
+"plump grain","12_10089","chr7H",524390486,"HORVU7Hr1G087050","gene, protein_coding",1.3927329612014
+"plump grain","12_30361","chrUn",83384220,"HORVU0Hr1G015180","gene, protein_coding",1.3915393039231
+"plump grain","12_10982","chr7H",488307674,"HORVU7Hr1G081770","gene, protein_coding",1.3912324717837
+"plump grain","12_30595","chr7H",202235859,"HORVU7Hr1G052720","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CSI6]",1.3908030567627
+"plump grain","12_31181","chr1H",523082507,"HORVU1Hr1G079430","gene, protein_coding",1.389051166931
+"plump grain","11_20392","chr5H",485027002,"HORVU5Hr1G062310","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DDU3]",1.3884035647989
+"plump grain","12_31375","chr5H",636962193,"HORVU5Hr1G111700","gene, protein_coding",1.3873474175655
+"plump grain","12_10655","chr7H",218524405,"HORVU7Hr1G054530","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CSC9]",1.3869060656696
+"plump grain","12_30635","chr5H",603612830,"HORVU5Hr1G097230","gene, protein_coding",1.3813649038251
+"plump grain","12_10241","chr7H",609661972,"HORVU7Hr1G101590","gene, protein_coding",1.3758070808964
+"plump grain","12_30998","chr7H",509844516,"","",1.3728194844982
+"plump grain","12_30344","chr7H",180474019,"HORVU7Hr1G050270","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D600]",1.3615825979962
+"plump grain","12_11499","chr7H",498937414,"","",1.3613816104545
+"plump grain","12_31054","chrUNK",130,"","",1.3612748536728
+"plump grain","12_30167","chr5H",9252480,"HORVU5Hr1G005740","gene, protein_coding",1.3609717831213
+"plump grain","12_10545","chr2H",589927284,"HORVU2Hr1G081370","gene, protein_coding",1.3581030314418
+"plump grain","11_21065","chr5H",9600389,"HORVU5Hr1G005910","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2EL01]",1.3463436311106
+"plump grain","12_30565","chr7H",481655599,"HORVU7Hr1G080990","gene, protein_coding",1.3240050650744
+"plump grain","11_10700","chr7H",428682740,"HORVU7Hr1G074690","gene, protein_coding",1.3191103874153
+"plump grain","12_31055","chr7H",428681743,"HORVU7Hr1G074690","gene, protein_coding",1.3174736106969
+"plump grain","11_10563","chrUNK",0,"","unknown location",1.3165384608792
+"plump grain","12_20345","chr3H",694227911,"HORVU3Hr1G115820","gene, protein_coding",1.3127921423687
+"plump grain","11_20042","chrUn",113178429,"","",1.3113031240332
+"plump grain","12_30818","chr3H",9095803,"HORVU3Hr1G003540","gene, protein_coding",1.310534872145
+"plump grain","12_30222","chr5H",604813107,"HORVU5Hr1G097560","gene, protein_coding",1.3071302374114
+"plump grain","12_30574","chr7H",435465480,"HORVU7Hr1G075240","gene, protein_coding",1.3056198768774
+"plump grain","11_20385","chr7H",607948063,"HORVU7Hr1G101230","gene, protein_coding",1.2915631064859
+"plump grain","12_31452","chr7H",141857069,"HORVU7Hr1G045090.1","transcript, nontranslating_CDS",1.2810197218105
+"plump grain","11_20884","chr5H",602880581,"HORVU5Hr1G097000","gene, protein_coding",1.2788412299512
+"plump grain","12_30475","chr7H",430903967,"HORVU7Hr1G074890","gene, protein_coding, Succinate dehydrogenase [ubiquinone] iron-sulfur subunit, mitochondrial [Source:UniProtKB/TrEMBL;Acc:M0Y6W8]",1.278261236562
+"plump grain","11_10853","chr7H",607946012,"HORVU7Hr1G101230","gene, protein_coding",1.2774668414797
+"plump grain","11_11219","chr7H",440745784,"HORVU7Hr1G075760","gene, protein_coding",1.2560071125952
+"plump grain","12_31521","chr5H",31290487,"HORVU5Hr1G011650.1","transcript, nontranslating_CDS",1.2534762498747
+"plump grain","11_10646","chr3H",676624509,"HORVU3Hr1G108930","gene, protein_coding",1.247968863353
+"plump grain","12_30999","chr7H",528801086,"","",1.2429009389713
+"plump grain","11_20594","chr1H",554604184,"HORVU1Hr1G094100","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DNM8]",1.2307674400916
+"plump grain","11_20896","chr7H",521711088,"HORVU7Hr1G086410","gene, protein_coding, Serine/threonine-protein phosphatase [Source:UniProtKB/TrEMBL;Acc:F2D6R2]",1.2288243863565
+"plump grain","11_11014","chr7H",67727614,"HORVU7Hr1G033230","gene, protein_coding",1.2236178588828
+"plump grain","12_30880","chr7H",67729137,"HORVU7Hr1G033230","gene, protein_coding",1.2069168404682
+"plump grain","12_30515","chr5H",450803569,"HORVU5Hr1G057500","gene, protein_coding",1.1800848486012
+"plump grain","11_10143","chr7H",537951420,"HORVU7Hr1G088580","gene, protein_coding",1.1645357706996
+"plump grain","11_10303","chr7H",532185376,"HORVU7Hr1G088080","gene, protein_coding",1.1398628762313

@@ -1,0 +1,156 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"heading date","12_30870","chr2H",29126143,"HORVU2Hr1G013400","gene, protein_coding",2.6403471664903
+"heading date","12_30084","chr3H",634076447,"HORVU3Hr1G090970","gene, protein_coding",2.2434929540196
+"heading date","12_30265","chr2H",525482637,"HORVU2Hr1G073030.1","transcript, nontranslating_CDS",2.1993151996071
+"heading date","11_10685","chr2H",516165724,"","",2.1690089465841
+"heading date","12_30224","chr2H",464532411,"HORVU2Hr1G066790","gene, protein_coding",2.1629289731266
+"heading date","11_10191","chr2H",532288289,"HORVU2Hr1G073760","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DTT4]",2.1574167827689
+"heading date","11_21399","chr2H",534370798,"HORVU2Hr1G073920","gene, protein_coding",2.1503808913835
+"heading date","11_11384","chr2H",491105224,"HORVU2Hr1G069710","gene, protein_coding",2.1241643016742
+"heading date","11_20251","chr2H",474752381,"HORVU2Hr1G067750","gene, protein_coding",2.0713159798756
+"heading date","11_10358","chr2H",212172560,"HORVU2Hr1G042270","gene, protein_coding",2.0549144541872
+"heading date","12_10218","chr7H",40109823,"HORVU7Hr1G024670","gene, protein_coding",1.9932477176278
+"heading date","11_20390","chr2H",520261737,"HORVU2Hr1G072500","gene, protein_coding",1.9815294029297
+"heading date","11_20887","chr2H",520778494,"HORVU2Hr1G072580","gene, protein_coding",1.9727048149
+"heading date","11_20532","chr2H",513918258,"HORVU2Hr1G071880","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DV27]",1.9692638154121
+"heading date","11_11178","chr2H",373690428,"HORVU2Hr1G057880","gene, protein_coding",1.9425782311687
+"heading date","11_10317","chr2H",383104840,"HORVU2Hr1G058700","gene, protein_coding",1.9418975782341
+"heading date","12_11008","chr1H",509765620,"HORVU1Hr1G075110","gene, protein_coding",1.9328252741772
+"heading date","12_11324","chrUn",21735573,"","",1.9321045097456
+"heading date","11_20669","chr2H",405862782,"HORVU2Hr1G060730","gene, protein_coding",1.9301415558432
+"heading date","12_11504","chr2H",520773245,"HORVU2Hr1G072580","gene, protein_coding",1.9287053345533
+"heading date","11_11354","chr2H",248552965,"","",1.9025062687357
+"heading date","12_10099","chr2H",253188603,"HORVU2Hr1G046740","gene, protein_coding",1.8997066114017
+"heading date","11_20039","chr2H",235963453,"HORVU2Hr1G045140","gene, protein_coding",1.89793610703
+"heading date","12_10474","chr2H",238207611,"","",1.8978721108854
+"heading date","11_20417","chr2H",254972206,"HORVU2Hr1G046860","gene, protein_coding",1.8932823942836
+"heading date","11_20458","chr2H",240221324,"HORVU2Hr1G045690","gene, protein_coding",1.8871121289129
+"heading date","11_11133","chr2H",185517764,"HORVU2Hr1G038990","gene, protein_coding",1.8822723903573
+"heading date","12_30561","chr2H",351833165,"HORVU2Hr1G056040","gene, protein_coding",1.8794330239069
+"heading date","12_31175","chr2H",318877861,"","",1.8788811261156
+"heading date","12_30582","chr2H",294631197,"","",1.8783396501272
+"heading date","11_20160","chr2H",246219296,"HORVU2Hr1G046290","gene, protein_coding",1.8659288482712
+"heading date","12_30514","chr2H",399549868,"HORVU2Hr1G060010","gene, protein_coding",1.8544223818054
+"heading date","12_30179","chr2H",274546401,"HORVU2Hr1G048870","gene, protein_coding",1.8520227367615
+"heading date","11_10624","chr2H",226796699,"HORVU2Hr1G043890","gene, protein_coding",1.8384117351463
+"heading date","11_10012","chr2H",219489966,"HORVU2Hr1G043220","gene, protein_coding",1.8158660973383
+"heading date","11_20585","chr2H",494259017,"HORVU2Hr1G070090","gene, protein_coding",1.8078340818693
+"heading date","12_30853","chr2H",201118744,"","",1.806160927837
+"heading date","11_10796","chr2H",192278372,"HORVU2Hr1G039930","gene, protein_coding",1.7980600170538
+"heading date","11_20126","chr7H",39065208,"HORVU7Hr1G024310","gene, protein_coding",1.7955370551697
+"heading date","12_31186","chr4H",530354822,"HORVU4Hr1G063270","gene, protein_coding",1.7945078311348
+"heading date","12_30828","chr2H",219489782,"","",1.7903990241832
+"heading date","11_11046","chr2H",205975238,"HORVU2Hr1G041610","gene, protein_coding",1.7884015255666
+"heading date","11_21286","chr2H",210132420,"HORVU2Hr1G042120","gene, protein_coding",1.7711921893293
+"heading date","11_10070","chr2H",202976499,"HORVU2Hr1G041270","gene, protein_coding",1.7532546676209
+"heading date","11_10602","chr2H",197904597,"HORVU2Hr1G040780","gene, protein_coding",1.7512383182731
+"heading date","12_10035","chr2H",463231120,"HORVU2Hr1G066680","gene, protein_coding",1.7314868567812
+"heading date","12_30323","chr2H",538202423,"","",1.7233565792587
+"heading date","12_30275","chr2H",540085329,"","",1.7222719498244
+"heading date","12_30634","chr2H",197586042,"","",1.6874434422802
+"heading date","11_21491","chr7H",53441694,"HORVU7Hr1G028840","gene, protein_coding",1.6691173237267
+"heading date","12_10485","chr2H",181669695,"HORVU2Hr1G038570","gene, protein_coding",1.6537623901244
+"heading date","12_30496","chr7H",116658838,"HORVU7Hr1G041710","gene, protein_coding",1.6360655675596
+"heading date","12_10103","chrUn",32722337,"HORVU0Hr1G006020","gene, protein_coding",1.608445246191
+"heading date","12_30528","chr7H",52802568,"HORVU7Hr1G028670","gene, protein_coding",1.5920992506688
+"heading date","12_30060","chr4H",495699304,"HORVU4Hr1G059250","gene, protein_coding",1.5901628761237
+"heading date","12_30250","chr3H",597724093,"HORVU3Hr1G082110","gene, protein_coding",1.5808835267757
+"heading date","12_10088","chr4H",494330606,"HORVU4Hr1G059130","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D5Z0]",1.5770303902758
+"heading date","12_31297","chr4H",492500731,"HORVU4Hr1G059010","gene, protein_coding",1.56721029862
+"heading date","12_30847","chr5H",560571147,"HORVU5Hr1G080420","gene, protein_coding",1.5614695283148
+"heading date","12_30846","chr5H",560346210,"","",1.5532656266867
+"heading date","12_31319","chr1H",513231576,"HORVU1Hr1G076170","gene, protein_coding",1.5506946840862
+"heading date","12_30854","chr5H",559462764,"HORVU5Hr1G080230","gene, protein_coding, C-repeat binding factor 9 [Source:UniProtKB/TrEMBL;Acc:Q3T5P1]",1.5184026716108
+"heading date","12_30852","chr5H",560732040,"HORVU5Hr1G080450","gene, protein_coding",1.5079608571185
+"heading date","12_10777","chr2H",26199616,"HORVU2Hr1G012440","gene, protein_coding",1.5023143726125
+"heading date","12_30626","chr6H",542829950,"HORVU6Hr1G080770","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CXD7]",1.5018348599378
+"heading date","12_10657","chr7H",82213134,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.5009314202676
+"heading date","12_31252","chr2H",559011564,"HORVU2Hr1G077200","gene, protein_coding",1.4975691720307
+"heading date","12_31152","chr1H",520099770,"HORVU1Hr1G078370","gene, protein_coding",1.4946142441091
+"heading date","12_30724","chr2H",567016838,"HORVU2Hr1G078250","gene, protein_coding",1.4873175658637
+"heading date","12_11278","chr2H",567404068,"HORVU2Hr1G078350","gene, protein_coding, Peptidylprolyl isomerase [Source:UniProtKB/TrEMBL;Acc:F2D5P0]",1.4845444659017
+"heading date","12_30108","chr2H",556024145,"HORVU2Hr1G076910","gene, protein_coding",1.4841582446331
+"heading date","12_31081","chr1H",558224306,"HORVU1Hr1G095400","gene, protein_coding",1.4811118778016
+"heading date","12_30499","chr1H",381209230,"HORVU1Hr1G051420","gene, protein_coding",1.4433998923074
+"heading date","12_31256","chr2H",545218326,"HORVU2Hr1G075740","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DRH6]",1.4417641010852
+"heading date","12_30478","chr1H",381207730,"HORVU1Hr1G051420","gene, protein_coding",1.4348337025502
+"heading date","12_31208","chr1H",331415858,"HORVU1Hr1G045610","gene, protein_coding",1.4268976233138
+"heading date","12_30562","chr1H",315508280,"HORVU1Hr1G043430.1","transcript, nontranslating_CDS",1.4170528537499
+"heading date","12_30909","chr3H",600339395,"","",1.4141017268829
+"heading date","12_30833","chr5H",611999790,"HORVU5Hr1G100770","gene, protein_coding",1.407167617755
+"heading date","11_10576","chr7H",46106073,"HORVU7Hr1G026680","gene, protein_coding",1.405403569159
+"heading date","12_30796","chr1H",84338596,"HORVU1Hr1G021120","gene, protein_coding",1.4045699653822
+"heading date","12_31372","chr3H",298534459,"HORVU3Hr1G045410","gene, protein_coding",1.4021669850766
+"heading date","12_30818","chr3H",9095803,"HORVU3Hr1G003540","gene, protein_coding",1.3992342116955
+"heading date","12_31293","chr2H",641328117,"HORVU2Hr1G090010","gene, protein_coding",1.3942565484748
+"heading date","12_30639","chrUn",103945094,"","",1.3911639956796
+"heading date","11_21065","chr5H",9600389,"HORVU5Hr1G005910","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2EL01]",1.3909064968553
+"heading date","12_30090","chr3H",599466360,"HORVU3Hr1G082580","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2E7M0]",1.3906872277416
+"heading date","12_10662","chr3H",611543683,"HORVU3Hr1G085210","gene, protein_coding",1.3886291904245
+"heading date","12_30064","chr3H",54793358,"HORVU3Hr1G019480","gene, protein_coding",1.3876279318534
+"heading date","12_30900","chr2H",652031655,"HORVU2Hr1G092290","gene, protein_coding",1.3842577174986
+"heading date","12_30913","chr3H",48646496,"HORVU3Hr1G018650","gene, protein_coding",1.3839848397587
+"heading date","12_30750","chr1H",380767247,"HORVU1Hr1G051350","gene, protein_coding",1.3802883485159
+"heading date","12_11301","chr1H",77984995,"HORVU1Hr1G020140","gene, protein_coding",1.3753165661117
+"heading date","12_30055","chr3H",693425600,"HORVU3Hr1G115580","gene, protein_coding",1.3749262655277
+"heading date","12_30530","chr7H",23576066,"HORVU7Hr1G018100","gene, protein_coding",1.3745944945451
+"heading date","12_31464","chr1H",459030191,"HORVU1Hr1G064200","gene, protein_coding",1.3736954943155
+"heading date","12_31251","chr3H",654499243,"HORVU3Hr1G096780","gene, protein_coding",1.3712611675446
+"heading date","12_31394","chr2H",627474976,"HORVU2Hr1G087380","gene, protein_coding",1.3709936002703
+"heading date","12_30977","chr5H",2571485,"HORVU5Hr1G000710","gene, protein_coding",1.3676920486944
+"heading date","12_30404","chr1H",324791460,"HORVU1Hr1G044680","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CQK2]",1.3654234969681
+"heading date","12_31345","chrUn",111397448,"HORVU0Hr1G021230","gene, protein_coding",1.3522457177944
+"heading date","12_10508","chr5H",372542948,"HORVU5Hr1G048010","gene, protein_coding",1.3383129980178
+"heading date","12_10905","chr1H",529829695,"HORVU1Hr1G082540","gene, protein_coding",1.3355672462663
+"heading date","12_31380","chr2H",626116160,"HORVU2Hr1G087030","gene, protein_coding",1.3351271345995
+"heading date","12_30674","chr2H",626233860,"HORVU2Hr1G087090","gene, protein_coding",1.3351271345995
+"heading date","12_30737","chr3H",63626447,"","",1.322472936455
+"heading date","12_30764","chr4H",1302636,"HORVU4Hr1G000850","gene, protein_coding, C2 domain-containing protein [Source:UniProtKB/TrEMBL;Acc:Q5DVL6]",1.3189249677461
+"heading date","12_30343","chr1H",401872471,"HORVU1Hr1G054340","gene, protein_coding",1.3173285569763
+"heading date","12_31139","chr4H",624584147,"HORVU4Hr1G083210","gene, protein_coding",1.3144899633419
+"heading date","12_30546","chr1H",508566982,"HORVU1Hr1G074590","gene, protein_coding",1.3141937393494
+"heading date","12_30342","chr3H",611855038,"HORVU3Hr1G085270","gene, protein_coding",1.3106432672758
+"heading date","12_10344","chr3H",611561552,"HORVU3Hr1G085220.1","transcript, nontranslating_CDS",1.3091159422261
+"heading date","12_30980","chr5H",2540132,"HORVU5Hr1G000640","gene, protein_coding",1.3070681794912
+"heading date","12_10159","chr1H",98741946,"HORVU1Hr1G022810","gene, protein_coding",1.3007157064794
+"heading date","12_30438","chr1H",98026235,"HORVU1Hr1G022750","gene, protein_coding",1.3007157064794
+"heading date","12_10860","chr4H",27327299,"HORVU4Hr1G009560","gene, protein_coding",1.2981008580585
+"heading date","12_30436","chr1H",109055279,"HORVU1Hr1G024240","gene, protein_coding",1.2934568312564
+"heading date","12_31366","chr5H",606164060,"HORVU5Hr1G097940","gene, protein_coding",1.2854212908513
+"heading date","12_30543","chr5H",397673,"HORVU5Hr1G000060","gene, protein_coding",1.2850313580299
+"heading date","12_30474","chr3H",63807754,"HORVU3Hr1G020470","gene, protein_coding",1.2848979695025
+"heading date","12_20187","chr1H",520008962,"HORVU1Hr1G078350","gene, protein_coding",1.2755288802792
+"heading date","12_30290","chr7H",63760337,"HORVU7Hr1G031330","gene, protein_coding",1.2746332397289
+"heading date","12_30786","chr1H",380275827,"HORVU1Hr1G051250","gene, protein_coding",1.2724287860361
+"heading date","12_31401","chr1H",449869267,"HORVU1Hr1G062460","gene, protein_coding",1.2718148036164
+"heading date","12_31179","chr1H",449874188,"HORVU1Hr1G062470","gene, protein_coding",1.2705330900229
+"heading date","12_30406","chr1H",376377160,"HORVU1Hr1G050740","gene, protein_coding",1.2649960311852
+"heading date","12_30734","chr6H",563108828,"HORVU6Hr1G087100","gene, protein_coding",1.2620103330666
+"heading date","12_10201","chr1H",428364193,"HORVU1Hr1G058820","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2E2M1]",1.2606445131566
+"heading date","12_10859","chr2H",645202515,"HORVU2Hr1G090660.1","transcript, nontranslating_CDS",1.2532982965222
+"heading date","12_10296","chr2H",51222231,"HORVU2Hr1G019660","gene, protein_coding",1.2431566556553
+"heading date","11_21297","chr5H",618532841,"HORVU5Hr1G104160","gene, protein_coding",1.2413017526778
+"heading date","12_30473","chr6H",115445291,"HORVU6Hr1G028790","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D8Q7]",1.2356919099528
+"heading date","11_20791","chr5H",618538062,"HORVU5Hr1G104200","gene, protein_coding",1.2347608552224
+"heading date","12_31467","chr1H",66850934,"","",1.2304155004126
+"heading date","12_30871","chr2H",29127021,"HORVU2Hr1G013400","gene, protein_coding",1.2226955766801
+"heading date","12_31225","chr6H",545762086,"HORVU6Hr1G081400","gene, protein_coding",1.2223302473617
+"heading date","12_30956","chr6H",583345643,"HORVU6Hr1G095380","gene, protein_coding",1.2195945820536
+"heading date","12_30799","chr3H",202344462,"HORVU3Hr1G035930","gene, protein_coding",1.217816192368
+"heading date","12_10333","chr5H",619075925,"HORVU5Hr1G104380","gene, protein_coding",1.2134369278048
+"heading date","12_30602","chr6H",528517292,"HORVU6Hr1G077100","gene, protein_coding",1.2134369278048
+"heading date","12_30304","chr1H",437281728,"HORVU1Hr1G060150","gene, protein_coding",1.2121488070698
+"heading date","12_10507","chr5H",562730312,"HORVU5Hr1G081010","gene, protein_coding",1.2054558179401
+"heading date","12_30588","chr1H",10747464,"HORVU1Hr1G004970","gene, protein_coding",1.2023417576186
+"heading date","12_10079","chr5H",378886729,"HORVU5Hr1G048830.1","transcript, nontranslating_CDS",1.1985892732764
+"heading date","12_30656","chr5H",653569721,"HORVU5Hr1G118680","gene, protein_coding",1.1976785273646
+"heading date","12_30009","chrUn",39231607,"","",1.1959751791452
+"heading date","12_30223","chr3H",627767267,"HORVU3Hr1G089190","gene, protein_coding",1.1862641701778
+"heading date","12_30705","chr5H",561727550,"HORVU5Hr1G080610","gene, protein_coding",1.1795797362609
+"heading date","12_30241","chr1H",17000653,"HORVU1Hr1G007900","gene, protein_coding",1.1718445854225
+"heading date","12_10166","chrUn",5043883,"HORVU0Hr1G000810","gene, protein_coding",1.154302911249
+"heading date","12_31149","chr1H",8468465,"HORVU1Hr1G003940","gene, protein_coding",1.1406305159417
+"heading date","12_31018","chr3H",583536652,"HORVU3Hr1G079490","gene, protein_coding",1.1237901035147
+"heading date","12_30710","chr1H",394416611,"HORVU1Hr1G053340","gene, protein_coding",1.0736395248214
+"heading date","12_30680","chr3H",430630118,"HORVU3Hr1G057380","gene, protein_coding",1.0632086193408
+"heading date","12_30872","chr2H",29124597,"HORVU2Hr1G013400","gene, protein_coding",1.0480247800115

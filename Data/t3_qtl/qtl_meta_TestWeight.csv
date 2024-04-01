@@ -1,0 +1,217 @@
+"trait","marker","chromosome",position,"gene","feature",z-score
+"test weight","12_30790","chr7H",496253471,"HORVU7Hr1G082540","gene, protein_coding",4.6956196664692
+"test weight","12_11409","chr1H",530746330,"HORVU1Hr1G082900","gene, protein_coding",4.049172630366
+"test weight","12_30509","chr1H",522845097,"HORVU1Hr1G079380","gene, protein_coding",3.3934397540137
+"test weight","SCRI_RS_106754","chr1H",522843786,"HORVU1Hr1G079380","gene, protein_coding",3.3822231211591
+"test weight","12_20685","chr7H",549645656,"HORVU7Hr1G090290","gene, protein_coding",2.9723181952689
+"test weight","12_30301","chr7H",556168102,"HORVU7Hr1G091150","gene, protein_coding",2.7808402540244
+"test weight","12_11437","chr7H",554017857,"HORVU7Hr1G090900","gene, protein_coding",2.5320757992567
+"test weight","12_11044","chr7H",583586119,"HORVU7Hr1G095720","gene, protein_coding, Peptidyl-prolyl cis-trans isomerase [Source:UniProtKB/TrEMBL;Acc:F2D4W1]",2.217419973061
+"test weight","11_10111","chr1H",520009568,"HORVU1Hr1G078350","gene, protein_coding",2.170204237453
+"test weight","11_10256","chr7H",217287328,"HORVU7Hr1G054440","gene, protein_coding",1.9793793572702
+"test weight","11_20349","chr7H",516840406,"HORVU7Hr1G085450","gene, protein_coding",1.8233723211037
+"test weight","12_20187","chr1H",520008962,"HORVU1Hr1G078350","gene, protein_coding",1.7786995161034
+"test weight","12_31152","chr1H",520099770,"HORVU1Hr1G078370","gene, protein_coding",1.7664174261708
+"test weight","12_21479","chr7H",587069444,"HORVU7Hr1G096250","gene, protein_coding",1.6669029366743
+"test weight","11_20053","chr6H",512159550,"HORVU6Hr1G074030","gene, protein_coding",1.663440083677
+"test weight","11_20460","chr7H",440882500,"HORVU7Hr1G075770","gene, protein_coding",1.6281538962004
+"test weight","11_20909","chr1H",520489712,"HORVU1Hr1G078500","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CR14]",1.613928441383
+"test weight","11_20267","chrUNK",170,"","",1.606362722553
+"test weight","12_30998","chr7H",509844516,"","",1.6059182551932
+"test weight","11_20076","chrUNK",120,"","",1.5824270268107
+"test weight","11_20224","chr4H",636430559,"","",1.5820804656884
+"test weight","11_10608","chr6H",527210149,"HORVU6Hr1G076810","gene, protein_coding",1.5670984883572
+"test weight","12_10970","chr2H",831322,"HORVU2Hr1G000280","gene, protein_coding",1.5612395874949
+"test weight","12_30344","chr7H",180474019,"HORVU7Hr1G050270","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D600]",1.5607345277501
+"test weight","11_11445","chr7H",505361481,"HORVU7Hr1G083860","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DR72]",1.5574691454329
+"test weight","11_20880","chr7H",509844383,"","",1.5545064041532
+"test weight","11_10050","chr7H",78305253,"HORVU7Hr1G035450","gene, protein_coding",1.5523725334242
+"test weight","11_10531","chr7H",502239891,"HORVU7Hr1G083370","gene, protein_coding",1.5519507150201
+"test weight","11_10534","chr7H",448912368,"HORVU7Hr1G076780","gene, protein_coding",1.5501097535775
+"test weight","12_30864","chr4H",23604127,"HORVU4Hr1G008610","gene, protein_coding, Phytochrome [Source:UniProtKB/TrEMBL;Acc:Q2I7M3]",1.5454570852533
+"test weight","11_20879","chr7H",223284528,"HORVU7Hr1G055080","gene, protein_coding, NAC transcription factor [Source:UniProtKB/TrEMBL;Acc:G2ZH17]",1.5372328028931
+"test weight","12_11257","chr7H",114751411,"HORVU7Hr1G041460","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CWD8]",1.5339769762992
+"test weight","11_20885","chr7H",176154907,"HORVU7Hr1G049870","gene, protein_coding",1.5325255321527
+"test weight","11_20999","chr3H",599557279,"HORVU3Hr1G082590","gene, protein_coding",1.5307347638179
+"test weight","11_10303","chr7H",532185376,"HORVU7Hr1G088080","gene, protein_coding",1.5281228870747
+"test weight","11_20042","chrUn",113178429,"","",1.5257983809022
+"test weight","12_30444","chr1H",546757157,"HORVU1Hr1G090710","gene, protein_coding",1.525413813717
+"test weight","12_30997","chr7H",130414063,"HORVU7Hr1G043300","gene, protein_coding",1.5234138289511
+"test weight","11_21438","chr3H",599409949,"","",1.5232742382847
+"test weight","11_11348","chr7H",93153567,"HORVU7Hr1G038060","gene, protein_coding",1.515611941211
+"test weight","12_30694","chr1H",375075126,"HORVU1Hr1G050580","gene, protein_coding",1.5113664158169
+"test weight","12_30110","chr1H",374864785,"HORVU1Hr1G050560","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D1Q9]",1.5076391686843
+"test weight","11_10269","chr4H",636352588,"HORVU4Hr1G087230","gene, protein_coding",1.5073147861307
+"test weight","11_21224","chr6H",524652121,"HORVU6Hr1G076200","gene, protein_coding",1.5072805408012
+"test weight","11_11461","chr7H",483574783,"HORVU7Hr1G081290","gene, protein_coding",1.5024516517306
+"test weight","12_30639","chrUn",103945094,"","",1.4985936908926
+"test weight","11_21419","chr7H",737146,"HORVU7Hr1G000040","gene, protein_coding",1.495207797687
+"test weight","11_10526","chr1H",64113901,"HORVU1Hr1G018060","gene, protein_coding",1.4907526795167
+"test weight","11_20083","chr7H",537251062,"HORVU7Hr1G088450.1","transcript, nontranslating_CDS",1.488807072538
+"test weight","12_10125","chr7H",489497799,"HORVU7Hr1G081930","gene, protein_coding",1.482120001922
+"test weight","11_10683","chr3H",549071802,"","",1.4819934370594
+"test weight","11_20798","chr1H",375902959,"HORVU1Hr1G050640","gene, protein_coding",1.4802986344915
+"test weight","12_10982","chr7H",488307674,"HORVU7Hr1G081770","gene, protein_coding",1.479223709163
+"test weight","11_10470","chr1H",92433217,"HORVU1Hr1G022130","gene, protein_coding",1.4750689159128
+"test weight","12_10609","chr3H",549471407,"HORVU3Hr1G072860","gene, protein_coding",1.4717756242416
+"test weight","12_30879","chr7H",67729209,"HORVU7Hr1G033230","gene, protein_coding",1.4665941753985
+"test weight","12_10089","chr7H",524390486,"HORVU7Hr1G087050","gene, protein_coding",1.4644838907285
+"test weight","11_10259","chr1H",61118929,"HORVU1Hr1G017700","gene, protein_coding",1.461990736024
+"test weight","12_30683","chr1H",69960449,"HORVU1Hr1G018740","gene, protein_coding, Mitogen-activated protein kinase [Source:UniProtKB/TrEMBL;Acc:M0XKT1]",1.4598418329322
+"test weight","11_21409","chr7H",530975643,"HORVU7Hr1G087940","gene, protein_coding, Serine/threonine-protein phosphatase 2A 55 kDa regulatory subunit B [Source:UniProtKB/TrEMBL;Acc:F2CVE0]",1.4594206346542
+"test weight","11_20157","chr1H",467931109,"HORVU1Hr1G065570","gene, protein_coding",1.4587061109574
+"test weight","11_10069","chr7H",492206525,"HORVU7Hr1G082240","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CZL7]",1.4575887145875
+"test weight","11_20195","chr7H",111292841,"HORVU7Hr1G040740","gene, protein_coding",1.4566621433629
+"test weight","11_10143","chr7H",537951420,"HORVU7Hr1G088580","gene, protein_coding",1.4544013396997
+"test weight","12_30883","chrUNK",30,"","",1.4537064214849
+"test weight","12_30999","chr7H",528801086,"","",1.4516528592944
+"test weight","11_20695","chr3H",549472604,"HORVU3Hr1G072860","gene, protein_coding",1.4504831920965
+"test weight","12_31467","chr1H",66850934,"","",1.4488506397471
+"test weight","12_30589","chr7H",449173785,"HORVU7Hr1G076790","gene, protein_coding",1.4465642114865
+"test weight","12_10581","chr7H",444623640,"HORVU7Hr1G076150","gene, protein_coding",1.4438247876462
+"test weight","12_31422","chr4H",643754671,"HORVU4Hr1G089910","gene, protein_coding",1.4371250499023
+"test weight","11_10461","chr6H",56162524,"","",1.4330738016887
+"test weight","11_11219","chr7H",440745784,"HORVU7Hr1G075760","gene, protein_coding",1.4300070347951
+"test weight","12_30880","chr7H",67729137,"HORVU7Hr1G033230","gene, protein_coding",1.4299272574152
+"test weight","12_30043","chr1H",317349862,"HORVU1Hr1G043680","gene, protein_coding",1.4290815058065
+"test weight","11_20402","chr5H",668642360,"HORVU5Hr1G125410","gene, protein_coding",1.4286489679947
+"test weight","12_10159","chr1H",98741946,"HORVU1Hr1G022810","gene, protein_coding",1.4249560695209
+"test weight","12_30438","chr1H",98026235,"HORVU1Hr1G022750","gene, protein_coding",1.4249560695209
+"test weight","12_31452","chr7H",141857069,"HORVU7Hr1G045090.1","transcript, nontranslating_CDS",1.4248735272608
+"test weight","12_31513","chr7H",475182581,"","",1.4220106459056
+"test weight","12_30743","chr3H",548756146,"HORVU3Hr1G072810","gene, protein_coding",1.4215487634682
+"test weight","11_20671","chr7H",95639213,"HORVU7Hr1G038270","gene, protein_coding",1.4185316546186
+"test weight","11_11349","chr6H",506921781,"HORVU6Hr1G073030","gene, protein_coding",1.4167055959977
+"test weight","12_30404","chr1H",324791460,"HORVU1Hr1G044680","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CQK2]",1.4153931903494
+"test weight","11_11064","chr1H",80487274,"HORVU1Hr1G020430","gene, protein_coding",1.4151485893807
+"test weight","12_31433","chr6H",61310004,"HORVU6Hr1G020980","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2EJJ3]",1.4132524395813
+"test weight","11_11478","chr1H",88883038,"HORVU1Hr1G021720","gene, protein_coding, 40S ribosomal protein S4 [Source:UniProtKB/TrEMBL;Acc:F2DIR3]",1.412927619479
+"test weight","11_20336","chr6H",514099026,"HORVU6Hr1G074440","gene, protein_coding",1.410162302428
+"test weight","12_30562","chr1H",315508280,"HORVU1Hr1G043430.1","transcript, nontranslating_CDS",1.4074303634882
+"test weight","12_10300","chr1H",321396626,"HORVU1Hr1G044000","gene, protein_coding",1.4053464251723
+"test weight","11_11239","chr7H",501750469,"HORVU7Hr1G083220","gene, protein_coding",1.4052925656569
+"test weight","12_31446","chr2H",2096964,"HORVU2Hr1G000940","gene, protein_coding",1.4052319982383
+"test weight","12_31208","chr1H",331415858,"HORVU1Hr1G045610","gene, protein_coding",1.3997820553277
+"test weight","12_30310","chr2H",717373184,"HORVU2Hr1G109640","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DRI4]",1.3996329062723
+"test weight","11_20262","chr6H",7898920,"HORVU6Hr1G003470","gene, protein_coding",1.3993630479534
+"test weight","11_10828","chr6H",576044420,"HORVU6Hr1G091650","gene, protein_coding",1.3974183876829
+"test weight","12_30762","chr1H",130506760,"HORVU1Hr1G026130","gene, protein_coding",1.3971305113877
+"test weight","12_31274","chr6H",64747230,"HORVU6Hr1G021460","gene, protein_coding",1.392373790997
+"test weight","12_31199","chr7H",524013384,"HORVU7Hr1G086890","gene, protein_coding, Xyloglucan endotransglucosylase/hydrolase [Source:UniProtKB/TrEMBL;Acc:M0XPV0]",1.388814477143
+"test weight","11_20750","chr7H",82213270,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.3836289028387
+"test weight","11_20290","chr1H",470389531,"HORVU1Hr1G066090","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DR84]",1.3834861999801
+"test weight","11_20896","chr7H",521711088,"HORVU7Hr1G086410","gene, protein_coding, Serine/threonine-protein phosphatase [Source:UniProtKB/TrEMBL;Acc:F2D6R2]",1.3831587479002
+"test weight","11_20778","chr3H",548580014,"HORVU3Hr1G072800","gene, protein_coding",1.3823310723487
+"test weight","11_20682","chr6H",517882968,"HORVU6Hr1G075010","gene, protein_coding",1.3806973730363
+"test weight","11_20047","chr1H",339656884,"HORVU1Hr1G046270","gene, protein_coding",1.3792650952971
+"test weight","12_10235","chr1H",80265534,"HORVU1Hr1G020390","gene, protein_coding",1.3785110912691
+"test weight","11_20780","chr1H",522487000,"HORVU1Hr1G079200","gene, protein_coding",1.3763777917754
+"test weight","12_11146","chr7H",430314726,"HORVU7Hr1G074850","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DH88]",1.376317662529
+"test weight","12_30436","chr1H",109055279,"HORVU1Hr1G024240","gene, protein_coding",1.3761610793372
+"test weight","12_30505","chr1H",471473363,"HORVU1Hr1G066240","gene, protein_coding",1.3743436269116
+"test weight","11_10721","chr7H",75226809,"HORVU7Hr1G035020","gene, protein_coding",1.3736461540549
+"test weight","12_30645","chr7H",460352713,"HORVU7Hr1G078410","gene, protein_coding",1.3729534605594
+"test weight","12_30574","chr7H",435465480,"HORVU7Hr1G075240","gene, protein_coding",1.3728703595087
+"test weight","12_31120","chr7H",176885969,"","",1.3724459831411
+"test weight","11_20373","chr1H",263584,"HORVU1Hr1G000080","gene, protein_coding",1.3714162870515
+"test weight","11_20698","chr1H",317349096,"HORVU1Hr1G043680","gene, protein_coding",1.3695509652929
+"test weight","11_10055","chr7H",350976143,"HORVU7Hr1G067280","gene, protein_coding",1.3665669226183
+"test weight","11_10107","chr6H",570019236,"HORVU6Hr1G089540","gene, protein_coding, Bidirectional sugar transporter SWEET [Source:UniProtKB/TrEMBL;Acc:F2CS00]",1.3651493558698
+"test weight","11_21490","chr4H",51665189,"HORVU4Hr1G014230","gene, protein_coding",1.3638659488979
+"test weight","12_30377","chr5H",587971000,"HORVU5Hr1G092270","gene, protein_coding",1.3633224441762
+"test weight","12_10657","chr7H",82213134,"HORVU7Hr1G036070.3","transcript, nontranslating_CDS",1.3624504776068
+"test weight","11_21302","chr7H",351911775,"HORVU7Hr1G067480","gene, protein_coding",1.3586674349463
+"test weight","11_20584","chr7H",583502187,"HORVU7Hr1G095680","gene, protein_coding",1.358617044214
+"test weight","12_11301","chr1H",77984995,"HORVU1Hr1G020140","gene, protein_coding",1.3583897869017
+"test weight","11_10700","chr7H",428682740,"HORVU7Hr1G074690","gene, protein_coding",1.3568220946943
+"test weight","11_20855","chr1H",81225714,"HORVU1Hr1G020530","gene, protein_coding",1.3550513278504
+"test weight","11_21193","chr1H",324191509,"HORVU1Hr1G044590","gene, protein_coding",1.3545615323787
+"test weight","11_20521","chr3H",543137369,"HORVU3Hr1G071870","gene, protein_coding",1.3541904494634
+"test weight","12_30565","chr7H",481655599,"HORVU7Hr1G080990","gene, protein_coding",1.3468499030082
+"test weight","12_10655","chr7H",218524405,"HORVU7Hr1G054530","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CSC9]",1.3451516011476
+"test weight","12_10369","chr7H",457219384,"HORVU7Hr1G077860","gene, protein_coding",1.3423871348915
+"test weight","11_20707","chr6H",47261864,"HORVU6Hr1G018480","gene, protein_coding",1.3394917937924
+"test weight","11_10943","chr2H",21582733,"HORVU2Hr1G010990","gene, protein_coding",1.3390547203527
+"test weight","12_10605","chrUn",103838756,"HORVU0Hr1G019700","gene, protein_coding",1.3389551448925
+"test weight","12_30918","chr1H",8935905,"HORVU1Hr1G004230","gene, protein_coding",1.337957295929
+"test weight","12_31441","chr7H",93121008,"HORVU7Hr1G038040","gene, protein_coding, HVA22-like protein [Source:UniProtKB/TrEMBL;Acc:F2DJK2]",1.3373224580862
+"test weight","12_30796","chr1H",84338596,"HORVU1Hr1G021120","gene, protein_coding",1.3356231437808
+"test weight","11_10771","chr5H",545449554,"HORVU5Hr1G074920","gene, protein_coding",1.3347376148687
+"test weight","12_30595","chr7H",202235859,"HORVU7Hr1G052720","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CSI6]",1.332717917704
+"test weight","12_30133","chr6H",59558362,"HORVU6Hr1G020720","gene, protein_coding, Purple acid phosphatase [Source:UniProtKB/TrEMBL;Acc:M0Y7U1]",1.3319789030009
+"test weight","11_11040","chr2H",20661304,"HORVU2Hr1G010690","gene, protein_coding, Ribulose bisphosphate carboxylase small chain [Source:UniProtKB/TrEMBL;Acc:F2CT51]",1.3313407093679
+"test weight","11_10957","chr1H",76992307,"HORVU1Hr1G020000","gene, protein_coding",1.3307947409653
+"test weight","11_10817","chr6H",47366298,"HORVU6Hr1G018520","gene, protein_coding",1.3303118606319
+"test weight","11_20427","chr1H",314308188,"HORVU1Hr1G043250.1","transcript, nontranslating_CDS",1.3298738739752
+"test weight","11_21093","chr3H",76088289,"HORVU3Hr1G022020","gene, protein_coding",1.3296403339499
+"test weight","12_30316","chr6H",50801220,"HORVU6Hr1G019190","gene, protein_coding",1.329003185459
+"test weight","11_20687","chr6H",577508229,"","",1.3260203686378
+"test weight","11_20757","chr1H",272999970,"HORVU1Hr1G039050","gene, protein_coding",1.3255983008145
+"test weight","12_31177","chr1H",28643782,"HORVU1Hr1G011800","gene, protein_coding",1.3250557656794
+"test weight","12_11499","chr7H",498937414,"","",1.3232800785468
+"test weight","11_20205","chr7H",489497016,"HORVU7Hr1G081930","gene, protein_coding",1.3229500343598
+"test weight","11_10283","chr3H",694263172,"HORVU3Hr1G115820","gene, protein_coding",1.3216183792626
+"test weight","11_10178","chr2H",48475931,"HORVU2Hr1G018820","gene, protein_coding",1.3198502627066
+"test weight","11_10539","chr6H",48979750,"HORVU6Hr1G018830","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2DLH9]",1.3194511663417
+"test weight","11_11287","chr1H",322116949,"","",1.3142900729525
+"test weight","12_30317","chr6H",46946031,"","",1.3141075087652
+"test weight","12_31049","chr6H",553203912,"HORVU6Hr1G084010","gene, protein_coding, Dehydrin 7 [Source:UniProtKB/TrEMBL;Acc:T1TEB9]",1.3135235445815
+"test weight","12_20489","chr2H",639062553,"HORVU2Hr1G089440","gene, protein_coding",1.311027036918
+"test weight","11_10401","chr5H",664997600,"HORVU5Hr1G124010","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2D1I6]",1.3105516324325
+"test weight","12_30929","chr5H",599134827,"","",1.3063523626499
+"test weight","12_30696","chr2H",635294505,"HORVU2Hr1G088780","gene, protein_coding",1.3055789404071
+"test weight","12_20345","chr3H",694227911,"HORVU3Hr1G115820","gene, protein_coding",1.3044536691942
+"test weight","11_20660","chr1H",329700313,"HORVU1Hr1G045360","gene, protein_coding",1.3018016858161
+"test weight","11_20889","chr6H",522942050,"HORVU6Hr1G075970","gene, protein_coding",1.3016159903171
+"test weight","12_30223","chr3H",627767267,"HORVU3Hr1G089190","gene, protein_coding",1.3015478241813
+"test weight","12_30178","chr2H",632678794,"HORVU2Hr1G088420","gene, protein_coding",1.3014945545001
+"test weight","11_20092","chr7H",607662553,"","",1.3004470722687
+"test weight","12_31048","chr6H",553203851,"HORVU6Hr1G084010","gene, protein_coding, Dehydrin 7 [Source:UniProtKB/TrEMBL;Acc:T1TEB9]",1.2980174742803
+"test weight","11_11094","chr2H",693684636,"HORVU2Hr1G101370","gene, protein_coding",1.2975604532714
+"test weight","11_10855","chr5H",603086611,"HORVU5Hr1G097060","gene, protein_coding",1.2968282618672
+"test weight","11_21104","chr7H",632318636,"HORVU7Hr1G111040","gene, protein_coding",1.2945055024715
+"test weight","12_30475","chr7H",430903967,"HORVU7Hr1G074890","gene, protein_coding, Succinate dehydrogenase [ubiquinone] iron-sulfur subunit, mitochondrial [Source:UniProtKB/TrEMBL;Acc:M0Y6W8]",1.2944186452306
+"test weight","12_31044","chr6H",553204175,"","",1.2917909641432
+"test weight","11_10671","chr5H",424593878,"HORVU5Hr1G054060","gene, protein_coding",1.2878031879699
+"test weight","11_20372","chrUNK",140,"","",1.2878004026921
+"test weight","11_11473","chr5H",547115792,"HORVU5Hr1G075420","gene, protein_coding",1.2861106819802
+"test weight","11_10686","chr1H",476365128,"HORVU1Hr1G067110.1","transcript, nontranslating_CDS",1.2833951335078
+"test weight","11_10772","chr7H",59719498,"HORVU7Hr1G030300","gene, protein_coding",1.2788627166545
+"test weight","11_20939","chr4H",50778111,"HORVU4Hr1G014010","gene, protein_coding",1.2782699844834
+"test weight","11_10124","chr6H",492317889,"HORVU6Hr1G070670","gene, protein_coding",1.277308695824
+"test weight","12_31055","chr7H",428681743,"HORVU7Hr1G074690","gene, protein_coding",1.2772604651062
+"test weight","12_10696","chr7H",62559292,"HORVU7Hr1G030930","gene, protein_coding",1.2768146371411
+"test weight","11_20746","chr6H",521813870,"","",1.2751642417149
+"test weight","11_20884","chr5H",602880581,"HORVU5Hr1G097000","gene, protein_coding",1.2738130744099
+"test weight","11_10002","chr1H",458109745,"HORVU1Hr1G064020","gene, protein_coding",1.2698169767846
+"test weight","12_31464","chr1H",459030191,"HORVU1Hr1G064200","gene, protein_coding",1.2545215312133
+"test weight","11_20582","chrUn",313982,"HORVU0Hr1G000080","gene, protein_coding",1.2544232249563
+"test weight","12_30742","chr1H",473690049,"HORVU1Hr1G066650","gene, protein_coding",1.2485819128558
+"test weight","11_20956","chr1H",455813887,"HORVU1Hr1G063510","gene, protein_coding",1.2478539832921
+"test weight","11_11500","chr4H",590917631,"HORVU4Hr1G073630","gene, protein_coding",1.247521693731
+"test weight","12_31054","chrUNK",130,"","",1.2472252570092
+"test weight","12_31283","chr6H",577494194,"HORVU6Hr1G092480","gene, protein_coding",1.2444046161314
+"test weight","11_20074","chr7H",60573304,"HORVU7Hr1G030480","gene, protein_coding",1.2424619996387
+"test weight","11_11014","chr7H",67727614,"HORVU7Hr1G033230","gene, protein_coding",1.2396025565518
+"test weight","11_10661","chr5H",305528375,"HORVU5Hr1G040870","gene, protein_coding, Predicted protein [Source:UniProtKB/TrEMBL;Acc:F2CYA0]",1.2393790928905
+"test weight","11_10840","chr5H",423881193,"HORVU5Hr1G053950","gene, protein_coding",1.2368845266407
+"test weight","11_20969","chr6H",517938283,"HORVU6Hr1G075060","gene, protein_coding",1.2364257079376
+"test weight","11_10853","chr7H",607946012,"HORVU7Hr1G101230","gene, protein_coding",1.2316882169689
+"test weight","11_20385","chr7H",607948063,"HORVU7Hr1G101230","gene, protein_coding",1.2291508446971
+"test weight","12_10545","chr2H",589927284,"HORVU2Hr1G081370","gene, protein_coding",1.2265861603252
+"test weight","12_30575","chr5H",343326273,"HORVU5Hr1G044460","gene, protein_coding",1.2259834034668
+"test weight","11_20129","chr5H",130602489,"HORVU5Hr1G024350","gene, protein_coding",1.2244884901264
+"test weight","11_10455","chr6H",479036528,"HORVU6Hr1G069190","gene, protein_coding",1.2164363871392
+"test weight","11_20958","chr5H",156370085,"HORVU5Hr1G027250","gene, protein_coding",1.2158735236023
+"test weight","12_10420","chr1H",71544,"HORVU1Hr1G000040","gene, protein_coding",1.2142816547872
+"test weight","11_20623","chr7H",608261319,"HORVU7Hr1G101270","gene, protein_coding",1.2137714040581
+"test weight","12_30940","chr6H",512160455,"HORVU6Hr1G074030","gene, protein_coding",1.2110930837871
+"test weight","11_11110","chr2H",40314202,"HORVU2Hr1G017300.1","transcript, nontranslating_CDS",1.2048348214214
+"test weight","12_21115","chr7H",471268170,"HORVU7Hr1G079810","gene, protein_coding",1.1987568278671
+"test weight","12_30728","chr5H",129714185,"HORVU5Hr1G024160","gene, protein_coding",1.1945892537394
+"test weight","12_30653","chr1H",272697,"HORVU1Hr1G000110","gene, protein_coding",1.1853313965245
+"test weight","12_20775","chr2H",767940290,"HORVU2Hr1G127740","gene, protein_coding, Dolichyl-diphosphooligosaccharide--protein glycosyltransferase subunit 1 [Source:UniProtKB/TrEMBL;Acc:M0Z968]",1.1655720154751
+"test weight","11_21219","chr1H",458916428,"HORVU1Hr1G064160","gene, protein_coding",1.1537558174281
+"test weight","11_11367","chr1H",461403045,"HORVU1Hr1G064440","gene, protein_coding, MLO-like protein [Source:UniProtKB/TrEMBL;Acc:M0XMW6]",1.1512009305746
+"test weight","11_20690","chr2H",587894696,"HORVU2Hr1G081080","gene, protein_coding",1.1406771888228
+"test weight","11_10552","chr1H",419381787,"HORVU1Hr1G057460","gene, protein_coding",1.126754256696
