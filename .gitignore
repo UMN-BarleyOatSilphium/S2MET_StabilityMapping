@@ -10,3 +10,5 @@ Scripts/archive/
 Scripts/00_data_prep.R
 startup_local.R
 Data/160517_Hv_IBSC_PGSB_r1_HC_LC_functional_annotation_sort.csv
+*README.Rmd
+README.Rmd
