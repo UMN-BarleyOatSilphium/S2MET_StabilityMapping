@@ -1,0 +1,79 @@
+---
+output: 
+  github_document
+always_allow_html: yes
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->  
+
+```{r, include = FALSE, message=FALSE}
+knitr::opts_chunk$set(collapse = TRUE)
+
+library(tidyverse)
+
+```
+
+# S2MET_StabilityMapping
+
+## Description
+
+This repository contains information and code for replicating the analyses described in the paper:
+
+Article Title: *Genomewide association and prediction of phenotypic stability in barley*  
+Journal: *The Plant Genome* (under review)  
+Authors: Jeffrey L. Neyhart, Lucia Gutierrez, and Kevin P. Smith  
+Article doi: TBD
+
+
+
+## Navigation
+
+### Data
+
+Data used in this study are available from the [Triticeae Toolbox](https://triticeaetoolbox.org/barley). See [this README](`r file.path(gsub(pattern = "\\.git", replacement = "", x = git2r::remote_url()), "tree/master/Data")`) for instructions on accessing this data.
+
+### Code
+
+Scripts used to complete the analysis and generate figures outlined in the article above are available in the "Scripts" subfolder. See [this README](`r file.path(gsub(pattern = "\\.git", replacement = "", x = git2r::remote_url()), "tree/master/Scripts")`) for information on the scripts and their intended execution order.
+
+Three scripts in this directory are used by all other scripts:
+
+1. `startub.R` - loads packages, creates directory links, and loads data.
+2. `functions.R` - loads additional functions into the environment. 
+
+The `06_figures.R` script in the "Scripts" subfolder produces the figures found in the paper.
+
+
+## Software/package versions
+
+*R* version `r paste0(version$major, ".", version$minor)` was used to complete analyses in this project.
+
+The following packages (with version information) were used to complete this project:
+
+
+```{r version, warning=FALSE, message=FALSE, echo=FALSE}
+
+# Scan the source function and all scripts for packages
+packages <- list.files(path = getwd(), full.names = TRUE, pattern = ".R$", recursive = TRUE) %>% 
+  str_subset(string = ., pattern = "archive", negate = TRUE) %>%
+  map(readLines) %>% 
+  map(~str_subset(., "library\\(|require\\(")) %>% 
+  unlist() %>% 
+  str_subset(., "#", negate = TRUE) %>%
+  str_trim() %>%
+  str_extract("\\(.*\\)") %>% 
+  str_remove_all("\\(|\\)") %>% 
+  unique()
+
+# get descriptions of each package; create a tibble
+package_info <- installed.packages() %>% 
+  as_tibble() %>% 
+  filter(Package %in% packages) %>% 
+  select(package = Package, version = Version) %>%
+  arrange(package)
+
+# Output a table
+knitr::kable(package_info)
+
+
+```

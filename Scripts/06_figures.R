@@ -12,6 +12,8 @@ source(here::here("startup.R"))
 
 library(patchwork)
 library(cowplot)
+library(dichromat)
+library(ggsci)
 
 # Set a window outside of each significant SNP to search for genes
 sig_snp_window <- 4.6 * 1e6
@@ -109,7 +111,59 @@ load(file.path(result_dir, "genomewide_prediction_results.RData"))
 
 
 
-# Figure 1: Reaction norms and phenotypic correlations ----------
+# Figure 1: Histograms, reaction norms and phenotypic correlations ----------
+
+# Assign colors to locations and shading for environments
+stability_data_use <- stability_data_use %>%
+  mutate(location = ifelse(is.na(location), "Ithaca", location))
+
+locs <- unique(stability_data_use$location)
+location_colors <- pal_igv()(length(locs))
+names(location_colors) <- locs
+
+env_df <- stability_data_use %>%
+  distinct(location, year, environment) %>%
+  left_join(., data.frame(location = names(location_colors), base_color = location_colors, row.names = NULL)) %>%
+  mutate(color = alpha(base_color, 1 - ((2018 - year) / 5)))
+
+env_colors <- setNames(object = env_df$color, nm = env_df$environment)
+
+
+
+## Plot phenotypic histograms
+g_hist_list <- stability_data_use %>%
+  filter(trait %in% traits) %>%
+  group_by(trait) %>%
+  do(plot = {
+    df <- .
+    
+    ggplot(data = df, aes(x = value, fill = environment)) +
+      geom_density() +
+      geom_line(aes(y = 0, color = location), key_glyph = draw_key_rect) +
+      scale_fill_manual(values = env_colors, guide = "none") +
+      scale_color_manual(values = location_colors, labels = function(x) str_to_title(gsub("_", " ", x)), name = "Location") +
+      scale_y_continuous(name = NULL, breaks = pretty) +
+      scale_x_continuous(name = "Phenotypic values", breaks = pretty) +
+      theme_presentation(base_size = 12)
+      # theme(legend.position = "inside", legend.position.inside = c(0.05, 0.95), legend.justification = c(0, 1))
+    
+  }) %>% ungroup()
+
+# Combine
+g_hist_combined <- stability_data_use %>%
+  filter(trait %in% traits) %>%
+  mutate(trait = paste0("'", str_add_space(trait), " ('*", str_replace_all(trait_units[trait], " ", "~"), "*')'")) %>%
+  ggplot(aes(x = value, fill = environment)) +
+  geom_density() +
+  geom_line(aes(y = 0, color = location), key_glyph = draw_key_rect) +
+  scale_fill_manual(values = env_colors, guide = "none") +
+  scale_color_manual(values = location_colors, labels = function(x) str_to_title(gsub("_", " ", x)), name = "Location") +
+  scale_y_continuous(name = NULL, breaks = pretty) +
+  scale_x_continuous(name = expression('Phenotypic values'~(italic(y[ij]))), breaks = pretty) +
+  facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left", labeller = labeller(trait = label_parsed)) +
+  theme_presentation(base_size = 10) +
+  theme(legend.position = "left", strip.placement = "outside")
+  
 
 # Plot reaction norms
 g_reaction_list <- stability_data_use %>%
@@ -128,7 +182,7 @@ g_reaction_list <- stability_data_use %>%
     ggplot(data = df, aes(x = h, y = value, group = line_name)) +
       geom_point() +
       # geom_smooth(method = "lm", se = FALSE, formula = y ~ x) +
-      geom_abline(data = stab_data, aes(intercept = g, slope = b, color = b), alpha = 0.75) +
+      geom_abline(data = stab_data, aes(intercept = g, slope = b, color = b), alpha = 0.75, lwd = 0.3) +
       scale_color_gradient2(midpoint = 1, name = expression(italic(b[i])), guide = guide_colorbar(title.position = "left")) +
       scale_x_continuous(name = expression('Environmental effect'~(italic(t[j]))), breaks = pretty) +
       scale_y_continuous(name = "Phenotypic value", breaks = pretty) +
@@ -138,16 +192,21 @@ g_reaction_list <- stability_data_use %>%
    }) %>% ungroup()
 
 
+# ggplot(aes(x = value, fill = environment)) +
+#   geom_density() +
+#   geom_line(aes(y = 0, color = location), key_glyph = draw_key_rect) +
+
 # Combine
 g_reaction_combined <- stability_data_use %>%
   filter(line_name %in% tp, trait %in% traits) %>%
   left_join(., unnest(select(genotype_stability, -ranova), regression)) %>%
   mutate(trait = paste0("'", str_add_space(trait), " ('*", str_replace_all(trait_units[trait], " ", "~"), "*')'")) %>%
   ggplot(aes(x = h, y = value, group = line_name)) +
-  geom_point(size = 0.5) +
+  geom_point(aes(fill = environment), color = "transparent", size = 1, shape = 21) +
   # geom_smooth(method = "lm", se = FALSE, formula = y ~ x) +
-  geom_abline(aes(intercept = g, slope = b, color = b), alpha = 0.75, linewidth = 0.5) +
+  geom_abline(aes(intercept = g, slope = b, color = b), alpha = 0.5, linewidth = 0.5) +
   scale_color_gradient2(midpoint = 1, name = expression(italic(b[i])), guide = guide_colorbar(title.position = "left")) +
+  scale_fill_manual(values = env_colors, guide = "none") +
   scale_x_continuous(name = expression('Environmental effect'~(italic(t[j]))), breaks = pretty) +
   scale_y_continuous(name = "Phenotypic value", breaks = pretty) +
   facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left", labeller = labeller(trait = label_parsed)) +
@@ -163,7 +222,7 @@ genotype_stability1 <- genotype_stability %>%
 
 genotype_stability_ann <- genotype_stability1 %>%
   group_by(trait) %>%
-  summarize(xAnnot = max(g) - (0.15 * diff(range(g))), yAnnot = max(b) - (0.95 * diff(range(b))),
+  summarize(xAnnot = max(g) - (0.20 * diff(range(g))), yAnnot = max(b) - (0.95 * diff(range(b))),
             corr = cor(g, b), .groups = "drop") %>%
   mutate(annot = paste0("italic(r)==", format_numbers(corr)))
 
@@ -171,16 +230,17 @@ g_mean_linStability <- genotype_stability1 %>%
   ggplot(data = , mapping = aes(x = g, y = b)) +
   geom_point(size = 0.5) +
   geom_smooth(method = "lm", formula = y ~ x, se = FALSE) +
-  geom_text(data = genotype_stability_ann, aes(x = xAnnot, y = yAnnot, label = annot), parse = TRUE, size = 3) +
+  geom_label(data = genotype_stability_ann, aes(x = xAnnot, y = yAnnot, label = annot), parse = TRUE, size = 2, label.size = 0) +
   scale_x_continuous(name = expression('Genotype mean'~(italic(g[i]))), breaks = pretty) +
   scale_y_continuous(name = expression('Slope'~(italic(b[i]))), breaks = pretty) +
   facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left", labeller = labeller(trait = label_parsed)) +
-  theme_presentation(base_size = 10)
+  theme_presentation(base_size = 10) +
+  theme(strip.placement = "outside")
   
 
 genotype_stability_ann <- genotype_stability1 %>%
   group_by(trait) %>%
-  summarize(xAnnot = max(g) - (0.15 * diff(range(g))), yAnnot = max(sd_d) - (0.95 * diff(range(sd_d))),
+  summarize(xAnnot = max(g) - (0.20 * diff(range(g))), yAnnot = max(sd_d) - (0.95 * diff(range(sd_d))),
             corr = cor(g, sd_d), .groups = "drop") %>%
   mutate(annot = paste0("italic(r)==", format_numbers(corr)))
 
@@ -188,23 +248,26 @@ g_mean_nonLinStability <- genotype_stability1 %>%
   ggplot(data = , mapping = aes(x = g, y = sd_d)) +
   geom_point(size = 0.5) +
   geom_smooth(method = "lm", formula = y ~ x, se = FALSE) +
-  geom_text(data = genotype_stability_ann, aes(x = xAnnot, y = yAnnot, label = annot), parse = TRUE, size = 3) +
+  geom_label(data = genotype_stability_ann, aes(x = xAnnot, y = yAnnot, label = annot), parse = TRUE, size = 2, label.size = 0) +
   scale_x_continuous(name = expression('Genotype mean'~(italic(g[i]))), breaks = pretty) +
   scale_y_continuous(name = expression('Deviation '~(italic(sigma[delta(i)]))), breaks = pretty) +
   facet_wrap(~ trait, ncol = 1, scales = "free", strip.position = "left", labeller = labeller(trait = label_parsed)) +
-  theme_presentation(base_size = 10)
+  theme_presentation(base_size = 10) +
+  theme(strip.placement = "outside")
 
 
 
 # Combine the plots
-g_combined <- wrap_plots(g_reaction_combined, 
+g_combined <- wrap_plots(g_hist_combined,
+                         g_reaction_combined + theme(strip.text = element_blank()), 
                          g_mean_linStability + theme(strip.text = element_blank()), 
-                         g_mean_nonLinStability + theme(strip.text = element_blank())) + 
+                         g_mean_nonLinStability + theme(strip.text = element_blank()), 
+                         nrow = 1) + 
   plot_annotation(tag_levels = "A")
 
 # Save
 ggsave(filename = "figure1_reaction_stability_correlations.png", plot = g_combined, path = fig_dir,
-       width = 7, height = 8, dpi = 500)
+       width = 12, height = 8, dpi = 500)
 
 
 
@@ -675,8 +738,8 @@ g_marker_discovery_rate <- univariate_gwas_sample_sigmar_discovery_rate1 %>%
 
 
 # Combine plots
-g_sampling_stability_mae_combined <- plot_grid(main_plots, g_marker_discovery_rate, 
-                                               nrow = 1, labels = c("A", "B"), align = "v", axis = "tb", rel_widths = c(1, 0.6))
+g_sampling_stability_mae_combined <- plot_grid(y_axis_grob1, main_plots, g_marker_discovery_rate, 
+                                               nrow = 1, labels = c("", "A", "B"), align = "v", axis = "tb", rel_widths = c(0.05, 1, 0.6))
 g_sampling_stability_mae_combined1 <- plot_grid(g_sampling_stability_mae_combined, x_axis_grob, ncol = 1, rel_heights = c(1, 0.05))
 
 # Save
@@ -1264,6 +1327,108 @@ map <- snp_info_all %>%
   subset(marker %in% colnames(geno_mat_LD), c("marker", "chrom", "pos"))
 
 ld_plot(geno = geno_mat_LD, map = map)
+
+
+
+
+
+# Calculate the proportion of "stable" alleles carried by each genotype and summarize by program
+
+# trait, parameter, PC combinations
+trait_param_pc <- univariate_gwas_farm_bestModel_qq %>%
+  select(trait, parameter, nPC = bestModel_qq_nPC)
+
+univariate_gwas_sigmar <- inner_join(trait_param_pc, univariate_gwas_farm) %>%
+  filter(trait %in% traits) %>%
+  mutate(fdr_p_thresh = ifelse(is.na(fdr_p_thresh), -Inf, fdr_p_thresh),
+         sigmar = map2(scores, fdr_p_thresh, ~filter(.x, P.value <= .y))) %>%
+  select(-betapc)
+
+
+# Summarize allele counts per genotype
+sigmar_favorable_marker_index <- univariate_gwas_sigmar %>%
+  filter(parameter == "b") %>%
+  select(trait, parameter, sigmar) %>%
+  unnest(sigmar) %>%
+  group_by(trait, parameter) %>%
+  do(favorable_marker_index = {
+    row <- .
+    
+    # get the marker matrix for this marker
+    marker_geno_mat <- geno_mat_mapping[,row$marker, drop = FALSE]
+    multiplier <- matrix(-sign(row$effect), nrow = nrow(marker_geno_mat), ncol = ncol(marker_geno_mat), byrow = TRUE)
+
+    marker_geno_mat1 <- ifelse(marker_geno_mat < 0, -1, 1) * multiplier
+    marker_geno_mat1 <- ifelse(marker_geno_mat1 < 0, 0, 1)
+    fav_marker_counts <- rowSums(marker_geno_mat1)
+    
+    data.frame(line_name = names(fav_marker_counts), favorable_marker_count = fav_marker_counts, row.names = NULL)
+    
+  })
+
+sigmar_favorable_marker_counts <- sigmar_favorable_marker_index %>%
+  unnest(favorable_marker_index) %>%
+  mutate(program = str_sub(line_name, 3, 4)) 
+
+sigmar_favorable_marker_counts %>%
+  arrange(trait, desc(favorable_marker_count)) %>%
+  group_by(trait) %>%
+  top_n(n = 3, wt = favorable_marker_count) %>%
+  as.data.frame()
+
+
+sigmar_favorable_marker_counts %>%
+  ggplot(aes(x = trait, y = favorable_marker_count, color = program)) +
+  geom_boxplot()
+
+# Model
+fit <- glm(favorable_marker_count ~ trait * program, data = sigmar_favorable_marker_counts, family = "poisson")
+
+
+
+
+
+
+
+# Plot phenotypic distribution with SNP genotypes
+effect_plot_list <- list()
+
+for (i in seq_len(nrow(univariate_gwas_sigmar1))) {
+  row_i <- univariate_gwas_sigmar1[i,]
+  # DF of marker genotypes
+  marker_i_df <- (ifelse(geno_mat_mapping[,row_i$marker] < 0, -1, 1)) + 1
+  marker_i_df <- data.frame(line_name = names(marker_i_df), genotype = as.factor(marker_i_df), row.names = NULL)
+  
+  pheno_dat_i <- genotype_stability %>%
+    filter(trait == row_i$trait) %>%
+    unnest(regression) %>%
+    inner_join(., marker_i_df)
+  pheno_dat_i[["BLUE"]] <- if(row_i$parameter == "sd_d") sqrt(pheno_dat_i$var_d_dereg) else pheno_dat_i[[row_i$parameter]]
+  
+  # y axis name
+  y_axis_name <- paste0(str_add_space(row_i$trait), ", ", coef_replace1[row_i$parameter])
+  # x axis name
+  x_axis_name <- paste0(as.character(row_i$marker), " (chr", row_i$chrom, ":", row_i$pos, ")")
+  
+  # Plot
+  g_effect_i <- pheno_dat_i %>%
+    ggplot(aes(x = genotype, y = BLUE)) +
+    geom_boxplot(fill = "#4793d0", alpha = 0.5) +
+    geom_jitter(color = "grey50", width = 0.25) +
+    scale_y_continuous(name = y_axis_name, breaks = pretty) +
+    scale_x_discrete(name = x_axis_name) +
+    theme_classic()
+  g_effect_i
+  
+  # Add to the list
+  effect_plot_list[[i]] <- g_effect_i
+  
+}
+
+
+
+
+
 
 
 

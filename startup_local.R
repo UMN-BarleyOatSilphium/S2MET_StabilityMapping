@@ -12,6 +12,14 @@ library(neyhart)
 # Project and other directories
 proj_dir <- here::here()
 
+root <- neyhart::find_dir("Projects")
+
+# Geno, pheno, and enviro data
+geno_dir <-  file.path(root, "ProjectData/Barley/GenotypicData/")
+pheno_dir <- file.path(root, "ProjectData/Barley/PhenotypicData/")
+meta_dir <- pheno_dir
+enviro_dir <- file.path(root, "ProjectData/Barley/EnvironmentalData/")
+
 # Other directories
 fig_dir <- file.path(proj_dir, "Figures")
 data_dir <- file.path(proj_dir, "Data")
@@ -62,4 +70,5 @@ g_mod_man <- list(
 
 # Source the project functions'
 source(file.path(proj_dir, "functions.R"))
+
 
